@@ -1,0 +1,85 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DayNote.Desktop.App"
+             xmlns:local="using:DayNote.Desktop"
+             RequestedThemeVariant="Light">
+
+    <Application.DataTemplates>
+        <local:ViewLocator/>
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <Color x:Key="AppBackground">#F6F8FA</Color>
+        <Color x:Key="Surface">#FFFFFF</Color>
+        <Color x:Key="Border">#D8DEE8</Color>
+        <Color x:Key="TextPrimary">#1F2430</Color>
+        <Color x:Key="TextSecondary">#586070</Color>
+        <Color x:Key="Accent">#1D4ED8</Color>
+        <Color x:Key="AccentHover">#1E40AF</Color>
+        <Color x:Key="Danger">#DC2626</Color>
+        <Color x:Key="DangerHover">#B91C1C</Color>
+        <Color x:Key="Utility">#E9EEF5</Color>
+        <Color x:Key="UtilityHover">#D8E0EA</Color>
+
+        <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackground}"/>
+        <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Surface}"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource Border}"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}"/>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <Style Selector="Button.accent">
+            <Setter Property="Background" Value="{StaticResource Accent}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentHover}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style Selector="Button.utility">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.utility:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource UtilityHover}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        </Style>
+
+        <Style Selector="Button.destructive">
+            <Setter Property="Background" Value="{StaticResource Danger}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.destructive:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource DangerHover}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Flat list-item button used for recent notebooks -->
+        <Style Selector="Button.listitem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="Button.listitem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+        </Style>
+    </Application.Styles>
+</Application>
