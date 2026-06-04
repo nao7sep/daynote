@@ -41,7 +41,9 @@ dotnet run --project src/DayNote.Desktop
 - **macOS** (primary): `scripts/run.command` publishes a self-contained build, assembles an
   unsigned `DayNote.app` under `publish/`, ad-hoc signs it, and launches it. No Apple Developer
   identity is used.
-- **Windows**: `dotnet publish src/DayNote.Desktop -c Release -r win-x64 --self-contained`.
+- **Windows**: `scripts/run.ps1` restores and launches the app from source for quick local
+  runs. To produce a self-contained build, use
+  `dotnet publish src/DayNote.Desktop -c Release -r win-x64 --self-contained`.
 
 ## License
 

@@ -28,5 +28,11 @@
     <string>NSApplication</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>DayNote needs access to open and save notebooks and their attachments in your Documents folder.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>DayNote needs access to open and save notebooks and their attachments on your Desktop.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>DayNote needs access to open and save notebooks and their attachments in your Downloads folder.</string>
 </dict>
 </plist>

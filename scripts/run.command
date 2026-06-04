@@ -59,18 +59,29 @@ dotnet publish "$PROJECT_FILE" \
   -o "$PUBLISH_DIR"
 
 log_step "Assembling app bundle"
+# Reset MacOS so stale assemblies from a previous build can't linger.
 rm -rf "${APP_BUNDLE:?}/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
+# Copy the publish output (binary + native dylibs + managed DLLs) into MacOS/.
 cp -R "$PUBLISH_DIR/." "$APP_BUNDLE/Contents/MacOS/"
+
+# Drop in the Info.plist so TCC has a bundle identity and usage strings.
 cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
 
 log_step "Ad-hoc signing bundle"
-# `--sign -` is the ad-hoc identity; --force overwrites prior signatures and
-# --deep re-signs Avalonia's pre-signed native dylibs so the bundle has one identity.
+# `--sign -` is the ad-hoc identity. --force overwrites prior signatures (each
+# rebuild produces a new cdhash). --deep recursively re-signs nested bundles
+# (Avalonia's native dylibs ship pre-signed with Avalonia's identity; we replace
+# those with our ad-hoc signature so the whole bundle has one consistent identity).
 codesign --force --deep --sign - "$APP_BUNDLE"
+
+# Verify the signature attached cleanly. `codesign --verify` exits non-zero if
+# the bundle isn't recognized as signed code.
 codesign --verify --verbose=1 "$APP_BUNDLE"
 
 log_step "Launching"
+# `open` routes through Launch Services, which is what registers the app's
+# bundle identity with TCC and triggers permission prompts on first access.
 open "$APP_BUNDLE"
