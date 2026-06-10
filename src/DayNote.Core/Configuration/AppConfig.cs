@@ -3,7 +3,7 @@ namespace DayNote.Core.Configuration;
 /// <summary>
 /// Durable user preferences, persisted to <c>~/.daynote/config.json</c>. Properties are declared
 /// in a deliberate, grouped order so the serialized file is canonical: editor appearance, then
-/// editing behavior, then display, then backups and search.
+/// editing behavior, then display, then backups.
 /// </summary>
 public sealed class AppConfig
 {
@@ -18,9 +18,8 @@ public sealed class AppConfig
     // Display.
     public string DisplayTimeZone { get; set; } = "Asia/Tokyo";
 
-    // Backups and search.
+    // Backups.
     public int BackupThrottleSeconds { get; set; } = 300;
-    public int SearchPageSize { get; set; } = 50;
 
     /// <summary>Returns a deep copy, used to give the settings dialog an editable working copy.</summary>
     public AppConfig Copy() => new()
@@ -31,6 +30,5 @@ public sealed class AppConfig
         AutosaveDelaySeconds = AutosaveDelaySeconds,
         DisplayTimeZone = DisplayTimeZone,
         BackupThrottleSeconds = BackupThrottleSeconds,
-        SearchPageSize = SearchPageSize,
     };
 }

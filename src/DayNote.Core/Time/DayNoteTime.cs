@@ -60,19 +60,33 @@ public static class DayNoteTime
         return local.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
-    private static TimeZoneInfo ResolveTimeZone(string timeZoneId)
+    /// <summary>
+    /// Attempts to resolve an IANA/Windows time-zone id to a system time zone. Returns false for
+    /// unknown or malformed ids (with <paramref name="zone"/> set to UTC) instead of throwing, so
+    /// callers can both validate user input and fall back to UTC from a single code path.
+    /// </summary>
+    public static bool TryResolveTimeZone(string timeZoneId, out TimeZoneInfo zone)
     {
         try
         {
-            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return true;
         }
         catch (TimeZoneNotFoundException)
         {
-            return TimeZoneInfo.Utc;
+            zone = TimeZoneInfo.Utc;
+            return false;
         }
         catch (InvalidTimeZoneException)
         {
-            return TimeZoneInfo.Utc;
+            zone = TimeZoneInfo.Utc;
+            return false;
         }
+    }
+
+    private static TimeZoneInfo ResolveTimeZone(string timeZoneId)
+    {
+        TryResolveTimeZone(timeZoneId, out var zone);
+        return zone;
     }
 }

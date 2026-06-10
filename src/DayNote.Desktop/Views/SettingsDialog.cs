@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using DayNote.Core.Configuration;
+using DayNote.Core.Time;
 
 namespace DayNote.Desktop.Views;
 
@@ -9,17 +10,19 @@ namespace DayNote.Desktop.Views;
 public sealed class SettingsDialog : DialogBase
 {
     private readonly AppConfig _config;
+    private readonly AppConfig _original;
     private readonly ComboBox _fontCombo;
     private readonly TextBox _addFontBox;
     private readonly NumericUpDown _fontSize;
     private readonly NumericUpDown _autosave;
     private readonly TextBox _timeZone;
     private readonly NumericUpDown _backupThrottle;
-    private readonly NumericUpDown _searchPageSize;
+    private readonly Button _saveButton;
 
     public SettingsDialog(AppConfig config)
     {
         _config = config;
+        _original = config.Copy();
         Title = "Settings";
         Width = 460;
 
@@ -43,6 +46,7 @@ public sealed class SettingsDialog : DialogBase
                 _fontCombo.ItemsSource = config.EditorFonts;
                 _fontCombo.SelectedItem = name;
                 _addFontBox.Text = string.Empty;
+                Revalidate();
             }
         };
 
@@ -50,7 +54,6 @@ public sealed class SettingsDialog : DialogBase
         _autosave = Numeric(0.25m, 60m, 0.25m, (decimal)config.AutosaveDelaySeconds);
         _timeZone = new TextBox { Text = config.DisplayTimeZone };
         _backupThrottle = Numeric(1, 86400, 30, config.BackupThrottleSeconds);
-        _searchPageSize = Numeric(10, 1000, 10, config.SearchPageSize);
 
         var addRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         Grid.SetColumn(_addFontBox, 0);
@@ -71,17 +74,25 @@ public sealed class SettingsDialog : DialogBase
         panel.Children.Add(_timeZone);
         panel.Children.Add(Label("Backup interval (seconds)"));
         panel.Children.Add(_backupThrottle);
-        panel.Children.Add(Label("Cross-notebook search page size"));
-        panel.Children.Add(_searchPageSize);
 
         SetContent(panel);
         var buttons = SetButtons([("Cancel", "cancel", false), ("Save", "ok", true)]);
-        SetInitialFocus(buttons["ok"]);
+        _saveButton = buttons["ok"];
+
+        // Save commits a draft, so it stays disabled until the user makes a valid change. Focus the
+        // first control rather than the (initially disabled) Save button.
+        _fontCombo.SelectionChanged += (_, _) => Revalidate();
+        _fontSize.ValueChanged += (_, _) => Revalidate();
+        _autosave.ValueChanged += (_, _) => Revalidate();
+        _timeZone.TextChanged += (_, _) => Revalidate();
+        _backupThrottle.ValueChanged += (_, _) => Revalidate();
+        Revalidate();
+        SetInitialFocus(_fontCombo);
     }
 
     public bool Applied => ResultTag == "ok";
 
-    /// <summary>Copies the edited values back into the working config.</summary>
+    /// <summary>Copies the edited values back into the working config. Only called when Save was enabled, so inputs are valid.</summary>
     public void ApplyToConfig()
     {
         if (_fontCombo.SelectedItem is string font && !string.IsNullOrWhiteSpace(font))
@@ -97,8 +108,28 @@ public sealed class SettingsDialog : DialogBase
         }
 
         _config.BackupThrottleSeconds = (int)(_backupThrottle.Value ?? _config.BackupThrottleSeconds);
-        _config.SearchPageSize = (int)(_searchPageSize.Value ?? _config.SearchPageSize);
     }
+
+    /// <summary>Enables Save only when the draft is both valid and changed from the values the dialog opened with.</summary>
+    private void Revalidate() => _saveButton.IsEnabled = IsValid() && IsDirty();
+
+    private bool IsValid() =>
+        _fontCombo.SelectedItem is string font && !string.IsNullOrWhiteSpace(font) &&
+        InRange(_fontSize) &&
+        InRange(_autosave) &&
+        InRange(_backupThrottle) &&
+        DayNoteTime.TryResolveTimeZone((_timeZone.Text ?? string.Empty).Trim(), out _);
+
+    private bool IsDirty() =>
+        (_fontCombo.SelectedItem as string) != _original.EditorFont ||
+        !_config.EditorFonts.SequenceEqual(_original.EditorFonts) ||
+        _fontSize.Value != (decimal)_original.EditorFontSize ||
+        _autosave.Value != (decimal)_original.AutosaveDelaySeconds ||
+        _backupThrottle.Value != _original.BackupThrottleSeconds ||
+        (_timeZone.Text ?? string.Empty).Trim() != _original.DisplayTimeZone;
+
+    private static bool InRange(NumericUpDown control) =>
+        control.Value is { } value && value >= control.Minimum && value <= control.Maximum;
 
     private static NumericUpDown Numeric(decimal min, decimal max, decimal increment, decimal value) => new()
     {

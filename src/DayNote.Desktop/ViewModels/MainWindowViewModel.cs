@@ -1093,7 +1093,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         autosaveDelaySeconds = config.AutosaveDelaySeconds,
         displayTimeZone = config.DisplayTimeZone,
         backupThrottleSeconds = config.BackupThrottleSeconds,
-        searchPageSize = config.SearchPageSize,
     };
 
     private static string EnsureDaynoteExtension(string path) =>

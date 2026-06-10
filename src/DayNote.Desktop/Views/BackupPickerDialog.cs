@@ -24,6 +24,11 @@ public sealed class BackupPickerDialog : DialogBase
 
         SetContent(_list);
         var buttons = SetButtons([("Cancel", "cancel", false), ("Restore", "ok", true)]);
+        var restore = buttons["ok"];
+
+        // Restore overwrites the live notebook, so it stays disabled until a version is selected.
+        restore.IsEnabled = false;
+        _list.SelectionChanged += (_, _) => restore.IsEnabled = _list.SelectedItem is not null;
         SetInitialFocus(buttons["cancel"]);
     }
 

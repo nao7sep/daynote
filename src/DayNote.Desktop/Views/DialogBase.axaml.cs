@@ -9,6 +9,11 @@ namespace DayNote.Desktop.Views;
 /// Base for the application's own modal dialogs (ported from the house pattern): a borderless,
 /// owner-centred window with a content area and a right-aligned button row. The clicked button's
 /// tag is exposed as <see cref="ResultTag"/>. Escape closes the dialog.
+/// <para>
+/// Copy-on-edit model: dialogs that edit durable data (e.g. <see cref="SettingsDialog"/>) mutate a
+/// throwaway copy the caller adopts only on confirm, so closing without confirming simply discards
+/// that copy. There is deliberately no dirty-close prompt here — do not add one.
+/// </para>
 /// </summary>
 public partial class DialogBase : Window
 {
