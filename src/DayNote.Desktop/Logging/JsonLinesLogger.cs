@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -13,16 +14,18 @@ namespace DayNote.Desktop.Logging;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The per-launch file is named <c>yyyymmdd-hhmmss-utc.log</c> from the launch instant and written
-/// for the life of the process. <c>warn</c>/<c>error</c>/<c>debug</c> lines are flushed immediately so
-/// the last lines before a crash reach disk; <c>info</c> lines may be buffered and are flushed on
-/// <see cref="Dispose"/>. If the file cannot be opened or written the logger degrades to
-/// <see cref="Console.Error"/> and keeps running — logging never crashes the app and never silently
-/// swallows its own failure.
+/// The per-launch file is named from the launch instant plus process and launch identity, then
+/// created exclusively so sessions are never appended together. <c>warn</c>/<c>error</c>/<c>debug</c>
+/// lines are flushed immediately so the last lines before a crash reach disk; <c>info</c> lines may be
+/// buffered and are flushed on <see cref="Dispose"/>. If the file cannot be opened or written the
+/// logger degrades to <see cref="Console.Error"/> and keeps running — logging never crashes the app
+/// and never silently swallows its own failure.
 /// </para>
 /// </remarks>
 public sealed class JsonLinesLogger : IAppLogger, IDisposable
 {
+    private const string LaunchStampFormat = "yyyyMMdd-HHmmss.fffffff";
+
     /// <summary>
     /// Field names whose values are redacted before serialization (exact, case-insensitive). Seeded
     /// with the obvious secrets; DayNote logs none of these today, but the backstop is mandatory for
@@ -70,8 +73,8 @@ public sealed class JsonLinesLogger : IAppLogger, IDisposable
         try
         {
             Directory.CreateDirectory(logsDirectory);
-            var path = Path.Combine(logsDirectory, DayNoteTime.FileStamp(DateTimeOffset.UtcNow) + ".log");
-            var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
+            var path = Path.Combine(logsDirectory, NewLogFileName(DateTimeOffset.UtcNow));
+            var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
             var writer = new StreamWriter(stream) { AutoFlush = false };
             return new JsonLinesLogger(writer, isFallback: false, debugEnabled);
         }
@@ -81,6 +84,16 @@ public sealed class JsonLinesLogger : IAppLogger, IDisposable
             Console.Error.WriteLine($"[daynote] log file unavailable, falling back to stderr: {ex.Message}");
             return new JsonLinesLogger(Console.Error, isFallback: true, debugEnabled);
         }
+    }
+
+    private static string NewLogFileName(DateTimeOffset launchTime)
+    {
+        var stamp = launchTime
+            .ToUniversalTime()
+            .ToString(LaunchStampFormat, CultureInfo.InvariantCulture);
+        var launchId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+
+        return $"{stamp}-utc-p{Environment.ProcessId}-{launchId}.log";
     }
 
     public void Debug(string message, object? data = null, Exception? error = null)
