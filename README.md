@@ -18,7 +18,8 @@ quickdeck's flat panes into a two-level model of **notebooks** containing **note
 1. Notebook data files (`.daynote`, TOML) — human-owned and portable.
 2. Application configuration and UI state (JSON under `~/.daynote/`).
 3. A backup store (`~/.daynote/backups.sqlite`).
-4. Logs (`~/.daynote/logs/`).
+4. Logs (`~/.daynote/logs/`) — one JSON Lines file per launch, named with a UTC start stamp
+   (`yyyymmdd-hhmmss-utc.log`) and kept indefinitely; logs are never pruned or rotated.
 
 ## Architecture
 
@@ -34,7 +35,12 @@ Side effects (file and database I/O) live at the edges; dependencies point inwar
 ```sh
 dotnet build
 dotnet run --project src/DayNote.Desktop
+dotnet test          # logger unit tests under tests/DayNote.Tests
 ```
+
+Verbose `debug`-level logging is for developers: it is on automatically in a `Debug` build, and can
+be enabled for a `Release` build by setting `DAYNOTE_DEBUG=1`. It is off by default on end-user
+machines so logs never flood a user's disk.
 
 ### Distribution
 

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -8,9 +9,9 @@ using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
 using DayNote.Core.Toml;
+using DayNote.Desktop.Logging;
 using DayNote.Desktop.Services;
 using DayNote.Desktop.State;
-using Serilog;
 
 namespace DayNote.Desktop.ViewModels;
 
@@ -28,7 +29,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly JsonStore<AppConfig> _configStore;
     private readonly JsonStore<AppState> _stateStore;
     private readonly IDialogService _dialogs;
-    private readonly ILogger _log;
+    private readonly IAppLogger _log;
 
     private readonly DispatcherTimer _autosaveTimer;
     private readonly DispatcherTimer _externalTimer;
@@ -51,7 +52,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _savingInProgress;
     private SaveState _saveState = SaveState.Saved;
 
-    public MainWindowViewModel(AppPaths paths, IDialogService dialogs, ILogger log)
+    public MainWindowViewModel(AppPaths paths, IDialogService dialogs, IAppLogger log)
     {
         _paths = paths;
         _dialogs = dialogs;
@@ -181,6 +182,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         _externalTimer.Stop();
         _autosaveTimer.Stop();
+        _log.Info("Application shutting down", new { path = _current?.Path });
 
         // Persist state (including the current note id) while the notebook is still open;
         // CloseCurrentAsync clears the selection, which would otherwise null out CurrentNoteId.
@@ -243,6 +245,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         if (!File.Exists(item.Path))
         {
             item.IsMissing = true;
+            _log.Warn("Recent notebook is missing", new { path = item.Path });
             ShowToast(ToastKind.Warning, "That notebook is no longer at " + item.Path);
             return;
         }
@@ -277,6 +280,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         RebuildNotes();
         SelectedNote = Notes.FirstOrDefault(n => n.Note.Id == note.Id);
         MarkDirty(note.Id);
+        _log.Info("Created note", new { noteId = note.Id });
     }
 
     [RelayCommand]
@@ -299,6 +303,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         RebuildNotes();
         SelectedNote = Notes.FirstOrDefault();
         MarkDirty(noteId: null);
+        _log.Info("Deleted note", new { noteId = note.Id });
     }
 
     [RelayCommand]
@@ -319,6 +324,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var directory = NotebookStore.NoteAssetsDirectory(_current.Path, note.Id);
         Directory.CreateDirectory(directory);
 
+        _log.Info("Adding attachments", new { noteId = note.Id, requested = files.Count });
+        var added = 0;
+        var failed = 0;
         foreach (var source in files)
         {
             try
@@ -326,14 +334,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 var name = UniqueFileName(directory, Path.GetFileName(source));
                 File.Copy(source, Path.Combine(directory, name));
                 note.Attachments.Add(name);
+                added++;
             }
             catch (Exception ex)
             {
-                _log.Error(ex, "Failed to add attachment {Source}", source);
+                failed++;
+                _log.Error("Failed to add attachment", new { noteId = note.Id, source }, ex);
                 ShowToast(ToastKind.Error, "Could not add " + Path.GetFileName(source));
             }
         }
 
+        _log.Info("Attachments added", new { noteId = note.Id, added, failed });
         LoadAttachments(note);
         MarkDirty(note.Id);
     }
@@ -359,6 +370,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        _log.Info("Removing attachment", new { noteId = note.Id, file = item.FileName });
         note.Attachments.Remove(item.FileName);
         try
         {
@@ -369,7 +381,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to delete attachment {Path}", item.FullPath);
+            _log.Error("Failed to delete attachment", new { noteId = note.Id, path = item.FullPath }, ex);
         }
 
         LoadAttachments(note);
@@ -379,9 +391,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task OpenAttachment(AttachmentItemViewModel item)
     {
-        if (File.Exists(item.FullPath))
+        if (!File.Exists(item.FullPath))
+        {
+            return;
+        }
+
+        _log.Info("Opening attachment externally", new { file = item.FileName });
+        try
         {
             await _dialogs.OpenPathExternallyAsync(item.FullPath);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to open attachment externally", new { path = item.FullPath }, ex);
+            ShowToast(ToastKind.Error, "Could not open " + item.FileName);
         }
     }
 
@@ -411,9 +434,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        _log.Info("Restoring backup", new { path = _current.Path, versionId = chosen.Id });
         var content = _backups.GetContent(chosen.Id);
         if (content is null)
         {
+            _log.Warn("Backup version no longer exists", new { path = _current.Path, versionId = chosen.Id });
             await _dialogs.ShowErrorAsync("Restore failed", "That backup version no longer exists.");
             return;
         }
@@ -422,11 +447,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             _notebooks.WriteRaw(_current.Path, content);
             AdoptLoaded(_notebooks.Load(_current.Path), SelectedNote?.Note.Id);
+            _log.Info("Backup restored", new { path = _current.Path, versionId = chosen.Id });
             ShowToast(ToastKind.Info, "Backup restored.");
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to restore backup for {Path}", _current.Path);
+            _log.Error("Failed to restore backup", new { path = _current.Path, versionId = chosen.Id }, ex);
             await _dialogs.ShowErrorAsync("Restore failed", ex.Message);
         }
     }
@@ -449,10 +475,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         try
         {
             _configStore.Save(_config);
+            _log.Info("Settings saved", ConfigSummary(_config));
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to save settings");
+            _log.Error("Failed to save settings", error: ex);
             ShowToast(ToastKind.Error, "Could not save settings.");
         }
 
@@ -466,10 +493,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task OpenShortcuts() => await _dialogs.ShowShortcutsAsync();
+    private async Task OpenShortcuts()
+    {
+        _log.Info("Showing keyboard shortcuts");
+        await _dialogs.ShowShortcutsAsync();
+    }
 
     [RelayCommand]
-    private async Task OpenAbout() => await _dialogs.ShowAboutAsync();
+    private async Task OpenAbout()
+    {
+        _log.Info("Showing about");
+        await _dialogs.ShowAboutAsync();
+    }
 
     [RelayCommand]
     private async Task SaveNow() => await SaveCurrentAsync(force: false);
@@ -486,6 +521,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var next = _config.EditorFonts[(index + 1) % _config.EditorFonts.Count];
         _config.EditorFont = next;
         EditorFontFamily = new FontFamily(next);
+        _log.Info("Cycled editor font", new { font = next });
         if (IsReady)
         {
             try
@@ -494,7 +530,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                _log.Error(ex, "Failed to save font preference");
+                _log.Error("Failed to save font preference", new { font = next }, ex);
             }
         }
 
@@ -510,6 +546,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        _log.Info("Opening notebook", new { path, isNew });
+        var stopwatch = Stopwatch.StartNew();
+
         await CloseCurrentAsync(clearSelection: false);
 
         var acquired = NotebookLock.TryAcquire(_paths, path);
@@ -519,10 +558,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             var choice = await _dialogs.AskLockedNotebookAsync(Path.GetFileNameWithoutExtension(path));
             if (choice == LockedNotebookChoice.Cancel)
             {
+                _log.Info("Open cancelled: notebook is locked", new { path });
                 return;
             }
 
             readOnly = true;
+            _log.Warn("Notebook is locked by another instance; opening read-only", new { path });
         }
 
         LoadedNotebook loaded;
@@ -547,7 +588,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to open notebook {Path}", path);
+            _log.Error("Failed to open notebook", new { path }, ex);
             acquired?.Dispose();
             await _dialogs.ShowErrorAsync("Could not open notebook", ex.Message);
             return;
@@ -562,6 +603,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _state.CurrentNotebookPath = loaded.Path;
         PersistState();
 
+        _log.Info("Notebook opened", new
+        {
+            path = loaded.Path,
+            isNew,
+            readOnly,
+            noteCount = loaded.Notebook.Notes.Count,
+            durationMs = stopwatch.ElapsedMilliseconds,
+        });
+
         if (readOnly)
         {
             ShowToast(ToastKind.Warning, "Opened read-only — the notebook is in use by another instance.");
@@ -575,6 +625,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        _log.Info("Closing notebook", new { path = _current.Path });
         _autosaveTimer.Stop();
         if (!IsReadOnly)
         {
@@ -631,11 +682,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         _savingInProgress = true;
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             SetSaveState(SaveState.Saving);
             var now = DateTimeOffset.UtcNow;
             var notebook = _current.Notebook;
+            _log.Info("Saving notebook", new { path = _current.Path, noteCount = notebook.Notes.Count, force });
 
             foreach (var id in _dirtyNoteIds)
             {
@@ -661,10 +714,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Editor.RefreshMetadata();
             RefreshSelectedListItem();
             SetSaveState(SaveState.Saved);
+            _log.Info("Notebook saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to save notebook {Path}", _current?.Path);
+            _log.Error("Failed to save notebook", new { path = _current?.Path }, ex);
             SetSaveState(SaveState.Error);
             ShowToast(ToastKind.Error, "Save failed: " + ex.Message);
         }
@@ -689,10 +743,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 DateTimeOffset.UtcNow,
                 TimeSpan.FromSeconds(Math.Max(1, _config.BackupThrottleSeconds)),
                 force);
+            _log.Debug("Recorded backup", new { path = _current.Path, force });
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to record backup");
+            _log.Error("Failed to record backup", new { path = _current.Path }, ex);
         }
     }
 
@@ -707,10 +762,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             var text = NotebookTomlWriter.Write(_current.Notebook);
             _backups.Record(PathKey.Normalize(_current.Path), text, DateTimeOffset.UtcNow, TimeSpan.Zero, force: true);
+            _log.Debug("Recorded close backup", new { path = _current.Path });
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to record close backup");
+            _log.Error("Failed to record close backup", new { path = _current.Path }, ex);
         }
     }
 
@@ -733,10 +789,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
                 case ExternalChange.Deleted:
                     _externalChangeAcknowledged = true;
+                    _log.Warn("Notebook file was deleted on disk", new { path = _current.Path });
                     ShowToast(ToastKind.Warning, "The notebook file was deleted. Your edits remain; saving will recreate it.");
                     return;
 
                 case ExternalChange.Modified when !_dirty:
+                    _log.Info("Notebook changed on disk; reloading", new { path = _current.Path });
                     ReloadFromDisk();
                     ShowToast(ToastKind.Info, "Reloaded after an external change.");
                     return;
@@ -745,6 +803,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     var choice = await _dialogs.AskExternalChangeAsync(NotebookTitle, change);
                     if (choice == ExternalChangeChoice.ReloadFromDisk)
                     {
+                        _log.Info("External change: reloading from disk, discarding local edits", new { path = _current.Path });
                         ReloadFromDisk();
                     }
                     else
@@ -752,6 +811,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                         // Keep the in-memory edits: re-baseline to the current on-disk content so the
                         // next save overwrites it, and so any *further* external change is still
                         // detected rather than silently suppressed.
+                        _log.Info("External change: keeping local edits", new { path = _current.Path });
                         _baselineHash = _notebooks.ComputeHash(_current.Path);
                     }
 
@@ -762,7 +822,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             // A transient read failure during polling (the file briefly locked by a sync client,
             // antivirus, or another instance) must not crash the app; skip this tick and retry.
-            _log.Debug(ex, "External-change check skipped for {Path}", _current?.Path);
+            _log.Debug("External-change check skipped", new { path = _current?.Path }, ex);
         }
         finally
         {
@@ -783,7 +843,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to reload notebook {Path}", _current.Path);
+            _log.Error("Failed to reload notebook", new { path = _current.Path }, ex);
         }
     }
 
@@ -895,7 +955,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         foreach (var attachment in NotebookStore.ResolveAttachments(_current.Path, note))
         {
-            Attachments.Add(new AttachmentItemViewModel(attachment));
+            Attachments.Add(new AttachmentItemViewModel(attachment, _log));
         }
     }
 
@@ -960,12 +1020,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _backups = new BackupStore(_paths.BackupDatabase);
             _config = _configStore.Load() ?? new AppConfig();
             _state = _stateStore.Load() ?? new AppState();
+            _log.Info("Configuration and state loaded", ConfigSummary(_config));
         }
         catch (Exception ex)
         {
             _loadError = ex;
             _config = new AppConfig();
             _state = new AppState();
+            _log.Error("Failed to load configuration or state; saving disabled", new { root = _paths.Root }, ex);
         }
     }
 
@@ -1002,7 +1064,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to save state");
+            _log.Error("Failed to save state", error: ex);
         }
     }
 
@@ -1022,6 +1084,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     };
 
     // ----- Helpers -------------------------------------------------------------------------------
+
+    /// <summary>The key effective configuration, summarized for the log (no secret-bearing fields).</summary>
+    private static object ConfigSummary(AppConfig config) => new
+    {
+        editorFont = config.EditorFont,
+        editorFontSize = config.EditorFontSize,
+        autosaveDelaySeconds = config.AutosaveDelaySeconds,
+        displayTimeZone = config.DisplayTimeZone,
+        backupThrottleSeconds = config.BackupThrottleSeconds,
+        searchPageSize = config.SearchPageSize,
+    };
 
     private static string EnsureDaynoteExtension(string path) =>
         string.Equals(Path.GetExtension(path), ".daynote", StringComparison.OrdinalIgnoreCase)

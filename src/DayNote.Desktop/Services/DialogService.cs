@@ -1,4 +1,3 @@
-using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Controls.Notifications;
 using Avalonia.Platform.Storage;
@@ -83,9 +82,8 @@ public sealed class DialogService : IDialogService
 
     public async Task ShowAboutAsync()
     {
-        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
         var message =
-            $"DayNote {version}\n\n" +
+            $"{AppInfo.Name} {AppInfo.Version}\n\n" +
             "A plain-text notes and daily-journal desktop application.\n" +
             "Successor to quickdeck.\n\n" +
             "© 2026 Yoshinao Inoguchi · MIT License";

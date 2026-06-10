@@ -1,11 +1,15 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using DayNote.Core.Storage;
-using Serilog;
+using DayNote.Desktop.Logging;
 
 namespace DayNote.Desktop;
 
 internal static class Program
 {
+    /// <summary>The process-wide logger, available to the application once <see cref="Main"/> opens it.</summary>
+    internal static IAppLogger Log { get; private set; } = null!;
+
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
@@ -13,39 +17,46 @@ internal static class Program
     public static int Main(string[] args)
     {
         var paths = new AppPaths();
+
+        // One log file per launch, named with a UTC timestamp; the logger creates the logs directory
+        // itself, so it is the first thing up and can record every later failure.
+        var logger = JsonLinesLogger.Open(paths.LogsDirectory, DebugEnabled());
+        Log = logger;
+        RegisterCrashHooks(logger);
+
         try
         {
             paths.EnsureCreated();
         }
-        catch
+        catch (Exception ex)
         {
-            // Logging is configured next; directory creation is retried by the view model.
+            // The logs directory already exists (the logger made it); the rest of the data directory
+            // is retried by the view model, which turns a failure into an in-app error rather than a
+            // pre-UI crash. Record it so the retry is not the first sign anything went wrong.
+            logger.Warn("Could not pre-create the data directory", new { root = paths.Root }, ex);
         }
 
-        // One log file per session, named with a UTC timestamp and no app-name prefix. Serilog's
-        // built-in retention only prunes within a rolling sequence of one path, so retention across
-        // distinct per-session files is enforced here by keeping the newest files.
-        PruneLogs(paths.LogsDirectory, keep: 30);
-        var logFile = Path.Combine(paths.LogsDirectory, DayNote.Core.Time.DayNoteTime.FileStamp(DateTimeOffset.UtcNow) + ".log");
-        Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .WriteTo.File(logFile, rollingInterval: RollingInterval.Infinite, shared: true)
-            .CreateLogger();
+        logger.Info("DayNote starting", new
+        {
+            version = AppInfo.Version,
+            runtime = RuntimeInformation.FrameworkDescription,
+        });
 
+        var forced = false;
         try
         {
-            Log.Information("DayNote starting");
             return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
         catch (Exception ex)
         {
-            Log.Fatal(ex, "DayNote terminated unexpectedly");
+            forced = true;
+            logger.Error("DayNote terminated unexpectedly", error: ex);
             return 1;
         }
         finally
         {
-            Log.Information("DayNote shutting down");
-            Log.CloseAndFlush();
+            logger.Info("DayNote shutting down", new { reason = forced ? "forced" : "clean" });
+            logger.Dispose();
         }
     }
 
@@ -56,34 +67,32 @@ internal static class Program
             .WithInterFont()
             .LogToTrace();
 
-    private static void PruneLogs(string directory, int keep)
+    /// <summary>
+    /// Last-resort hooks: an exception escaping a background thread, or a faulted task whose result
+    /// is never observed, is logged at <c>error</c> (which flushes immediately) before the process dies.
+    /// </summary>
+    private static void RegisterCrashHooks(IAppLogger log)
     {
-        try
-        {
-            if (!Directory.Exists(directory))
-            {
-                return;
-            }
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            log.Error("Unhandled exception", new { terminating = e.IsTerminating }, e.ExceptionObject as Exception);
 
-            var logs = Directory.GetFiles(directory, "*.log")
-                .OrderByDescending(Path.GetFileName, StringComparer.Ordinal)
-                .Skip(keep);
-
-            foreach (var path in logs)
-            {
-                try
-                {
-                    File.Delete(path);
-                }
-                catch
-                {
-                    // A log file in use by another instance is left in place.
-                }
-            }
-        }
-        catch
+        TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            // Pruning is best effort and must never prevent startup.
-        }
+            log.Error("Unobserved task exception", error: e.Exception);
+            e.SetObserved();
+        };
+    }
+
+    /// <summary>
+    /// Debug logging is for developers only: on from an unpackaged/development build, or when
+    /// <c>DAYNOTE_DEBUG=1</c> is set; off in release builds so it never floods an end user's disk.
+    /// </summary>
+    private static bool DebugEnabled()
+    {
+#if DEBUG
+        return true;
+#else
+        return Environment.GetEnvironmentVariable("DAYNOTE_DEBUG") == "1";
+#endif
     }
 }

@@ -1,6 +1,7 @@
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
+using DayNote.Desktop.Logging;
 
 namespace DayNote.Desktop.ViewModels;
 
@@ -12,10 +13,12 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 {
     private const int ThumbnailWidth = 240;
 
+    private readonly IAppLogger _log;
     private bool _disposed;
 
-    public AttachmentItemViewModel(Attachment attachment)
+    public AttachmentItemViewModel(Attachment attachment, IAppLogger log)
     {
+        _log = log;
         Attachment = attachment;
         FileName = attachment.FileName;
         FullPath = attachment.FullPath;
@@ -63,8 +66,11 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
             Thumbnail = bitmap;
         }
-        catch
+        catch (Exception ex)
         {
+            // A corrupt or unsupported image is recoverable — the tile just shows no preview — but it
+            // is unexpected for a file we classified as an image, so it is recorded rather than swallowed.
+            _log.Warn("Could not decode attachment thumbnail", new { path }, ex);
             Thumbnail = null;
         }
     }
