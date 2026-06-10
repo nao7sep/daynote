@@ -64,51 +64,7 @@ public sealed class JsonLinesLoggerTests
         }
 
         var name = Path.GetFileName(Directory.GetFiles(temp.Path, "*.log").Single());
-        Assert.Matches(@"^\d{8}-\d{6}\.\d{7}-utc-p\d+-[0-9a-f]{32}\.log$", name);
-    }
-
-    [Fact]
-    public void Creates_distinct_files_for_simultaneous_loggers()
-    {
-        using var temp = new TempDir();
-        using var first = JsonLinesLogger.Open(temp.Path, debugEnabled: false);
-        using var second = JsonLinesLogger.Open(temp.Path, debugEnabled: false);
-
-        first.Warn("first launch");
-        second.Warn("second launch");
-
-        var files = Directory.GetFiles(temp.Path, "*.log");
-        Assert.Equal(2, files.Length);
-
-        var messages = files
-            .SelectMany(ReadLinesFromFile)
-            .Select(line => (string?)line["message"])
-            .OrderBy(message => message, StringComparer.Ordinal)
-            .ToArray();
-        Assert.Equal(new[] { "first launch", "second launch" }, messages);
-    }
-
-    [Fact]
-    public void Creates_a_new_file_for_an_immediate_relaunch_instead_of_appending()
-    {
-        using var temp = new TempDir();
-        using (var first = JsonLinesLogger.Open(temp.Path, debugEnabled: false))
-        {
-            first.Info("first launch");
-        }
-
-        using (var second = JsonLinesLogger.Open(temp.Path, debugEnabled: false))
-        {
-            second.Info("second launch");
-        }
-
-        var messagesByFile = Directory.GetFiles(temp.Path, "*.log")
-            .Select(file => ReadLinesFromFile(file).Select(line => (string?)line["message"]).ToArray())
-            .ToArray();
-
-        Assert.Equal(2, messagesByFile.Length);
-        Assert.Contains(messagesByFile, messages => messages.SequenceEqual(new[] { "first launch" }));
-        Assert.Contains(messagesByFile, messages => messages.SequenceEqual(new[] { "second launch" }));
+        Assert.Matches(@"^\d{8}-\d{6}-utc\.log$", name);
     }
 
     [Fact]

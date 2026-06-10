@@ -14,8 +14,9 @@ namespace DayNote.Desktop.Logging;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The per-launch file is named from the launch instant plus process and launch identity, then
-/// created exclusively so sessions are never appended together. <c>warn</c>/<c>error</c>/<c>debug</c>
+/// The per-launch file is named <c>yyyymmdd-hhmmss-utc.log</c> — the UTC launch instant and nothing
+/// else — and created exclusively so sessions are never appended together; a same-second relaunch
+/// fails to open and degrades to the console fallback below. <c>warn</c>/<c>error</c>/<c>debug</c>
 /// lines are flushed immediately so the last lines before a crash reach disk; <c>info</c> lines may be
 /// buffered and are flushed on <see cref="Dispose"/>. If the file cannot be opened or written the
 /// logger degrades to <see cref="Console.Error"/> and keeps running — logging never crashes the app
@@ -24,7 +25,7 @@ namespace DayNote.Desktop.Logging;
 /// </remarks>
 public sealed class JsonLinesLogger : IAppLogger, IDisposable
 {
-    private const string LaunchStampFormat = "yyyyMMdd-HHmmss.fffffff";
+    private const string LaunchStampFormat = "yyyyMMdd-HHmmss";
 
     /// <summary>
     /// Field names whose values are redacted before serialization (exact, case-insensitive). Seeded
@@ -91,9 +92,8 @@ public sealed class JsonLinesLogger : IAppLogger, IDisposable
         var stamp = launchTime
             .ToUniversalTime()
             .ToString(LaunchStampFormat, CultureInfo.InvariantCulture);
-        var launchId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
 
-        return $"{stamp}-utc-p{Environment.ProcessId}-{launchId}.log";
+        return $"{stamp}-utc.log";
     }
 
     public void Debug(string message, object? data = null, Exception? error = null)

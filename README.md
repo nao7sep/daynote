@@ -18,9 +18,9 @@ quickdeck's flat panes into a two-level model of **notebooks** containing **note
 1. Notebook data files (`.daynote`, TOML) — human-owned and portable.
 2. Application configuration and UI state (JSON under `~/.daynote/`).
 3. A backup store (`~/.daynote/backups.sqlite`).
-4. Logs (`~/.daynote/logs/`) — one JSON Lines file per launch, named with a UTC start stamp,
-   process id, and launch id (`yyyymmdd-hhmmss.fffffff-utc-p<pid>-<launchid>.log`) and kept
-   indefinitely; logs are never pruned or rotated.
+4. Logs (`~/.daynote/logs/`) — one JSON Lines file per launch, named with the UTC start stamp
+   and nothing else (`yyyymmdd-hhmmss-utc.log`) and kept indefinitely; logs are never pruned or
+   rotated.
 
 ## Architecture
 
