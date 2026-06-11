@@ -7,7 +7,6 @@ publish/
 .vs/
 .idea/
 *.user
-*.slnx
 
 # macOS
 .DS_Store

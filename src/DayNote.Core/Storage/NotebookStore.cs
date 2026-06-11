@@ -60,22 +60,6 @@ public sealed class NotebookStore
     public string ComputeHash(string path) =>
         ContentHash.Sha256Hex(File.ReadAllText(Path.GetFullPath(path), Encoding.UTF8));
 
-    /// <summary>Moves a notebook file and its <c>-assets</c> directory together.</summary>
-    public void MoveNotebook(string oldPath, string newPath)
-    {
-        var oldFull = Path.GetFullPath(oldPath);
-        var newFull = Path.GetFullPath(newPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(newFull)!);
-        File.Move(oldFull, newFull);
-
-        var oldAssets = AssetsDirectory(oldFull);
-        var newAssets = AssetsDirectory(newFull);
-        if (Directory.Exists(oldAssets) && !PathKey.Equal(oldAssets, newAssets))
-        {
-            Directory.Move(oldAssets, newAssets);
-        }
-    }
-
     /// <summary>The <c>&lt;basename&gt;-assets</c> directory beside the notebook file.</summary>
     public static string AssetsDirectory(string notebookPath)
     {
