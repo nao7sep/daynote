@@ -153,6 +153,22 @@ public sealed class NotebookTomlTests
     }
 
     [Fact]
+    public void Reader_drops_attachment_names_that_are_not_bare_filenames()
+    {
+        // A hostile or hand-edited notebook must not be able to point an attachment outside the
+        // note's assets directory; only the bare filename "a.png" survives. (POSIX separators; on
+        // any platform a forward slash, "." and ".." are rejected.)
+        const string text =
+            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            "attachments = [\"a.png\", \"../escape.txt\", \"sub/dir.png\", \"..\", \".\", \"/etc/passwd\"]\n" +
+            "body = ''\n";
+
+        var notebook = NotebookTomlReader.Read(text);
+
+        Assert.Equal(new[] { "a.png" }, notebook.Notes[0].Attachments);
+    }
+
+    [Fact]
     public void Reader_throws_a_format_exception_on_invalid_toml()
     {
         Assert.Throws<NotebookFormatException>(() => NotebookTomlReader.Read("this is = = not [[[ valid"));

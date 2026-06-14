@@ -103,7 +103,7 @@ public sealed class DialogService : IDialogService
             "Ctrl+F        Filter notes",
             "Ctrl+J        Cycle editor font",
             "Ctrl+,        Settings",
-            "F1            Keyboard shortcuts",
+            "F1 / Ctrl+/   Keyboard shortcuts",
         });
         var dialog = new MessageDialog("Keyboard shortcuts", message, new[] { ("OK", "ok", true) });
         await dialog.ShowDialog(RequireOwner());

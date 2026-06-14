@@ -298,10 +298,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        // Recover the selection to the deleted note's neighbour (the next visible note, else the
+        // previous, else none) rather than jumping back to the top of the list, so deleting mid-list
+        // keeps the user's place.
+        var index = Notes.IndexOf(SelectedNote);
+
         _current.Notebook.Notes.Remove(note);
         _allNotes.RemoveAll(n => ReferenceEquals(n.Note, note));
         RebuildNotes();
-        SelectedNote = Notes.FirstOrDefault();
+        SelectedNote = Notes.Count == 0 ? null : Notes[Math.Clamp(index, 0, Notes.Count - 1)];
         MarkDirty(noteId: null);
         _log.Info("Deleted note", new { noteId = note.Id });
     }

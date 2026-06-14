@@ -106,6 +106,20 @@ public partial class MainWindow : Window
         }
     }
 
+    // Opening a notebook is a deliberate, view-replacing action, so the recent list uses manual
+    // activation: Enter on the focused row opens it, mirroring double-tap, rather than opening on
+    // mere selection. (The list is not a text-entry surface, so no IME composition guard applies.)
+    private void RecentList_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter
+            && RecentList.SelectedItem is RecentNotebookItemViewModel item
+            && DataContext is MainWindowViewModel vm)
+        {
+            vm.OpenRecentCommand.Execute(item);
+            e.Handled = true;
+        }
+    }
+
     private void RemoveAttachment_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: AttachmentItemViewModel item } && DataContext is MainWindowViewModel vm)

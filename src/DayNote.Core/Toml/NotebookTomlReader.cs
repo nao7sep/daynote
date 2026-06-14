@@ -75,7 +75,7 @@ public static class NotebookTomlReader
         {
             foreach (var name in attachments)
             {
-                if (!string.IsNullOrEmpty(name))
+                if (IsBareFileName(name))
                 {
                     note.Attachments.Add(name);
                 }
@@ -84,6 +84,21 @@ public static class NotebookTomlReader
 
         return note;
     }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> is a single bare filename: non-empty, with no directory
+    /// component and not a <c>.</c>/<c>..</c> traversal segment. Attachment references must be bare
+    /// filenames resolved under the note's assets directory (see <see cref="Models.Note"/>); a name
+    /// carrying a path separator or a traversal segment — which the app never writes, but a
+    /// hand-edited or hostile notebook could — would resolve <em>outside</em> that directory, where
+    /// removing it would delete an unrelated file. Such names are dropped on read, the same way empty
+    /// names are, so the malformed reference never reaches the storage layer.
+    /// </summary>
+    private static bool IsBareFileName(string? name) =>
+        !string.IsNullOrEmpty(name)
+        && name == Path.GetFileName(name)
+        && name != "."
+        && name != "..";
 
     private static DateTimeOffset ParseTimestamp(string? text, DateTimeOffset fallback) =>
         !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : fallback;

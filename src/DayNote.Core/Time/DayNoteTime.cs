@@ -4,9 +4,10 @@ namespace DayNote.Core.Time;
 
 /// <summary>
 /// Timestamp conventions for DayNote. Internal timestamps are UTC, ISO-8601 with millisecond
-/// precision. General filename timestamps use <c>yyyymmdd-hhmmss-utc</c>; launch log filenames add
-/// their own uniqueness at the desktop edge. User-facing timestamps are rendered in a configurable
-/// time zone (default Asia/Tokyo) in an ISO-like format.
+/// precision. Filename timestamps use <c>yyyymmdd-hhmmss-utc</c> at second precision — including the
+/// per-launch log files, since a desktop app is never realistically launched twice within one second.
+/// User-facing timestamps are rendered in a configurable time zone (default Asia/Tokyo) in an
+/// ISO-like format.
 /// </summary>
 public static class DayNoteTime
 {

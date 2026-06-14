@@ -15,8 +15,10 @@ namespace DayNote.Desktop.Logging;
 /// <remarks>
 /// <para>
 /// The per-launch file is named <c>yyyymmdd-hhmmss-utc.log</c> — the UTC launch instant and nothing
-/// else — and created exclusively so sessions are never appended together; a same-second relaunch
-/// fails to open and degrades to the console fallback below. <c>warn</c>/<c>error</c>/<c>debug</c>
+/// else — and created exclusively so sessions are never appended together. Second precision is
+/// sufficient: a user-launched desktop app is realistically never started twice within the same
+/// second, and on the practically impossible clash the create fails and degrades to the console
+/// fallback below. <c>warn</c>/<c>error</c>/<c>debug</c>
 /// lines are flushed immediately so the last lines before a crash reach disk; <c>info</c> lines may be
 /// buffered and are flushed on <see cref="Dispose"/>. If the file cannot be opened or written the
 /// logger degrades to <see cref="Console.Error"/> and keeps running — logging never crashes the app

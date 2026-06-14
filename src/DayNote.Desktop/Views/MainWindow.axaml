@@ -17,6 +17,7 @@
         <KeyBinding Gesture="Ctrl+J" Command="{Binding CycleFontCommand}"/>
         <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}"/>
         <KeyBinding Gesture="F1" Command="{Binding OpenShortcutsCommand}"/>
+        <KeyBinding Gesture="Ctrl+OemQuestion" Command="{Binding OpenShortcutsCommand}"/>
     </Window.KeyBindings>
 
     <Window.Styles>
@@ -91,7 +92,8 @@
                         <Button Content="Open" Classes="utility" Command="{Binding OpenNotebookCommand}"/>
                     </StackPanel>
                     <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding RecentFilter}" Margin="0,0,0,8"/>
-                    <ListBox x:Name="RecentList" ItemsSource="{Binding RecentNotebooks}" DoubleTapped="RecentList_DoubleTapped">
+                    <ListBox x:Name="RecentList" ItemsSource="{Binding RecentNotebooks}"
+                             DoubleTapped="RecentList_DoubleTapped" KeyDown="RecentList_KeyDown">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="vm:RecentNotebookItemViewModel">
                                 <StackPanel>
