@@ -36,8 +36,16 @@ Verbose `debug`-level logging is for developers: it is on automatically in a `De
 
 ### Distribution
 
-- **macOS** (primary): `scripts/run.command` publishes a self-contained build, assembles an unsigned `DayNote.app` under `publish/`, ad-hoc signs it, and launches it. No Apple Developer identity is used.
-- **Windows**: `scripts/run.ps1` restores and launches the app from source for quick local runs. To produce a self-contained build, use `dotnet publish src/DayNote.Desktop -c Release -r win-x64 --self-contained`.
+Each launcher is a `scripts/<name>.command` (macOS) / `scripts/<name>.ps1` (Windows) pair.
+
+- **macOS** (primary):
+  - `run-dev` — runs the app from source with `dotnet run`; fast, for active coding. TCC-gated features (Desktop, Documents, Downloads) need the signed bundle, so use `run-built`/`rebuild` to exercise those.
+  - `run-built` — launches the existing signed `DayNote.app` under `publish/` without rebuilding.
+  - `rebuild` — publishes a self-contained `Release` build, assembles `DayNote.app` under `publish/`, ad-hoc signs it (no Apple Developer identity is used), and launches it. Run after changing source.
+- **Windows**:
+  - `run-dev` — restores and launches the app from source with `dotnet run`, for quick local runs.
+  - `run-built` — launches the existing published executable without rebuilding.
+  - `rebuild` — publishes a self-contained `Release` build (`dotnet publish src/DayNote.Desktop -c Release -r win-x64 --self-contained`) and launches it.
 
 ## License
 
