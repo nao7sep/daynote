@@ -30,10 +30,15 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            // The logs directory already exists (the logger made it); the rest of the data directory
-            // is retried by the view model, which turns a failure into an in-app error rather than a
-            // pre-UI crash. Record it so the retry is not the first sign anything went wrong.
-            logger.Warn("Could not pre-create the data directory", new { root = paths.Root }, ex);
+            // An unusable DAYNOTE_HOME (or an unwritable home) is a startup error we report and STOP
+            // on — never a silent fallback that lets the app run unable to persist. The logger is
+            // already up, so record it there and on stderr, then exit non-zero before any UI loads.
+            logger.Error("DayNote cannot start: its storage location could not be created",
+                new { root = paths.Root }, ex);
+            Console.Error.WriteLine(
+                "DayNote cannot start: its storage location could not be created. " + ex.Message);
+            logger.Dispose();
+            return 1;
         }
 
         logger.Info("DayNote starting", new
