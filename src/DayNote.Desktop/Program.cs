@@ -16,7 +16,20 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        var paths = new AppPaths();
+        AppPaths paths;
+        try
+        {
+            paths = new AppPaths();
+        }
+        catch (Exception ex)
+        {
+            // An unusable DAYNOTE_HOME (or an unknown home) is a startup error we report and STOP on.
+            // The logger isn't up yet — its directory derives from these very paths — so stderr is the
+            // channel; exit non-zero before any UI loads.
+            Console.Error.WriteLine(
+                "DayNote cannot start: its storage location could not be resolved. " + ex.Message);
+            return 1;
+        }
 
         // One log file per launch, named with a UTC timestamp; the logger creates the logs directory
         // itself, so it is the first thing up and can record every later failure.

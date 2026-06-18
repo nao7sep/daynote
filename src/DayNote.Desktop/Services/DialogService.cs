@@ -84,7 +84,7 @@ public sealed class DialogService : IDialogService
     {
         var message =
             $"{AppInfo.Name} {AppInfo.Version}\n\n" +
-            "A plain-text notes and daily-journal desktop application.\n" +
+            "A plain-text notes desktop application: notebooks containing notes.\n" +
             "Successor to quickdeck.\n\n" +
             "© 2026 Yoshinao Inoguchi · MIT License";
         var dialog = new MessageDialog("About DayNote", message, new[] { ("OK", "ok", true) });
