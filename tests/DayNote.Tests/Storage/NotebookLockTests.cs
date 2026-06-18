@@ -10,15 +10,22 @@ namespace DayNote.Tests.Storage;
 /// held by exactly one instance at a time, a second attempt is refused (so the UI can fall back to
 /// read-only), releasing frees it for re-acquisition, and different notebooks never contend.
 /// </summary>
+[Collection(AppPathsEnvironment.CollectionName)]
 public sealed class NotebookLockTests : IDisposable
 {
     private readonly string _root;
+    private readonly string? _previousHome;
     private readonly AppPaths _paths;
 
     public NotebookLockTests()
     {
         _root = Path.Combine(Path.GetTempPath(), "daynote-lock-tests-" + Guid.NewGuid().ToString("N"));
-        _paths = new AppPaths(_root);
+
+        // Relocation goes through DAYNOTE_HOME, the one supported seam — the same variable tests and
+        // production use — rather than a test-only constructor.
+        _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _root);
+        _paths = new AppPaths();
     }
 
     [Fact]
@@ -79,6 +86,8 @@ public sealed class NotebookLockTests : IDisposable
 
     public void Dispose()
     {
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
+
         try
         {
             Directory.Delete(_root, recursive: true);
