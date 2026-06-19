@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Media;
 using DayNote.Desktop.Services;
 
@@ -16,9 +17,9 @@ public sealed class ToastViewModel
         Message = message;
         Accent = kind switch
         {
-            ToastKind.Warning => new SolidColorBrush(Color.Parse("#F59E0B")),
-            ToastKind.Error => new SolidColorBrush(Color.Parse("#EF4444")),
-            _ => new SolidColorBrush(Color.Parse("#3B82F6")),
+            ToastKind.Warning => Brush("WarningBrush"),
+            ToastKind.Error => Brush("DangerBrush"),
+            _ => Brush("AccentBrush"),
         };
     }
 
@@ -27,4 +28,11 @@ public sealed class ToastViewModel
     public string Message { get; }
 
     public IBrush Accent { get; }
+
+    private static IBrush Brush(string key) =>
+        Application.Current is { } app
+        && app.Resources.TryGetResource(key, null, out var value)
+        && value is IBrush brush
+            ? brush
+            : Brushes.Transparent;
 }

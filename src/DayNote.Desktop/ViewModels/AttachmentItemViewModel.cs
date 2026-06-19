@@ -6,8 +6,8 @@ using DayNote.Desktop.Logging;
 namespace DayNote.Desktop.ViewModels;
 
 /// <summary>
-/// A tile in the attachments pane. Images are shown as large thumbnails decoded to a bounded width
-/// so the pane does not hold full-resolution bitmaps in memory.
+/// A row in the attachments pane. Images are decoded to a bounded thumbnail; other files and failed
+/// previews use the view's generic document placeholder.
 /// </summary>
 public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposable
 {
@@ -44,6 +44,16 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
     [ObservableProperty]
     private Bitmap? _thumbnail;
+
+    public bool HasThumbnail => Thumbnail is not null;
+
+    public bool ShowFilePlaceholder => Thumbnail is null;
+
+    partial void OnThumbnailChanged(Bitmap? value)
+    {
+        OnPropertyChanged(nameof(HasThumbnail));
+        OnPropertyChanged(nameof(ShowFilePlaceholder));
+    }
 
     private async Task LoadThumbnailAsync()
     {
