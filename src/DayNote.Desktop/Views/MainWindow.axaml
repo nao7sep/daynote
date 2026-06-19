@@ -6,6 +6,7 @@
         x:DataType="vm:MainWindowViewModel"
         Title="DayNote"
         Width="1200" Height="800"
+        MinWidth="900" MinHeight="520"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource AppBackgroundBrush}">
 
@@ -65,13 +66,9 @@
         <!-- Status bar -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
-            <!-- Status bar carries app-wide state only; per-entry info lives under the editor. -->
-            <Grid ColumnDefinitions="Auto,*" Margin="12,5">
-                <TextBlock Text="{Binding SaveStateText}" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                <TextBlock Grid.Column="1" Text="{Binding DataDirectory}" Margin="16,0,0,0"
-                           VerticalAlignment="Center" FontSize="11" TextTrimming="CharacterEllipsis"
-                           Foreground="{StaticResource TextSecondaryBrush}"/>
-            </Grid>
+            <!-- App-wide state only (per-entry info lives in the editor header). The transient
+                 "Saved" message clears itself shortly after a save, like quickdeck. -->
+            <TextBlock Text="{Binding SaveStateText}" Margin="12,5" VerticalAlignment="Center" FontWeight="SemiBold"/>
         </Border>
 
         <!-- Four panes -->
@@ -88,32 +85,41 @@
 
             <!-- Recent notebooks -->
             <Border x:Name="RecentPane" Grid.Column="0" Classes="pane">
-                <DockPanel Margin="10">
-                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                        <TextBlock Text="Notebooks" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                            <Button Content="New" Classes="accent" Command="{Binding NewNotebookCommand}"/>
-                            <Button Content="Open" Classes="utility" Command="{Binding OpenNotebookCommand}"/>
-                        </StackPanel>
-                    </Grid>
-                    <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding RecentFilter}" Margin="0,0,0,8"/>
-                    <!-- Closes the open notebook; lives in this pane next to the notebook list. -->
-                    <Button DockPanel.Dock="Bottom" Content="Close notebook" Classes="utility"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,8,0,0"
-                            Command="{Binding CloseNotebookCommand}" IsEnabled="{Binding HasNotebook}"/>
-                    <!-- Selecting a notebook opens it (single click or arrow key); no double-click needed. -->
-                    <ListBox x:Name="RecentList" ItemsSource="{Binding RecentNotebooks}"
-                             SelectedItem="{Binding SelectedRecent}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="vm:RecentNotebookItemViewModel">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding Directory}" FontSize="11" TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Classes="paneHeader">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Notebooks" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                <Button Content="New" Classes="accent" Command="{Binding NewNotebookCommand}"/>
+                                <Button Content="Open" Classes="utility" Command="{Binding OpenNotebookCommand}"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <DockPanel Margin="10">
+                        <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding RecentFilter}" Margin="0,0,0,8"/>
+                        <!-- Selecting a notebook opens it (single click or arrow key); no double-click needed. -->
+                        <ListBox x:Name="RecentList" ItemsSource="{Binding RecentNotebooks}"
+                                 SelectedItem="{Binding SelectedRecent}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:RecentNotebookItemViewModel">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Directory}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <!-- Close affordance on the open notebook's row (revealed on hover/selection),
+                                             replacing the old separate "Close notebook" button. -->
+                                        <Button Grid.Column="1" Classes="rowAction" Click="CloseNotebookRow_Click"
+                                                IsVisible="{Binding IsCurrent}" ToolTip.Tip="Close notebook">
+                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
                 </DockPanel>
             </Border>
 
@@ -121,24 +127,40 @@
 
             <!-- Notes -->
             <Border x:Name="NotesPane" Grid.Column="2" Classes="pane">
-                <DockPanel Margin="10">
-                    <TextBlock DockPanel.Dock="Top" Text="Notes" FontWeight="Bold"/>
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,8">
-                        <Button Content="New" Classes="accent" Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasNotebook}"/>
-                        <Button Content="Delete" Classes="destructive" Command="{Binding DeleteNoteCommand}" IsEnabled="{Binding HasNotebook}"/>
-                    </StackPanel>
-                    <TextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
-                    <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="vm:NoteListItemViewModel">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding Subtitle}" FontSize="11"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Classes="paneHeader">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Notes" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <Button Grid.Column="1" Content="New" Classes="accent"
+                                    Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasNotebook}"/>
+                        </Grid>
+                    </Border>
+                    <DockPanel Margin="10">
+                        <TextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
+                        <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:NoteListItemViewModel">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <!-- Lifecycle status, colored per state, so list items read differently by state. -->
+                                                <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{Binding StatusBrush}"/>
+                                                <TextBlock Text="{Binding Subtitle}" FontSize="11"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <!-- Per-row delete, revealed on hover/selection (replaces the Delete button). -->
+                                        <Button Grid.Column="1" Classes="rowAction" Click="DeleteNoteRow_Click" ToolTip.Tip="Delete note">
+                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
                 </DockPanel>
             </Border>
 
@@ -146,25 +168,38 @@
 
             <!-- Editor -->
             <Border Grid.Column="4" Classes="pane">
-                <Panel Margin="12">
+                <Panel>
                     <TextBlock Text="Select a note, or create one." HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{StaticResource TextSecondaryBrush}" IsVisible="{Binding !Editor.HasNote}"/>
                     <DockPanel IsVisible="{Binding Editor.HasNote}">
-                        <ctl:ComposingTextBox x:Name="TitleBox" DockPanel.Dock="Top"
-                                              Text="{Binding Editor.Title}" PlaceholderText="Title"
-                                              FontSize="18" FontWeight="SemiBold" AcceptsReturn="False"
-                                              Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
-                        <!-- All per-entry info in one place: timestamps + counts, wrapping when narrow. -->
-                        <WrapPanel DockPanel.Dock="Bottom" Margin="2,8,0,0">
-                            <TextBlock Text="{Binding Editor.CreatedText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock Text="{Binding Editor.WordsText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock Text="{Binding Editor.CharsText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock Text="{Binding Editor.XCountText}" FontSize="11" Margin="0,0,16,2"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       Classes.over="{Binding !Editor.IsWithinXLimit}"/>
-                        </WrapPanel>
-                        <TextBox x:Name="BodyBox" Margin="0,8"
+                        <!-- Editor header: the title field and per-entry metadata, separated from the body
+                             by a borderline (consistent with the other panes). The wide editor pane gives
+                             the metadata room, so it no longer crowds a cramped footer. -->
+                        <Border DockPanel.Dock="Top" Classes="paneHeader">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <ctl:ComposingTextBox x:Name="TitleBox"
+                                                          Text="{Binding Editor.Title}" PlaceholderText="Title…"
+                                                          FontSize="18" FontWeight="SemiBold" AcceptsReturn="False"
+                                                          Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
+                                    <!-- Lifecycle status picker: draft / checked / published / expired. -->
+                                    <ComboBox Grid.Column="1" Margin="8,0,0,0" MinWidth="130" VerticalAlignment="Center"
+                                              ItemsSource="{Binding Editor.StatusOptions}"
+                                              SelectedItem="{Binding Editor.Status}"
+                                              ToolTip.Tip="Lifecycle status"/>
+                                </Grid>
+                                <WrapPanel>
+                                    <TextBlock Text="{Binding Editor.CreatedText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding Editor.WordsText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding Editor.CharsText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding Editor.XCountText}" FontSize="11" Margin="0,0,16,2"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Classes.over="{Binding !Editor.IsWithinXLimit}"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBox x:Name="BodyBox" Margin="10"
                                  Text="{Binding Editor.Body}"
                                  AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
                                  FontFamily="{Binding EditorFontFamily}" FontSize="{Binding EditorFontSize}"
@@ -180,13 +215,15 @@
 
             <!-- Attachments -->
             <Border x:Name="AttachPane" Grid.Column="6" Classes="pane">
-                <DockPanel Margin="10">
-                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                        <TextBlock Text="Attachments" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                        <Button Grid.Column="1" Content="Add…" Classes="utility"
-                                Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding Editor.HasNote}"/>
-                    </Grid>
-                    <Panel>
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Classes="paneHeader">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Attachments" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <Button Grid.Column="1" Content="Add" Classes="utility"
+                                    Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding Editor.HasNote}"/>
+                        </Grid>
+                    </Border>
+                    <Panel Margin="10">
                         <TextBlock Text="No attachments yet." HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Foreground="{StaticResource TextSecondaryBrush}" IsVisible="{Binding ShowAttachmentsEmptyHint}"/>
                         <ScrollViewer>

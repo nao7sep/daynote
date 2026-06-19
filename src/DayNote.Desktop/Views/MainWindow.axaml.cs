@@ -78,6 +78,19 @@ public partial class MainWindow : Window
         }
     }
 
+    // The inline "✕" on a note row deletes that specific note (not necessarily the selected one).
+    private void DeleteNoteRow_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: NoteListItemViewModel item } && DataContext is MainWindowViewModel vm)
+        {
+            vm.DeleteNoteCommand.Execute(item);
+        }
+    }
+
+    // The inline "✕" on the open notebook's row closes it (replacing the old Close-notebook button).
+    private void CloseNotebookRow_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.CloseNotebookCommand.Execute(null);
+
     private void Attachment_DoubleTapped(object? sender, TappedEventArgs e)
     {
         if (sender is Control { DataContext: AttachmentItemViewModel item } && DataContext is MainWindowViewModel vm)

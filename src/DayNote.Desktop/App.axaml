@@ -41,6 +41,8 @@
             <Color x:Key="ListBackground">#121015</Color>
             <Color x:Key="ListSelection">#3B2F51</Color>
             <Color x:Key="ListSelectionHover">#493A61</Color>
+            <!-- Note lifecycle status accents: draft (muted) → checked (amber) → published (green); expired (red). -->
+            <Color x:Key="Positive">#5FB98B</Color>
 
             <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackground}"/>
             <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Surface}"/>
@@ -53,6 +55,10 @@
             <SolidColorBrush x:Key="ListBackgroundBrush" Color="{StaticResource ListBackground}"/>
             <SolidColorBrush x:Key="ListSelectionBrush" Color="{StaticResource ListSelection}"/>
             <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="{StaticResource ListSelectionHover}"/>
+            <SolidColorBrush x:Key="StatusDraftBrush" Color="{StaticResource TextSecondary}"/>
+            <SolidColorBrush x:Key="StatusCheckedBrush" Color="{StaticResource Warning}"/>
+            <SolidColorBrush x:Key="StatusPublishedBrush" Color="{StaticResource Positive}"/>
+            <SolidColorBrush x:Key="StatusExpiredBrush" Color="{StaticResource Danger}"/>
         </ResourceDictionary>
     </Application.Resources>
 
@@ -121,6 +127,40 @@
             <Setter Property="Background" Value="{StaticResource ListSelectionHoverBrush}"/>
         </Style>
 
+        <!-- Pane header strip: a title row separated from the pane body by a bottom borderline,
+             matching the fleet (zipkit). The header spans the full pane width; the body below
+             carries its own padding. -->
+        <Style Selector="Border.paneHeader">
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="12,9"/>
+        </Style>
+
+        <!-- A row's inline action (e.g. a close/delete "✕"): revealed only when its list row is
+             hovered or selected, so rows stay clean. Space is reserved at all times, so revealing
+             it never reflows the row. Because the row must be hovered for the icon to appear, an
+             opacity-0 icon is never under the pointer — no accidental clicks. -->
+        <Style Selector="Button.rowAction">
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="ListBoxItem:pointerover Button.rowAction">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected Button.rowAction">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="Button.rowAction:pointerover">
+            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+        </Style>
+        <Style Selector="Button.rowAction:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+        </Style>
+
         <Style Selector="Border.stylePreset">
             <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
@@ -139,19 +179,6 @@
         </Style>
         <Style Selector="ComboBox, NumericUpDown">
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-        </Style>
-
-        <!-- Flat list-item button used for recent notebooks -->
-        <Style Selector="Button.listitem">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="CornerRadius" Value="4"/>
-        </Style>
-        <Style Selector="Button.listitem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource Utility}"/>
         </Style>
     </Application.Styles>
 </Application>

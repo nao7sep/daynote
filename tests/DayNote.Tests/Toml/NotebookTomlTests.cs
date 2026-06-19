@@ -32,6 +32,7 @@ public sealed class NotebookTomlTests
             Assert.Equal(expected.Title, actual.Title);
             Assert.Equal(expected.Created, actual.Created);
             Assert.Equal(expected.Modified, actual.Modified);
+            Assert.Equal(expected.Status, actual.Status);
             Assert.Equal(expected.Attachments, actual.Attachments);
             Assert.Equal(expected.Body, actual.Body);
         }
@@ -52,7 +53,7 @@ public sealed class NotebookTomlTests
         Assert.StartsWith("id = ", text);
         var noteStart = text.IndexOf("[[note]]", StringComparison.Ordinal);
         AssertInOrder(text[..noteStart], "id =", "title =", "created =", "modified =");
-        AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "attachments =", "body =");
+        AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "status =", "attachments =", "body =");
     }
 
     [Fact]
@@ -177,6 +178,40 @@ public sealed class NotebookTomlTests
         Assert.Equal(new[] { "a.png" }, notebook.Notes[0].Attachments);
     }
 
+    [Theory]
+    [InlineData(NoteStatus.Draft, "draft")]
+    [InlineData(NoteStatus.Checked, "checked")]
+    [InlineData(NoteStatus.Published, "published")]
+    [InlineData(NoteStatus.Expired, "expired")]
+    public void Status_round_trips_with_a_lowercase_token(NoteStatus status, string token)
+    {
+        var notebook = OneNote();
+        notebook.Notes[0].Status = status;
+
+        var text = NotebookTomlWriter.Write(notebook);
+        Assert.Contains($"status = \"{token}\"", text);
+        Assert.Equal(status, NotebookTomlReader.Read(text).Notes[0].Status);
+    }
+
+    [Fact]
+    public void Reader_defaults_missing_or_unknown_status_to_draft()
+    {
+        // An older file with no status key, and a hand-edit typo, both fall back to Draft.
+        const string missing = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
+        const string unknown = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"archived\"\nbody = ''\n";
+
+        Assert.Equal(NoteStatus.Draft, NotebookTomlReader.Read(missing).Notes[0].Status);
+        Assert.Equal(NoteStatus.Draft, NotebookTomlReader.Read(unknown).Notes[0].Status);
+    }
+
+    [Fact]
+    public void Reader_parses_status_case_insensitively()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"Published\"\nbody = ''\n";
+
+        Assert.Equal(NoteStatus.Published, NotebookTomlReader.Read(text).Notes[0].Status);
+    }
+
     [Fact]
     public void Reader_throws_a_format_exception_on_invalid_toml()
     {
@@ -210,6 +245,7 @@ public sealed class NotebookTomlTests
             Title = "First note",
             Created = new DateTimeOffset(2026, 6, 3, 14, 30, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 3, 14, 30, 0, 0, TimeSpan.Zero),
+            Status = NoteStatus.Checked,
             Body = "firstline\n\tsecondline\nthirdline",
         };
         first.Attachments.Add("diagram.png");
@@ -222,6 +258,7 @@ public sealed class NotebookTomlTests
             Title = "Second note",
             Created = new DateTimeOffset(2026, 6, 3, 14, 40, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 3, 14, 41, 0, 0, TimeSpan.Zero),
+            Status = NoteStatus.Published,
             Body = "copies clean, indentation preserved exactly",
         };
         notebook.Notes.Add(second);

@@ -12,6 +12,9 @@ public sealed class Note
     public DateTimeOffset Created { get; set; }
     public DateTimeOffset Modified { get; set; }
 
+    /// <summary>Lifecycle state (draft / checked / published / expired). New notes start as draft.</summary>
+    public NoteStatus Status { get; set; } = NoteStatus.Draft;
+
     /// <summary>Bare attachment filenames, in the order written to the file.</summary>
     public List<string> Attachments { get; } = new();
 

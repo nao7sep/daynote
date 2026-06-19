@@ -13,6 +13,10 @@ namespace DayNote.Desktop.Controls;
 /// </summary>
 public class ComposingTextBox : TextBox
 {
+    // A TextBox subclass would otherwise look up a control theme keyed by its own type, find none, and
+    // render with no template (zero size / invisible). Borrow TextBox's theme so it looks like one.
+    protected override Type StyleKeyOverride => typeof(TextBox);
+
     public static readonly RoutedEvent<RoutedEventArgs> SubmittedEvent =
         RoutedEvent.Register<ComposingTextBox, RoutedEventArgs>(nameof(Submitted), RoutingStrategies.Bubble);
 

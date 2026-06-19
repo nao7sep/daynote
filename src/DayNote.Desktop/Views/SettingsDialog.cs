@@ -11,7 +11,8 @@ namespace DayNote.Desktop.Views;
 /// <summary>
 /// The custom settings dialog. Edits a working copy of <see cref="AppConfig"/> in place: controls
 /// write straight to that copy, so the caller applies the edits by keeping the copy on Save and
-/// discards it on Cancel. Every text-style preset is an independent editable card.
+/// discards it on Cancel. Every text-style preset is an independent editable card; exactly one is the
+/// default and the default cannot be removed, which guarantees at least one preset always remains.
 /// </summary>
 public sealed class SettingsDialog : DialogBase
 {
@@ -26,21 +27,16 @@ public sealed class SettingsDialog : DialogBase
     private readonly AppConfig _original;
     private readonly StackPanel _styleItems = new() { Spacing = 8 };
     private readonly Dictionary<EditorTextStyle, StyleEditorControls> _styleEditors = [];
-    private readonly Button _removeStyle;
     private readonly NumericUpDown _autosave;
     private readonly TextBox _timeZone;
     private readonly Button _saveButton;
-    private EditorTextStyle? _activeStyle;
+    private EditorTextStyle? _defaultStyle;
 
     public SettingsDialog(AppConfig config)
     {
         _config = config;
-        _original = config.Copy();
         Title = "Settings";
         Width = 600;
-
-        var addStyle = Utility("Add", AddStyle);
-        _removeStyle = Utility("Remove", RemoveStyle);
 
         var styleActions = new StackPanel
         {
@@ -48,20 +44,27 @@ public sealed class SettingsDialog : DialogBase
             Spacing = 6,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        styleActions.Children.Add(addStyle);
-        styleActions.Children.Add(_removeStyle);
+        styleActions.Children.Add(Utility("Add", AddStyle));
 
         var styleHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         styleHeader.Children.Add(Label("Text styles"));
         Grid.SetColumn(styleActions, 1);
         styleHeader.Children.Add(styleActions);
 
-        var styleScroller = new ScrollViewer
+        // The presets live in a bordered, padded list container; the cards are its rows.
+        var styleList = new Border
         {
-            Height = 320,
-            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-            Content = _styleItems,
+            BorderBrush = Brush("BorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(8),
+            Child = new ScrollViewer
+            {
+                Height = 320,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                Content = _styleItems,
+            },
         };
 
         _autosave = Numeric(0.25m, 60m, 0.25m);
@@ -70,7 +73,7 @@ public sealed class SettingsDialog : DialogBase
 
         var panel = new StackPanel { Spacing = 8, Width = 540 };
         panel.Children.Add(styleHeader);
-        panel.Children.Add(styleScroller);
+        panel.Children.Add(styleList);
         panel.Children.Add(Label("Autosave delay (seconds)"));
         panel.Children.Add(_autosave);
         panel.Children.Add(Label("Display time zone (IANA id, e.g. Asia/Tokyo)"));
@@ -80,15 +83,22 @@ public sealed class SettingsDialog : DialogBase
         var buttons = SetButtons([("Cancel", "cancel", false), ("Save", "ok", true)]);
         _saveButton = buttons["ok"];
 
-        var selected = _config.TextStyles
+        var resolvedDefault = _config.TextStyles
             .FirstOrDefault(s => string.Equals(s.Name, _config.SelectedTextStyle, StringComparison.OrdinalIgnoreCase))
             ?? _config.TextStyles.FirstOrDefault();
-        RebuildStyleCards(selected);
+        RebuildStyleCards(resolvedDefault);
+
+        // Snapshot the baseline AFTER the load canonicalizes SelectedTextStyle to the resolved preset's
+        // name; otherwise opening the dialog and changing nothing could leave Save enabled (phantom dirt).
+        _original = _config.Copy();
 
         _autosave.ValueChanged += (_, _) =>
         {
             if (_autosave.Value is { } value)
+            {
                 _config.AutosaveDelaySeconds = (double)value;
+            }
+
             Revalidate();
         };
         _timeZone.TextChanged += (_, _) =>
@@ -98,8 +108,10 @@ public sealed class SettingsDialog : DialogBase
         };
 
         Revalidate();
-        if (_activeStyle is not null && _styleEditors.TryGetValue(_activeStyle, out var editor))
-            SetInitialFocus(editor.ActiveToggle);
+        if (_defaultStyle is not null && _styleEditors.TryGetValue(_defaultStyle, out var editor))
+        {
+            SetInitialFocus(editor.Name);
+        }
     }
 
     public bool Applied => ResultTag == "ok";
@@ -111,12 +123,6 @@ public sealed class SettingsDialog : DialogBase
             Text = DisplayName(style.Name),
             FontWeight = FontWeight.SemiBold,
             FontSize = 14,
-        };
-        var active = new RadioButton
-        {
-            Content = heading,
-            GroupName = "TextStylePresets",
-            IsChecked = ReferenceEquals(style, _activeStyle),
         };
 
         var name = new TextBox { Text = style.Name, PlaceholderText = "Preset name" };
@@ -130,42 +136,66 @@ public sealed class SettingsDialog : DialogBase
         var bold = new CheckBox { Content = "Bold", IsChecked = style.Bold };
         var italic = new CheckBox { Content = "Italic", IsChecked = style.Italic };
 
-        var decorations = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
+        // The default control sits bottom-right: a "Set as default" button that becomes plain "Default"
+        // text once this preset is the chosen one.
+        var setDefault = Utility("Set as default", () => MakeDefault(style));
+        var defaultLabel = new TextBlock
+        {
+            Text = "Default",
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brush("TextSecondaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var remove = Utility("Remove", () => RemoveStyle(style));
+
+        var decorations = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 16,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         decorations.Children.Add(bold);
         decorations.Children.Add(italic);
 
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        actions.Children.Add(setDefault);
+        actions.Children.Add(defaultLabel);
+        actions.Children.Add(remove);
+
+        var bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        bottom.Children.Add(decorations);
+        Grid.SetColumn(actions, 1);
+        bottom.Children.Add(actions);
+
         var body = new StackPanel { Spacing = 8 };
-        body.Children.Add(active);
+        body.Children.Add(heading);
         body.Children.Add(Row(("*", Field("Name", name)), ("*", Field("Font family", fontFamily))));
         body.Children.Add(Row(
             ("*", Field("Font size", fontSize)),
             ("*", Field("Line spacing", lineSpacing)),
             ("*", Field("Padding", padding))));
-        body.Children.Add(decorations);
+        body.Children.Add(bottom);
 
         var card = new Border { Child = body };
         card.Classes.Add("stylePreset");
-        if (ReferenceEquals(style, _activeStyle))
-            card.Classes.Add("selected");
 
-        _styleEditors[style] = new StyleEditorControls(card, active, name, fontFamily, fontSize, lineSpacing, padding);
+        _styleEditors[style] = new StyleEditorControls(
+            card, name, fontFamily, fontSize, lineSpacing, padding, setDefault, defaultLabel, remove);
 
-        active.IsCheckedChanged += (_, _) =>
-        {
-            if (active.IsChecked != true)
-                return;
-
-            _activeStyle = style;
-            _config.SelectedTextStyle = style.Name;
-            UpdateStyleCardSelection();
-            Revalidate();
-        };
         name.TextChanged += (_, _) =>
         {
             style.Name = (name.Text ?? string.Empty).Trim();
             heading.Text = DisplayName(style.Name);
-            if (ReferenceEquals(style, _activeStyle))
+            if (ReferenceEquals(style, _defaultStyle))
+            {
                 _config.SelectedTextStyle = style.Name;
+            }
+
             Revalidate();
         };
         fontFamily.TextChanged += (_, _) =>
@@ -176,19 +206,28 @@ public sealed class SettingsDialog : DialogBase
         fontSize.ValueChanged += (_, _) =>
         {
             if (fontSize.Value is { } value)
+            {
                 style.FontSize = (double)value;
+            }
+
             Revalidate();
         };
         lineSpacing.ValueChanged += (_, _) =>
         {
             if (lineSpacing.Value is { } value)
+            {
                 style.LineSpacing = (double)value;
+            }
+
             Revalidate();
         };
         padding.ValueChanged += (_, _) =>
         {
             if (padding.Value is { } value)
+            {
                 style.Padding = (double)value;
+            }
+
             Revalidate();
         };
         bold.IsCheckedChanged += (_, _) =>
@@ -205,49 +244,72 @@ public sealed class SettingsDialog : DialogBase
         return card;
     }
 
+    private void MakeDefault(EditorTextStyle style)
+    {
+        _defaultStyle = style;
+        _config.SelectedTextStyle = style.Name;
+        UpdateDefaultIndicators();
+        Revalidate();
+    }
+
     private void AddStyle()
     {
-        var template = _activeStyle ?? _config.TextStyles.FirstOrDefault();
+        var template = _defaultStyle ?? _config.TextStyles.FirstOrDefault();
         var style = template?.Copy() ?? new EditorTextStyle();
         style.Name = UniqueName(template is null ? "New style" : template.Name + " copy");
         _config.TextStyles.Add(style);
-        RebuildStyleCards(style);
+        // Adding a preset does not change which one is the default.
+        RebuildStyleCards(_defaultStyle);
         Revalidate();
     }
 
-    private void RemoveStyle()
+    private void RemoveStyle(EditorTextStyle style)
     {
-        if (_config.TextStyles.Count <= 1 || _activeStyle is not { } style)
+        // The default preset is undeletable, which guarantees at least one preset always remains.
+        if (ReferenceEquals(style, _defaultStyle) || _config.TextStyles.Count <= 1)
+        {
             return;
+        }
 
-        var index = _config.TextStyles.IndexOf(style);
         _config.TextStyles.Remove(style);
-        var next = _config.TextStyles[Math.Min(index, _config.TextStyles.Count - 1)];
-        RebuildStyleCards(next);
+        RebuildStyleCards(_defaultStyle);
         Revalidate();
     }
 
-    private void RebuildStyleCards(EditorTextStyle? active)
+    private void RebuildStyleCards(EditorTextStyle? @default)
     {
-        _activeStyle = active ?? _config.TextStyles.FirstOrDefault();
-        if (_activeStyle is not null)
-            _config.SelectedTextStyle = _activeStyle.Name;
+        _defaultStyle = @default ?? _config.TextStyles.FirstOrDefault();
+        if (_defaultStyle is not null)
+        {
+            _config.SelectedTextStyle = _defaultStyle.Name;
+        }
 
         _styleEditors.Clear();
         _styleItems.Children.Clear();
         foreach (var style in _config.TextStyles)
+        {
             _styleItems.Children.Add(BuildStyleCard(style));
+        }
 
-        _removeStyle.IsEnabled = _config.TextStyles.Count > 1;
+        UpdateDefaultIndicators();
     }
 
-    private void UpdateStyleCardSelection()
+    /// <summary>Reflects the current default across every card: highlight, the default/Set-as-default
+    /// control, and which cards may be removed (never the default, never the last remaining one).</summary>
+    private void UpdateDefaultIndicators()
     {
         foreach (var (style, editor) in _styleEditors)
         {
+            var isDefault = ReferenceEquals(style, _defaultStyle);
             editor.Card.Classes.Remove("selected");
-            if (ReferenceEquals(style, _activeStyle))
+            if (isDefault)
+            {
                 editor.Card.Classes.Add("selected");
+            }
+
+            editor.SetDefault.IsVisible = !isDefault;
+            editor.DefaultLabel.IsVisible = isDefault;
+            editor.Remove.IsEnabled = !isDefault && _config.TextStyles.Count > 1;
         }
     }
 
@@ -256,7 +318,10 @@ public sealed class SettingsDialog : DialogBase
         var name = baseName;
         var counter = 2;
         while (_config.TextStyles.Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
             name = $"{baseName} {counter++}";
+        }
+
         return name;
     }
 
@@ -265,10 +330,14 @@ public sealed class SettingsDialog : DialogBase
     private bool IsValid()
     {
         if (!DayNoteTime.TryResolveTimeZone((_timeZone.Text ?? string.Empty).Trim(), out _) || !InRange(_autosave))
+        {
             return false;
+        }
 
         if (_config.TextStyles.Count == 0 || _styleEditors.Count != _config.TextStyles.Count)
+        {
             return false;
+        }
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var style in _config.TextStyles)
@@ -285,7 +354,7 @@ public sealed class SettingsDialog : DialogBase
             }
         }
 
-        return _activeStyle is not null;
+        return _defaultStyle is not null;
     }
 
     private bool IsDirty() => Serialize(_config) != Serialize(_original);
@@ -331,6 +400,7 @@ public sealed class SettingsDialog : DialogBase
             Grid.SetColumn(cells[i].Child, i);
             grid.Children.Add(cells[i].Child);
         }
+
         return grid;
     }
 
@@ -338,12 +408,20 @@ public sealed class SettingsDialog : DialogBase
 
     private static string DisplayName(string name) => string.IsNullOrWhiteSpace(name) ? "Unnamed style" : name;
 
+    // Pulls a palette brush from app resources so the dialog tracks the shared theme tokens.
+    private static IBrush Brush(string key) =>
+        Application.Current!.Resources.TryGetResource(key, null, out var value) && value is IBrush brush
+            ? brush
+            : Brushes.Transparent;
+
     private sealed record StyleEditorControls(
         Border Card,
-        RadioButton ActiveToggle,
         TextBox Name,
         TextBox FontFamily,
         NumericUpDown FontSize,
         NumericUpDown LineSpacing,
-        NumericUpDown Padding);
+        NumericUpDown Padding,
+        Button SetDefault,
+        TextBlock DefaultLabel,
+        Button Remove);
 }

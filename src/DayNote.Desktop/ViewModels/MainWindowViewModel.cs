@@ -33,6 +33,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private readonly DispatcherTimer _autosaveTimer;
     private readonly DispatcherTimer _externalTimer;
+    private readonly DispatcherTimer _savedFadeTimer;
 
     private readonly List<NoteListItemViewModel> _allNotes = new();
     private readonly List<RecentNotebookItemViewModel> _allRecents = new();
@@ -66,7 +67,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         Editor = new EditorViewModel(_config.DisplayTimeZone);
         Editor.Edited += OnEditorEdited;
-        DataDirectory = _paths.Root;
+
+        // The "Saved" status is transient: it shows briefly after a save, then clears itself (quickdeck
+        // style). Non-idle states ("Saving…", "Unsaved changes", "Save failed") persist until they change.
+        _savedFadeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _savedFadeTimer.Tick += (_, _) =>
+        {
+            _savedFadeTimer.Stop();
+            if (_saveState == SaveState.Saved)
+            {
+                SaveStateText = string.Empty;
+            }
+        };
 
         _autosaveTimer = new DispatcherTimer();
         _autosaveTimer.Tick += async (_, _) =>
@@ -126,9 +138,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private string _notebookPath = string.Empty;
 
     [ObservableProperty]
-    private string _dataDirectory = string.Empty;
-
-    [ObservableProperty]
     private string _notesFilter = string.Empty;
 
     [ObservableProperty]
@@ -137,8 +146,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private NoteListItemViewModel? _selectedNote;
 
-    // Tracks the highlighted notebook row. Selection is for highlight only; opening happens on tap/Enter
-    // (see the view), so arrowing through the list never opens a notebook.
+    // The highlighted notebook row. Selecting a row opens that notebook (single click or arrow key) via
+    // OnSelectedRecentChanged — no double-click — so the highlight and the open notebook stay in sync.
     [ObservableProperty]
     private RecentNotebookItemViewModel? _selectedRecent;
 
@@ -285,29 +294,43 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task DeleteNote()
+    private async Task DeleteNote(NoteListItemViewModel? item)
     {
-        if (!IsReady || _current is null || IsReadOnly || SelectedNote is null)
+        // The row's ✕ passes that row; the keyboard/menu path passes null and targets the selection.
+        var target = item ?? SelectedNote;
+        if (!IsReady || _current is null || IsReadOnly || target is null)
         {
             return;
         }
 
-        var note = SelectedNote.Note;
+        var note = target.Note;
         var label = string.IsNullOrWhiteSpace(note.Title) ? "untitled" : note.Title;
         if (!await _dialogs.ConfirmAsync("Delete note", $"Delete “{label}”? Its attachment files are left on disk."))
         {
             return;
         }
 
-        // Recover the selection to the deleted note's neighbour (the next visible note, else the
-        // previous, else none) rather than jumping back to the top of the list, so deleting mid-list
-        // keeps the user's place.
-        var index = Notes.IndexOf(SelectedNote);
+        // The notebook may have been reloaded/closed while the confirm dialog was open; if the captured
+        // note is no longer live, abort rather than mutate a stale notebook.
+        if (!IsLiveNote(note))
+        {
+            return;
+        }
+
+        var deletingSelected = ReferenceEquals(target, SelectedNote);
+        var index = Notes.IndexOf(target);
 
         _current.Notebook.Notes.Remove(note);
         _allNotes.RemoveAll(n => ReferenceEquals(n.Note, note));
         RebuildNotes();
-        SelectedNote = Notes.Count == 0 ? null : Notes[Math.Clamp(index, 0, Notes.Count - 1)];
+
+        // Deleting the selected note recovers the selection to its neighbour (keeping the user's place,
+        // not jumping to the top); deleting a different note via its ✕ leaves the selection untouched.
+        if (deletingSelected)
+        {
+            SelectedNote = Notes.Count == 0 ? null : Notes[Math.Clamp(index, 0, Notes.Count - 1)];
+        }
+
         MarkDirty(noteId: null);
         _log.Info("Deleted note", new { noteId = note.Id });
     }
@@ -848,6 +871,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Rebuilds the master recents list from state, then applies the current filter.</summary>
     private void RebuildRecents()
     {
         _allRecents.Clear();
@@ -856,7 +880,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _allRecents.Add(new RecentNotebookItemViewModel(path) { IsMissing = !File.Exists(path) });
         }
 
-        FilterInto(_allRecents, RecentNotebooks, RecentFilter, r => r.Name);
+        ApplyRecentFilter();
+    }
+
+    /// <summary>
+    /// Re-applies the recents filter without rebuilding the master list, so typing in the filter does
+    /// not churn the rows (and the open notebook's highlight survives keystroke to keystroke).
+    /// </summary>
+    private void ApplyRecentFilter()
+    {
+        // Flag the open notebook so its row shows the inline close affordance; keep it visible even when
+        // the filter would exclude it, so filtering never hides the notebook you are working in.
+        foreach (var recent in _allRecents)
+        {
+            recent.IsCurrent = _current is not null && PathKey.Equal(recent.Path, _current.Path);
+        }
+
+        FilterInto(_allRecents, RecentNotebooks, RecentFilter, r => r.Name, r => r.IsCurrent);
 
         // Keep the open notebook highlighted across rebuilds (open, filter, recents reorder).
         SelectedRecent = _current is null
@@ -865,9 +905,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Repopulates <paramref name="target"/> from <paramref name="source"/>, keeping items whose
-    /// <paramref name="textOf"/> contains <paramref name="filter"/> (case-insensitively), all items
-    /// when the filter is blank, and any item matched by <paramref name="alwaysKeep"/>.
+    /// Reconciles <paramref name="target"/> to the subset of <paramref name="source"/> that matches the
+    /// filter (case-insensitively), keeping all items when the filter is blank and any item matched by
+    /// <paramref name="alwaysKeep"/>. The reconcile is done in place — surviving rows (and the bound
+    /// ListBox selection) are preserved rather than cleared and re-added, which would momentarily drop
+    /// the selection and force the editor/attachments to reload on every keystroke.
     /// </summary>
     private static void FilterInto<T>(
         IReadOnlyList<T> source,
@@ -876,14 +918,42 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Func<T, string> textOf,
         Func<T, bool>? alwaysKeep = null)
     {
-        target.Clear();
+        var desired = new List<T>(source.Count);
         foreach (var item in source)
         {
             if (string.IsNullOrWhiteSpace(filter)
                 || (alwaysKeep?.Invoke(item) ?? false)
                 || textOf(item).Contains(filter, StringComparison.OrdinalIgnoreCase))
             {
-                target.Add(item);
+                desired.Add(item);
+            }
+        }
+
+        // Drop rows no longer wanted, then bring the rest into the desired order, inserting newcomers.
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            if (!desired.Contains(target[i]))
+            {
+                target.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var item = desired[i];
+            if (i < target.Count && ReferenceEquals(target[i], item))
+            {
+                continue;
+            }
+
+            var existing = target.IndexOf(item);
+            if (existing >= 0)
+            {
+                target.Move(existing, i);
+            }
+            else
+            {
+                target.Insert(i, item);
             }
         }
     }
@@ -981,7 +1051,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     partial void OnNotesFilterChanged(string value) => RebuildNotes();
 
-    partial void OnRecentFilterChanged(string value) => RebuildRecents();
+    partial void OnRecentFilterChanged(string value) => ApplyRecentFilter();
 
     partial void OnSelectedNoteChanged(NoteListItemViewModel? value)
     {
@@ -1087,14 +1157,24 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         UpdateSaveStateText();
     }
 
-    private void UpdateSaveStateText() => SaveStateText = _saveState switch
+    private void UpdateSaveStateText()
     {
-        SaveState.Saved => "Saved",
-        SaveState.Saving => "Saving…",
-        SaveState.Unsaved => "Unsaved changes",
-        SaveState.Error => "Save failed",
-        _ => string.Empty,
-    };
+        _savedFadeTimer.Stop();
+        SaveStateText = _saveState switch
+        {
+            SaveState.Saved => "Saved",
+            SaveState.Saving => "Saving…",
+            SaveState.Unsaved => "Unsaved changes",
+            SaveState.Error => "Save failed",
+            _ => string.Empty,
+        };
+
+        // Only the idle "Saved" message fades; the others stay until the state changes.
+        if (_saveState == SaveState.Saved)
+        {
+            _savedFadeTimer.Start();
+        }
+    }
 
     // ----- Helpers -------------------------------------------------------------------------------
 

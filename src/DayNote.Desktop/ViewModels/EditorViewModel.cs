@@ -28,8 +28,14 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     public Note? Note => _note;
 
+    /// <summary>The lifecycle states offered by the editor's status picker, in workflow order.</summary>
+    public IReadOnlyList<NoteStatus> StatusOptions { get; } = Enum.GetValues<NoteStatus>();
+
     [ObservableProperty]
     private bool _hasNote;
+
+    [ObservableProperty]
+    private NoteStatus _status = NoteStatus.Draft;
 
     [ObservableProperty]
     private string _title = string.Empty;
@@ -68,6 +74,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         _note = note;
         HasNote = note is not null;
         Title = note?.Title ?? string.Empty;
+        Status = note?.Status ?? NoteStatus.Draft;
         Body = note?.Body ?? string.Empty;
         RefreshMetadata();
         UpdateCounts();
@@ -114,6 +121,17 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
 
         _note.Title = value;
+        Edited?.Invoke(this, EventArgs.Empty);
+    }
+
+    partial void OnStatusChanged(NoteStatus value)
+    {
+        if (_suppress || _note is null)
+        {
+            return;
+        }
+
+        _note.Status = value;
         Edited?.Invoke(this, EventArgs.Empty);
     }
 

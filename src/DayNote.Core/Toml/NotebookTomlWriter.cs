@@ -41,6 +41,7 @@ public static class NotebookTomlWriter
             AppendBasic(builder, "title", TextCleanup.SingleLine(note.Title));
             AppendTimestamp(builder, "created", note.Created);
             AppendTimestamp(builder, "modified", note.Modified);
+            AppendBasic(builder, "status", note.Status.ToToken());
             AppendAttachments(builder, note.Attachments);
             AppendBody(builder, note.Body);
         }

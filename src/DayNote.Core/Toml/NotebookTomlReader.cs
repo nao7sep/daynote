@@ -68,6 +68,7 @@ public static class NotebookTomlReader
             Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
             Created = ParseTimestamp(document.Created, fallback),
             Modified = ParseTimestamp(document.Modified, fallback),
+            Status = NoteStatuses.Parse(document.Status),
             Body = BodyCleanup.Normalize(document.Body ?? string.Empty),
         };
 
@@ -120,6 +121,7 @@ public static class NotebookTomlReader
         public string? Title { get; set; }
         public string? Created { get; set; }
         public string? Modified { get; set; }
+        public string? Status { get; set; }
         public List<string>? Attachments { get; set; }
         public string? Body { get; set; }
     }

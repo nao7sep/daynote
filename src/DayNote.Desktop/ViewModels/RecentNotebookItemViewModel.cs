@@ -20,4 +20,8 @@ public sealed partial class RecentNotebookItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isMissing;
+
+    /// <summary>True for the notebook that is currently open; its row shows the inline close affordance.</summary>
+    [ObservableProperty]
+    private bool _isCurrent;
 }
