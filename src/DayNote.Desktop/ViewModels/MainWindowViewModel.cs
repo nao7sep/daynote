@@ -114,6 +114,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _isReadOnly;
 
     [ObservableProperty]
+    private bool _showAttachmentsEmptyHint;
+
+    [ObservableProperty]
     private string _notebookTitle = "DayNote";
 
     [ObservableProperty]
@@ -130,6 +133,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private NoteListItemViewModel? _selectedNote;
+
+    // Tracks the highlighted notebook row. Selection is for highlight only; opening happens on tap/Enter
+    // (see the view), so arrowing through the list never opens a notebook.
+    [ObservableProperty]
+    private RecentNotebookItemViewModel? _selectedRecent;
 
     [ObservableProperty]
     private double _recentPaneWidth = 220;
@@ -531,6 +539,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        // Re-selecting the notebook that is already open (e.g. tapping its row again) is a no-op.
+        if (!isNew && _current is not null && PathKey.Equal(_current.Path, path))
+        {
+            return;
+        }
+
         _log.Info("Opening notebook", new { path, isNew });
         var stopwatch = Stopwatch.StartNew();
 
@@ -837,6 +851,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         FilterInto(_allRecents, RecentNotebooks, RecentFilter, r => r.Name);
+
+        // Keep the open notebook highlighted across rebuilds (open, filter, recents reorder).
+        SelectedRecent = _current is null
+            ? null
+            : RecentNotebooks.FirstOrDefault(r => PathKey.Equal(r.Path, _current.Path));
     }
 
     /// <summary>
@@ -883,6 +902,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Attachments.Clear();
         if (note is null || _current is null)
         {
+            ShowAttachmentsEmptyHint = false;
             return;
         }
 
@@ -890,6 +910,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             Attachments.Add(new AttachmentItemViewModel(attachment, _log));
         }
+
+        ShowAttachmentsEmptyHint = Attachments.Count == 0;
     }
 
     private void DisposeAttachments()

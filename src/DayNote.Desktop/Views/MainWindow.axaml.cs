@@ -67,7 +67,10 @@ public partial class MainWindow : Window
         vm.AttachmentsPaneWidth = AttachPane.Bounds.Width;
     }
 
-    private void RecentList_DoubleTapped(object? sender, TappedEventArgs e)
+    // A single tap opens the tapped notebook (re-opening the already-open one is a no-op in the view
+    // model). Keyboard arrows still only move the selection — Enter opens — so arrowing through the
+    // list does not churn through open/close. (The list is not a text-entry surface, so no IME guard.)
+    private void RecentList_Tapped(object? sender, TappedEventArgs e)
     {
         if (RecentList.SelectedItem is RecentNotebookItemViewModel item && DataContext is MainWindowViewModel vm)
         {
@@ -75,9 +78,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // Opening a notebook is a deliberate, view-replacing action, so the recent list uses manual
-    // activation: Enter on the focused row opens it, mirroring double-tap, rather than opening on
-    // mere selection. (The list is not a text-entry surface, so no IME composition guard applies.)
     private void RecentList_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter
@@ -104,6 +104,17 @@ public partial class MainWindow : Window
             vm.OpenAttachmentCommand.Execute(item);
         }
     }
+
+    // The hamburger menu items are wired in code-behind rather than bound, since a MenuFlyout's popup
+    // does not reliably inherit the window's DataContext for command bindings.
+    private void Settings_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.OpenSettingsCommand.Execute(null);
+
+    private void Shortcuts_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.OpenShortcutsCommand.Execute(null);
+
+    private void About_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.OpenAboutCommand.Execute(null);
 
     private void Title_Submitted(object? sender, RoutedEventArgs e)
     {

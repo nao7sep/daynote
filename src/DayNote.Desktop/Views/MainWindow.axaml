@@ -33,6 +33,10 @@
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Margin" Value="4"/>
         </Style>
+        <!-- Give list rows breathing room so the title and subtitle lines do not touch. -->
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="8,6"/>
+        </Style>
     </Window.Styles>
 
     <DockPanel>
@@ -48,10 +52,21 @@
                     </Border>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
-                    <Button Content="Close" Classes="utility" Command="{Binding CloseNotebookCommand}" IsEnabled="{Binding HasNotebook}"/>
-                    <Button Content="Settings" Classes="utility" Command="{Binding OpenSettingsCommand}"/>
-                    <Button Content="Shortcuts" Classes="utility" Command="{Binding OpenShortcutsCommand}"/>
-                    <Button Content="About" Classes="utility" Command="{Binding OpenAboutCommand}"/>
+                    <Button Content="Close notebook" Classes="utility" Command="{Binding CloseNotebookCommand}" IsEnabled="{Binding HasNotebook}"/>
+                    <!-- Settings / Shortcuts / About live in a hamburger menu, matching the fleet. -->
+                    <Button Classes="utility" Padding="14,6" ToolTip.Tip="Menu" AutomationProperties.Name="Menu">
+                        <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across fonts. -->
+                        <Path Width="18" Height="14" VerticalAlignment="Center" HorizontalAlignment="Center"
+                              Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="2" StrokeLineCap="Round"
+                              UseLayoutRounding="True" Data="M0,1 H18 M0,7 H18 M0,13 H18"/>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Header="Settings" Click="Settings_Click"/>
+                                <MenuItem Header="Shortcuts" Click="Shortcuts_Click"/>
+                                <MenuItem Header="About" Click="About_Click"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
@@ -86,17 +101,20 @@
             <!-- Recent notebooks -->
             <Border x:Name="RecentPane" Grid.Column="0" Classes="pane">
                 <DockPanel Margin="10">
-                    <TextBlock DockPanel.Dock="Top" Text="Notebooks" FontWeight="Bold"/>
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,8">
-                        <Button Content="New" Classes="accent" Command="{Binding NewNotebookCommand}"/>
-                        <Button Content="Open" Classes="utility" Command="{Binding OpenNotebookCommand}"/>
-                    </StackPanel>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                        <TextBlock Text="Notebooks" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                            <Button Content="New" Classes="accent" Command="{Binding NewNotebookCommand}"/>
+                            <Button Content="Open" Classes="utility" Command="{Binding OpenNotebookCommand}"/>
+                        </StackPanel>
+                    </Grid>
                     <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding RecentFilter}" Margin="0,0,0,8"/>
                     <ListBox x:Name="RecentList" ItemsSource="{Binding RecentNotebooks}"
-                             DoubleTapped="RecentList_DoubleTapped" KeyDown="RecentList_KeyDown">
+                             SelectedItem="{Binding SelectedRecent}"
+                             Tapped="RecentList_Tapped" KeyDown="RecentList_KeyDown">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="vm:RecentNotebookItemViewModel">
-                                <StackPanel>
+                                <StackPanel Spacing="2">
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                     <TextBlock Text="{Binding Directory}" FontSize="11" TextTrimming="CharacterEllipsis"
                                                Foreground="{StaticResource TextSecondaryBrush}"/>
@@ -121,7 +139,7 @@
                     <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="vm:NoteListItemViewModel">
-                                <StackPanel>
+                                <StackPanel Spacing="2">
                                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                     <TextBlock Text="{Binding Subtitle}" FontSize="11"
                                                Foreground="{StaticResource TextSecondaryBrush}"/>
@@ -165,10 +183,15 @@
             <!-- Attachments -->
             <Border x:Name="AttachPane" Grid.Column="6" Classes="pane">
                 <DockPanel Margin="10">
-                    <TextBlock DockPanel.Dock="Top" Text="Attachments" FontWeight="Bold"/>
-                    <Button DockPanel.Dock="Top" Content="Add…" Classes="utility" Margin="0,8"
-                            Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding Editor.HasNote}"/>
-                    <ScrollViewer>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                        <TextBlock Text="Attachments" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <Button Grid.Column="1" Content="Add…" Classes="utility"
+                                Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding Editor.HasNote}"/>
+                    </Grid>
+                    <Panel>
+                        <TextBlock Text="No attachments yet." HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}" IsVisible="{Binding ShowAttachmentsEmptyHint}"/>
+                        <ScrollViewer>
                         <ItemsControl ItemsSource="{Binding Attachments}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -190,7 +213,8 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                    </ScrollViewer>
+                        </ScrollViewer>
+                    </Panel>
                 </DockPanel>
             </Border>
         </Grid>

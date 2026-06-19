@@ -9,6 +9,16 @@
     </Application.DataTemplates>
 
     <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <!-- Tone down FluentTheme's input borders (TextBox/ComboBox/NumericUpDown), whose
+                         dark-theme stroke defaults to a near-white line that reads like high contrast. -->
+                    <Color x:Key="ControlStrokeColorDefault">#3A4150</Color>
+                    <Color x:Key="ControlStrokeColorSecondary">#3A4150</Color>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
         <Color x:Key="AppBackground">#14161A</Color>
         <Color x:Key="Surface">#1B1E24</Color>
         <Color x:Key="Border">#2C313A</Color>
@@ -28,6 +38,7 @@
         <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}"/>
         <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}"/>
         <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}"/>
+        </ResourceDictionary>
     </Application.Resources>
 
     <Application.Styles>
