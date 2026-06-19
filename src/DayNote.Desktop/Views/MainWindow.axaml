@@ -6,6 +6,7 @@
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding NotebookTitle}"
         Width="1200" Height="800"
+        WindowStartupLocation="CenterScreen"
         Background="{StaticResource AppBackgroundBrush}">
 
     <Window.KeyBindings>
@@ -14,7 +15,7 @@
         <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseNotebookCommand}"/>
         <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding NewNoteCommand}"/>
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveNowCommand}"/>
-        <KeyBinding Gesture="Ctrl+J" Command="{Binding CycleFontCommand}"/>
+        <KeyBinding Gesture="Ctrl+J" Command="{Binding CycleTextStyleCommand}"/>
         <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}"/>
         <KeyBinding Gesture="F1" Command="{Binding OpenShortcutsCommand}"/>
         <KeyBinding Gesture="Ctrl+OemQuestion" Command="{Binding OpenShortcutsCommand}"/>
@@ -47,7 +48,6 @@
                     </Border>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
-                    <Button Content="Restore backup" Classes="utility" Command="{Binding RestoreBackupCommand}" IsEnabled="{Binding HasNotebook}"/>
                     <Button Content="Close" Classes="utility" Command="{Binding CloseNotebookCommand}" IsEnabled="{Binding HasNotebook}"/>
                     <Button Content="Settings" Classes="utility" Command="{Binding OpenSettingsCommand}"/>
                     <Button Content="Shortcuts" Classes="utility" Command="{Binding OpenShortcutsCommand}"/>
@@ -114,10 +114,10 @@
                 <DockPanel Margin="10">
                     <TextBlock DockPanel.Dock="Top" Text="Notes" FontWeight="Bold"/>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,8">
-                        <Button Content="New note" Classes="accent" Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasNotebook}"/>
+                        <Button Content="New" Classes="accent" Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasNotebook}"/>
                         <Button Content="Delete" Classes="destructive" Command="{Binding DeleteNoteCommand}" IsEnabled="{Binding HasNotebook}"/>
                     </StackPanel>
-                    <TextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter notes…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
+                    <TextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
                     <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="vm:NoteListItemViewModel">
@@ -152,6 +152,8 @@
                                  Text="{Binding Editor.Body}"
                                  AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
                                  FontFamily="{Binding EditorFontFamily}" FontSize="{Binding EditorFontSize}"
+                                 LineHeight="{Binding EditorLineHeight}" Padding="{Binding EditorPadding}"
+                                 FontWeight="{Binding EditorFontWeight}" FontStyle="{Binding EditorFontStyle}"
                                  VerticalContentAlignment="Top"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"/>
                     </DockPanel>

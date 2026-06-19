@@ -1,22 +1,17 @@
 namespace DayNote.Core.Configuration;
 
 /// <summary>
-/// Volatile session state, persisted to <c>~/.daynote/state.json</c>: window geometry, pane
-/// widths, the recent-notebooks list, and the current selection. Kept separate from
-/// <see cref="AppConfig"/> so durable preferences and throwaway session state do not mix.
+/// Volatile session state, persisted to <c>~/.daynote/state.json</c>: pane widths, the
+/// recent-notebooks list, and the current selection. Kept separate from <see cref="AppConfig"/> so
+/// durable preferences and throwaway session state do not mix. Window size and position are
+/// deliberately not remembered — the window opens at a fixed default size, centred on screen.
 /// </summary>
 public sealed class AppState
 {
     public const int MaxRecentNotebooks = 20;
 
-    // Window geometry. The editor is the flexible centre pane, so only the three side panes have
+    // Pane widths. The editor is the flexible centre pane, so only the three side panes have
     // persisted widths.
-    public double WindowWidth { get; set; } = 1200;
-    public double WindowHeight { get; set; } = 800;
-    public double? WindowX { get; set; }
-    public double? WindowY { get; set; }
-    public bool WindowMaximized { get; set; }
-
     public double RecentPaneWidth { get; set; } = 220;
     public double NotesPaneWidth { get; set; } = 260;
     public double AttachmentsPaneWidth { get; set; } = 260;

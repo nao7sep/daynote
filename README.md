@@ -16,12 +16,11 @@ DayNote is the successor to *quickdeck*, porting its proven mechanisms and gener
 
 1. Notebook data files (`.daynote`, TOML) — human-owned and portable.
 2. Application configuration and UI state (JSON under `~/.daynote/`).
-3. A backup store (`~/.daynote/backups.sqlite`).
-4. Logs (`~/.daynote/logs/`) — one JSON Lines file per launch, named with the UTC start stamp and nothing else (`yyyymmdd-hhmmss-utc.log`) and kept indefinitely; logs are never pruned or rotated.
+3. Logs (`~/.daynote/logs/`) — one JSON Lines file per launch, named with the UTC start stamp and nothing else (`yyyymmdd-hhmmss-utc.log`) and kept indefinitely; logs are never pruned or rotated.
 
 ## Architecture
 
-- **DayNote.Core** — framework-independent: domain model, TOML reader/writer, body cleanup, character counting, identifier generation, the backup store, and config/state. No UI deps.
+- **DayNote.Core** — framework-independent: domain model, TOML reader/writer, body cleanup, character counting, identifier generation, and config/state. No UI deps.
 - **DayNote.Desktop** — the Avalonia application and its view models (MVVM via CommunityToolkit), depending on Core.
 
 Side effects (file and database I/O) live at the edges; dependencies point inward.

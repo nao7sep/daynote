@@ -2,11 +2,12 @@
 
   <PropertyGroup>
     <AssemblyTitle>DayNote.Core</AssemblyTitle>
-    <Description>Framework-independent core for DayNote: domain model, the TOML notebook format, body cleanup, character counting, identifier generation, the backup store, and application configuration and state.</Description>
+    <Description>Framework-independent core for DayNote: domain model, the TOML notebook format, body cleanup, character counting, identifier generation, and application configuration and state.</Description>
+    <!-- Required by the source-generated LibraryImport marshalling in AtomicFile's directory fsync. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="Nanoid" Version="3.1.0" />
     <PackageReference Include="Tomlyn" Version="2.6.0" />
   </ItemGroup>

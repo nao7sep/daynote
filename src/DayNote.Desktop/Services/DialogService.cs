@@ -101,7 +101,7 @@ public sealed class DialogService : IDialogService
             "Ctrl+Shift+N  New note",
             "Ctrl+S        Save now",
             "Ctrl+F        Filter notes",
-            "Ctrl+J        Cycle editor font",
+            "Ctrl+J        Cycle text style",
             "Ctrl+,        Settings",
             "F1 / Ctrl+/   Keyboard shortcuts",
         });
@@ -111,15 +111,10 @@ public sealed class DialogService : IDialogService
 
     public async Task<bool> ShowSettingsAsync(AppConfig config)
     {
+        // The dialog edits the working copy in place, so Save just means "keep it"; Cancel discards it.
         var dialog = new SettingsDialog(config);
         await dialog.ShowDialog(RequireOwner());
-        if (!dialog.Applied)
-        {
-            return false;
-        }
-
-        dialog.ApplyToConfig();
-        return true;
+        return dialog.Applied;
     }
 
     public async Task<LockedNotebookChoice> AskLockedNotebookAsync(string notebookName)
@@ -141,13 +136,6 @@ public sealed class DialogService : IDialogService
             new[] { ("Keep my version", "keep", false), ("Reload from disk", "reload", true) });
         await dialog.ShowDialog(RequireOwner());
         return dialog.ResultTag == "reload" ? ExternalChangeChoice.ReloadFromDisk : ExternalChangeChoice.KeepMine;
-    }
-
-    public async Task<BackupVersion?> PickBackupVersionAsync(IReadOnlyList<BackupVersion> versions, string displayTimeZone)
-    {
-        var dialog = new BackupPickerDialog(versions, displayTimeZone);
-        await dialog.ShowDialog(RequireOwner());
-        return dialog.Confirmed ? dialog.Selected : null;
     }
 
     public async Task OpenPathExternallyAsync(string path)

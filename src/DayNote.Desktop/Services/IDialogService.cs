@@ -39,9 +39,6 @@ public interface IDialogService
     /// <summary>Asks how to handle an external modification detected against unsaved edits.</summary>
     Task<ExternalChangeChoice> AskExternalChangeAsync(string notebookName, ExternalChange change);
 
-    /// <summary>Shows the backup versions for a notebook and returns the chosen one, or null.</summary>
-    Task<BackupVersion?> PickBackupVersionAsync(IReadOnlyList<BackupVersion> versions, string displayTimeZone);
-
     /// <summary>Opens a file with the operating system's default handler.</summary>
     Task OpenPathExternallyAsync(string path);
 

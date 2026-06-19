@@ -25,17 +25,8 @@ public sealed class NotebookStore
     /// <summary>Serializes and atomically writes a notebook, returning the new baseline and text.</summary>
     public SavedNotebook Save(string path, Notebook notebook)
     {
-        var text = NotebookTomlWriter.Write(notebook);
-        return WriteRaw(path, text);
-    }
-
-    /// <summary>
-    /// Writes already-serialized notebook text atomically. Used to restore a backup version, which
-    /// writes the exact stored TOML back through the same atomic path.
-    /// </summary>
-    public SavedNotebook WriteRaw(string path, string text)
-    {
         var fullPath = Path.GetFullPath(path);
+        var text = NotebookTomlWriter.Write(notebook);
         AtomicFile.WriteAllText(fullPath, text);
         return new SavedNotebook(fullPath, ContentHash.Sha256Hex(text), text);
     }

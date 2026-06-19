@@ -8,10 +8,13 @@ namespace DayNote.Core.Text;
 /// defaults). Most characters weigh 2; characters in the Latin and general-punctuation ranges
 /// below weigh 1; the budget is 280. URLs are counted at a fixed transformed length of 23.
 ///
+/// Like twitter-text, the input is NFC-normalized before counting, so a decomposed accent weighs the
+/// same as its single precomposed code point.
+///
 /// This is intentionally not the full twitter-text engine: emoji are not collapsed into single
 /// units, and URL detection is limited to tokens that begin with a scheme or <c>www.</c> rather
-/// than the exhaustive TLD-based matcher. It is accurate for ordinary prose and good enough for
-/// drafting short-form posts.
+/// than the exhaustive TLD-based matcher (in particular it does not reject over-long domain labels).
+/// It is accurate for ordinary prose and good enough for drafting short-form posts.
 /// </summary>
 public static partial class TwitterText
 {
@@ -42,6 +45,7 @@ public static partial class TwitterText
             return 0;
         }
 
+        text = Normalize(text);
         var urls = UrlRegex().Matches(text);
         var urlIndex = 0;
         var totalWeight = 0;
@@ -64,6 +68,24 @@ public static partial class TwitterText
 
         // All weights are multiples of Scale, so this division is exact.
         return totalWeight / Scale;
+    }
+
+    /// <summary>
+    /// Returns the NFC-normalized form, the basis twitter-text counts. The common case (already-NFC
+    /// text such as ASCII or CJK) is returned unchanged without allocating. Malformed UTF-16 — an
+    /// unpaired surrogate — has no defined normal form; rather than throw on the live editor's text,
+    /// it is counted as-is, matching the rest of this counter's never-throw behavior.
+    /// </summary>
+    private static string Normalize(string text)
+    {
+        try
+        {
+            return text.IsNormalized(NormalizationForm.FormC) ? text : text.Normalize(NormalizationForm.FormC);
+        }
+        catch (ArgumentException)
+        {
+            return text;
+        }
     }
 
     private static int WeightOf(int codePoint)

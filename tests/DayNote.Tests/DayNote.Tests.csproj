@@ -16,10 +16,17 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="YamlDotNet" Version="18.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DayNote.Desktop\DayNote.Desktop.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Twitter's official twitter-text conformance vectors, vendored verbatim for the weighted-length
+         tests. Source: https://github.com/twitter/twitter-text/blob/master/conformance/validate.yml -->
+    <None Include="Text\Conformance\twitter-text-validate.yml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

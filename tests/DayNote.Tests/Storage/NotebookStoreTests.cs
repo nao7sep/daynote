@@ -69,17 +69,6 @@ public sealed class NotebookStoreTests : IDisposable
     }
 
     [Fact]
-    public void WriteRaw_writes_the_exact_text_and_hashes_it()
-    {
-        const string raw = "id = \"nb\"\ntitle = \"raw\"\ncreated = \"2026-06-11T00:00:00.000Z\"\nmodified = \"2026-06-11T00:00:00.000Z\"\n";
-
-        var saved = _store.WriteRaw(_path, raw);
-
-        Assert.Equal(raw, File.ReadAllText(_path, Encoding.UTF8));
-        Assert.Equal(saved.ContentHash, _store.ComputeHash(_path));
-    }
-
-    [Fact]
     public void ResolveAttachments_builds_paths_under_the_note_assets_directory()
     {
         var note = new Note { Id = "n1" };

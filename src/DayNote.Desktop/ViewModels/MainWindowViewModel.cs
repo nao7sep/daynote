@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using Avalonia;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -8,7 +9,6 @@ using DayNote.Core.Configuration;
 using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
-using DayNote.Core.Toml;
 using DayNote.Desktop.Logging;
 using DayNote.Desktop.Services;
 using DayNote.Desktop.State;
@@ -18,9 +18,9 @@ namespace DayNote.Desktop.ViewModels;
 /// <summary>
 /// Orchestrates the main window: the four panes (recent notebooks, notes, editor, attachments),
 /// load-gated configuration and state, opening and closing notebooks with per-notebook locking,
-/// autosave with per-note dirty tracking, backups on save and close, external-modification
-/// detection, and the recent-notebooks list. Side-effecting file and database work is delegated to
-/// the Core storage layer; dialogs and the native file picker go through <see cref="IDialogService"/>.
+/// autosave with per-note dirty tracking, external-modification detection, and the recent-notebooks
+/// list. Side-effecting file work is delegated to the Core storage layer; dialogs and the native
+/// file picker go through <see cref="IDialogService"/>.
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
@@ -38,7 +38,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly List<RecentNotebookItemViewModel> _allRecents = new();
     private readonly HashSet<string> _dirtyNoteIds = new();
 
-    private BackupStore? _backups;
     private AppConfig _config = new();
     private AppState _state = new();
     private Exception? _loadError;
@@ -60,9 +59,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _configStore = new JsonStore<AppConfig>(paths.ConfigFile);
         _stateStore = new JsonStore<AppState>(paths.StateFile);
 
-        // All startup I/O (directory creation, opening the backup database, reading config/state)
-        // is gated here: any failure becomes _loadError, which disables saving and surfaces an
-        // error dialog once the window is shown, rather than crashing before any UI exists.
+        // All startup I/O (directory creation, reading config/state) is gated here: any failure
+        // becomes _loadError, which disables saving and surfaces an error dialog once the window is
+        // shown, rather than crashing before any UI exists.
         LoadConfigAndState();
 
         Editor = new EditorViewModel(_config.DisplayTimeZone);
@@ -73,7 +72,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _autosaveTimer.Tick += async (_, _) =>
         {
             _autosaveTimer.Stop();
-            await SaveCurrentAsync(force: false);
+            await SaveCurrentAsync();
             if (_dirty)
             {
                 // The save failed or was deferred (e.g. while an external-change conflict dialog
@@ -101,13 +100,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<NoteListItemViewModel> Notes { get; } = new();
     public ObservableCollection<RecentNotebookItemViewModel> RecentNotebooks { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
-
-    // Initial window geometry for the view to apply before the window is shown.
-    public double InitialWindowWidth => _state.WindowWidth;
-    public double InitialWindowHeight => _state.WindowHeight;
-    public double? InitialWindowX => _state.WindowX;
-    public double? InitialWindowY => _state.WindowY;
-    public bool InitialWindowMaximized => _state.WindowMaximized;
 
     [ObservableProperty]
     private bool _isReady;
@@ -149,10 +141,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private double _attachmentsPaneWidth = 260;
 
     [ObservableProperty]
-    private FontFamily _editorFontFamily = new("Inter");
+    private FontFamily _editorFontFamily = new("Menlo");
 
     [ObservableProperty]
     private double _editorFontSize = 14;
+
+    [ObservableProperty]
+    private double _editorLineHeight = double.NaN;
+
+    [ObservableProperty]
+    private Thickness _editorPadding = new(12);
+
+    [ObservableProperty]
+    private FontWeight _editorFontWeight = FontWeight.Normal;
+
+    [ObservableProperty]
+    private FontStyle _editorFontStyle = FontStyle.Normal;
 
     // ----- Lifecycle -----------------------------------------------------------------------------
 
@@ -177,7 +181,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _externalTimer.Start();
     }
 
-    /// <summary>Flushes pending work and releases the lock on shutdown. Geometry is captured first by the view.</summary>
+    /// <summary>Flushes pending work and releases the lock on shutdown. Pane widths are captured first by the view.</summary>
     public async Task ShutdownAsync()
     {
         _externalTimer.Stop();
@@ -188,21 +192,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         // CloseCurrentAsync clears the selection, which would otherwise null out CurrentNoteId.
         PersistState();
         await CloseCurrentAsync(clearSelection: false);
-    }
-
-    public void CaptureWindowGeometry(double width, double height, double x, double y, bool maximized)
-    {
-        _state.WindowMaximized = maximized;
-
-        // While maximized, width/height/position are the maximized bounds, not the restore bounds,
-        // so they are not stored; the last non-maximized bounds (or defaults) remain the restore size.
-        if (!maximized)
-        {
-            _state.WindowWidth = width;
-            _state.WindowHeight = height;
-            _state.WindowX = x;
-            _state.WindowY = y;
-        }
     }
 
     // ----- Commands ------------------------------------------------------------------------------
@@ -329,16 +318,46 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var directory = NotebookStore.NoteAssetsDirectory(_current.Path, note.Id);
         Directory.CreateDirectory(directory);
 
+        // Hash the note's current attachments so a file whose content the note already has is not
+        // copied again; a later identical file in the same batch dedups against earlier ones too.
+        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var existing in note.Attachments)
+        {
+            var existingPath = Path.Combine(directory, existing);
+            if (!File.Exists(existingPath))
+            {
+                continue;
+            }
+
+            try
+            {
+                hashes.TryAdd(ContentHash.Sha256HexFile(existingPath), existing);
+            }
+            catch (Exception ex)
+            {
+                _log.Warn("Could not hash existing attachment for dedup", new { noteId = note.Id, file = existing }, ex);
+            }
+        }
+
         _log.Info("Adding attachments", new { noteId = note.Id, requested = files.Count });
         var added = 0;
+        var duplicates = 0;
         var failed = 0;
         foreach (var source in files)
         {
             try
             {
+                var hash = ContentHash.Sha256HexFile(source);
+                if (hashes.ContainsKey(hash))
+                {
+                    duplicates++;
+                    continue;
+                }
+
                 var name = UniqueFileName(directory, Path.GetFileName(source));
                 File.Copy(source, Path.Combine(directory, name));
                 note.Attachments.Add(name);
+                hashes[hash] = name;
                 added++;
             }
             catch (Exception ex)
@@ -349,9 +368,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         }
 
-        _log.Info("Attachments added", new { noteId = note.Id, added, failed });
-        LoadAttachments(note);
-        MarkDirty(note.Id);
+        _log.Info("Attachments added", new { noteId = note.Id, added, duplicates, failed });
+        if (duplicates > 0)
+        {
+            ShowToast(ToastKind.Info, duplicates == 1
+                ? "Skipped a file already attached to this note."
+                : $"Skipped {duplicates} files already attached to this note.");
+        }
+
+        if (added > 0)
+        {
+            LoadAttachments(note);
+            MarkDirty(note.Id);
+        }
     }
 
     [RelayCommand]
@@ -414,55 +443,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task RestoreBackup()
-    {
-        if (!IsReady || _current is null || _backups is null)
-        {
-            return;
-        }
-
-        var versions = _backups.List(PathKey.Normalize(_current.Path));
-        if (versions.Count == 0)
-        {
-            ShowToast(ToastKind.Info, "No backups for this notebook yet.");
-            return;
-        }
-
-        var chosen = await _dialogs.PickBackupVersionAsync(versions, _config.DisplayTimeZone);
-        if (chosen is null)
-        {
-            return;
-        }
-
-        if (!await _dialogs.ConfirmAsync("Restore backup", "Replace the current notebook with the selected backup? Unsaved edits will be lost."))
-        {
-            return;
-        }
-
-        _log.Info("Restoring backup", new { path = _current.Path, versionId = chosen.Id });
-        var content = _backups.GetContent(chosen.Id);
-        if (content is null)
-        {
-            _log.Warn("Backup version no longer exists", new { path = _current.Path, versionId = chosen.Id });
-            await _dialogs.ShowErrorAsync("Restore failed", "That backup version no longer exists.");
-            return;
-        }
-
-        try
-        {
-            _notebooks.WriteRaw(_current.Path, content);
-            AdoptLoaded(_notebooks.Load(_current.Path), SelectedNote?.Note.Id);
-            _log.Info("Backup restored", new { path = _current.Path, versionId = chosen.Id });
-            ShowToast(ToastKind.Info, "Backup restored.");
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to restore backup", new { path = _current.Path, versionId = chosen.Id }, ex);
-            await _dialogs.ShowErrorAsync("Restore failed", ex.Message);
-        }
-    }
-
-    [RelayCommand]
     private async Task OpenSettings()
     {
         if (!IsReady)
@@ -512,21 +492,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task SaveNow() => await SaveCurrentAsync(force: false);
+    private async Task SaveNow() => await SaveCurrentAsync();
 
     [RelayCommand]
-    private void CycleFont()
+    private void CycleTextStyle()
     {
-        if (_config.EditorFonts.Count == 0)
+        if (_config.TextStyles.Count == 0)
         {
             return;
         }
 
-        var index = _config.EditorFonts.FindIndex(f => string.Equals(f, _config.EditorFont, StringComparison.OrdinalIgnoreCase));
-        var next = _config.EditorFonts[(index + 1) % _config.EditorFonts.Count];
-        _config.EditorFont = next;
-        EditorFontFamily = new FontFamily(next);
-        _log.Info("Cycled editor font", new { font = next });
+        var index = _config.TextStyles.FindIndex(s => string.Equals(s.Name, _config.SelectedTextStyle, StringComparison.OrdinalIgnoreCase));
+        var next = _config.TextStyles[(index + 1) % _config.TextStyles.Count];
+        _config.SelectedTextStyle = next.Name;
+        ApplyTextStyle();
+        _log.Info("Cycled text style", new { style = next.Name });
         if (IsReady)
         {
             try
@@ -535,11 +515,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                _log.Error("Failed to save font preference", new { font = next }, ex);
+                _log.Error("Failed to save text-style preference", new { style = next.Name }, ex);
             }
         }
 
-        ShowToast(ToastKind.Info, "Font: " + next);
+        ShowToast(ToastKind.Info, "Text style: " + next.Name);
     }
 
     // ----- Notebook open / close / save ----------------------------------------------------------
@@ -632,19 +612,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         _log.Info("Closing notebook", new { path = _current.Path });
         _autosaveTimer.Stop();
-        if (!IsReadOnly)
+        if (!IsReadOnly && _dirty)
         {
-            if (_dirty)
-            {
-                // Flush pending edits and record a forced backup of the just-serialized text in a
-                // single pass (SaveCurrentAsync with force:true backs up the text it wrote).
-                await SaveCurrentAsync(force: true);
-            }
-            else
-            {
-                // No unsaved edits: capture the current content as a backup once on close.
-                RecordCloseBackup();
-            }
+            // Flush any pending edits before closing.
+            await SaveCurrentAsync();
         }
 
         _lock?.Dispose();
@@ -672,7 +643,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private async Task SaveCurrentAsync(bool force)
+    private async Task SaveCurrentAsync()
     {
         if (!IsReady || _current is null || IsReadOnly || _externalCheckInProgress)
         {
@@ -681,7 +652,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (!_dirty && !force)
+        if (!_dirty)
         {
             return;
         }
@@ -693,7 +664,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             SetSaveState(SaveState.Saving);
             var now = DateTimeOffset.UtcNow;
             var notebook = _current.Notebook;
-            _log.Info("Saving notebook", new { path = _current.Path, noteCount = notebook.Notes.Count, force });
+            _log.Info("Saving notebook", new { path = _current.Path, noteCount = notebook.Notes.Count });
 
             foreach (var id in _dirtyNoteIds)
             {
@@ -715,7 +686,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _dirty = false;
             _dirtyNoteIds.Clear();
 
-            RecordBackup(saved.Text, force);
             Editor.RefreshMetadata();
             RefreshSelectedListItem();
             SetSaveState(SaveState.Saved);
@@ -730,48 +700,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         finally
         {
             _savingInProgress = false;
-        }
-    }
-
-    private void RecordBackup(string content, bool force)
-    {
-        if (_current is null || _backups is null)
-        {
-            return;
-        }
-
-        try
-        {
-            _backups.Record(
-                PathKey.Normalize(_current.Path),
-                content,
-                DateTimeOffset.UtcNow,
-                TimeSpan.FromSeconds(Math.Max(1, _config.BackupThrottleSeconds)),
-                force);
-            _log.Debug("Recorded backup", new { path = _current.Path, force });
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to record backup", new { path = _current.Path }, ex);
-        }
-    }
-
-    private void RecordCloseBackup()
-    {
-        if (_current is null || _backups is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var text = NotebookTomlWriter.Write(_current.Notebook);
-            _backups.Record(PathKey.Normalize(_current.Path), text, DateTimeOffset.UtcNow, TimeSpan.Zero, force: true);
-            _log.Debug("Recorded close backup", new { path = _current.Path });
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to record close backup", new { path = _current.Path }, ex);
         }
     }
 
@@ -1022,7 +950,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         try
         {
             _paths.EnsureCreated();
-            _backups = new BackupStore(_paths.BackupDatabase);
             _config = _configStore.Load() ?? new AppConfig();
             _state = _stateStore.Load() ?? new AppState();
             _log.Info("Configuration and state loaded", ConfigSummary(_config));
@@ -1038,10 +965,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void ApplyConfig()
     {
-        EditorFontSize = _config.EditorFontSize;
-        EditorFontFamily = new FontFamily(string.IsNullOrWhiteSpace(_config.EditorFont) ? "Inter" : _config.EditorFont);
+        ApplyTextStyle();
         Editor.SetTimeZone(_config.DisplayTimeZone);
         _autosaveTimer.Interval = TimeSpan.FromSeconds(Math.Max(0.25, _config.AutosaveDelaySeconds));
+    }
+
+    /// <summary>Applies the selected text-style preset (or the first available) to the editor properties.</summary>
+    private void ApplyTextStyle()
+    {
+        var style = _config.TextStyles.FirstOrDefault(s => string.Equals(s.Name, _config.SelectedTextStyle, StringComparison.OrdinalIgnoreCase))
+            ?? _config.TextStyles.FirstOrDefault();
+        if (style is null)
+        {
+            return;
+        }
+
+        EditorFontFamily = new FontFamily(string.IsNullOrWhiteSpace(style.FontFamily) ? "Menlo" : style.FontFamily);
+        EditorFontSize = style.FontSize;
+        // LineHeight is absolute; NaN lets the control use the font's natural leading.
+        EditorLineHeight = style.LineSpacing > 0 ? style.FontSize * style.LineSpacing : double.NaN;
+        EditorPadding = new Thickness(style.Padding);
+        EditorFontWeight = style.Bold ? FontWeight.Bold : FontWeight.Normal;
+        EditorFontStyle = style.Italic ? FontStyle.Italic : FontStyle.Normal;
     }
 
     private void RestorePaneWidths()
@@ -1093,11 +1038,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// <summary>The key effective configuration, summarized for the log (no secret-bearing fields).</summary>
     private static object ConfigSummary(AppConfig config) => new
     {
-        editorFont = config.EditorFont,
-        editorFontSize = config.EditorFontSize,
+        selectedTextStyle = config.SelectedTextStyle,
+        textStyleCount = config.TextStyles.Count,
         autosaveDelaySeconds = config.AutosaveDelaySeconds,
         displayTimeZone = config.DisplayTimeZone,
-        backupThrottleSeconds = config.BackupThrottleSeconds,
     };
 
     private static string EnsureDaynoteExtension(string path) =>

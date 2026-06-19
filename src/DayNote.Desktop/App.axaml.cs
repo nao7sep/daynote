@@ -16,8 +16,8 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // The view model owns its stores and gates all startup I/O (including opening the
-            // backup database) so a failure becomes an in-app error rather than a pre-UI crash.
+            // The view model owns its stores and gates all startup I/O (directory creation, reading
+            // config/state) so a failure becomes an in-app error rather than a pre-UI crash.
             var dialogs = new DialogService();
             var viewModel = new MainWindowViewModel(new AppPaths(), dialogs, Program.Log);
             var window = new MainWindow { DataContext = viewModel };

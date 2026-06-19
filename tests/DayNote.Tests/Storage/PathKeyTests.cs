@@ -5,8 +5,8 @@ using Xunit;
 namespace DayNote.Tests.Storage;
 
 /// <summary>
-/// Path keys back backup lookups and per-notebook locks, and are compared case-insensitively for
-/// Windows compatibility, so two spellings of the same path must produce one key.
+/// Path keys back per-notebook locks, and are compared case-insensitively for Windows
+/// compatibility, so two spellings of the same path must produce one key.
 /// </summary>
 public sealed class PathKeyTests
 {

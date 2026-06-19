@@ -1,12 +1,15 @@
+using System;
+using System.IO;
+using System.Text;
 using DayNote.Core.Identity;
 using Xunit;
 
 namespace DayNote.Tests.Identity;
 
 /// <summary>
-/// The content hash underpins both backup deduplication and external-change detection, so it must be
-/// a stable, lowercase-hex SHA-256 of the UTF-8 bytes — matched here against the canonical NIST
-/// vectors so a drift in encoding or casing is caught.
+/// The content hash underpins external-change detection and attachment deduplication, so it must be a
+/// stable, lowercase-hex SHA-256 of the bytes — matched here against the canonical NIST vectors so a
+/// drift in encoding or casing is caught.
 /// </summary>
 public sealed class ContentHashTests
 {
@@ -31,5 +34,21 @@ public sealed class ContentHashTests
     {
         Assert.Equal(ContentHash.Sha256Hex("note body"), ContentHash.Sha256Hex("note body"));
         Assert.NotEqual(ContentHash.Sha256Hex("note body"), ContentHash.Sha256Hex("note body "));
+    }
+
+    [Fact]
+    public void Hashes_a_file_to_the_same_value_as_its_bytes()
+    {
+        // The file hash drives attachment dedup; for a UTF-8 file (no BOM) it must equal the string hash.
+        var path = Path.Combine(Path.GetTempPath(), "daynote-hash-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            File.WriteAllText(path, "abc", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Assert.Equal(ContentHash.Sha256Hex("abc"), ContentHash.Sha256HexFile(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }

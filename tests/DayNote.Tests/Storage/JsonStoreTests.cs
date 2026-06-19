@@ -35,14 +35,26 @@ public sealed class JsonStoreTests : IDisposable
     [Fact]
     public void Save_then_load_round_trips_the_value()
     {
-        _store.Save(new AppConfig { EditorFont = "Cascadia Code", EditorFontSize = 17, DisplayTimeZone = "Europe/London" });
+        _store.Save(new AppConfig
+        {
+            TextStyles = new()
+            {
+                new EditorTextStyle { Name = "Custom", FontFamily = "Cascadia Code", FontSize = 17, LineSpacing = 1.6, Padding = 10, Bold = true },
+            },
+            SelectedTextStyle = "Custom",
+            DisplayTimeZone = "Europe/London",
+        });
 
         var loaded = _store.Load();
 
         Assert.NotNull(loaded);
-        Assert.Equal("Cascadia Code", loaded!.EditorFont);
-        Assert.Equal(17, loaded.EditorFontSize);
+        Assert.Equal("Custom", loaded!.SelectedTextStyle);
         Assert.Equal("Europe/London", loaded.DisplayTimeZone);
+        var style = Assert.Single(loaded.TextStyles);
+        Assert.Equal("Cascadia Code", style.FontFamily);
+        Assert.Equal(17, style.FontSize);
+        Assert.Equal(1.6, style.LineSpacing);
+        Assert.True(style.Bold);
     }
 
     [Fact]
@@ -56,10 +68,10 @@ public sealed class JsonStoreTests : IDisposable
     [Fact]
     public void Save_overwrites_an_existing_file()
     {
-        _store.Save(new AppConfig { EditorFont = "First" });
-        _store.Save(new AppConfig { EditorFont = "Second" });
+        _store.Save(new AppConfig { SelectedTextStyle = "First" });
+        _store.Save(new AppConfig { SelectedTextStyle = "Second" });
 
-        Assert.Equal("Second", _store.Load()!.EditorFont);
+        Assert.Equal("Second", _store.Load()!.SelectedTextStyle);
     }
 
     [Fact]

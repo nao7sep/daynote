@@ -4,7 +4,7 @@ namespace DayNote.Core.Storage;
 
 /// <summary>
 /// Resolves the locations of the application's own files under <c>~/.daynote/</c>: configuration,
-/// session state, the backup database, logs, and per-notebook locks.
+/// session state, logs, and per-notebook locks.
 /// </summary>
 /// <remarks>
 /// The root is <c>DAYNOTE_HOME</c> when that environment variable is set and non-empty (the value is
@@ -24,7 +24,6 @@ public sealed class AppPaths
 
     public string ConfigFile => Path.Combine(Root, "config.json");
     public string StateFile => Path.Combine(Root, "state.json");
-    public string BackupDatabase => Path.Combine(Root, "backups.sqlite");
     public string LogsDirectory => Path.Combine(Root, "logs");
     public string LocksDirectory => Path.Combine(Root, "locks");
 
