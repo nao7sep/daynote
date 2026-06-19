@@ -4,22 +4,13 @@
         xmlns:ctl="using:DayNote.Desktop.Controls"
         x:Class="DayNote.Desktop.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="{Binding NotebookTitle}"
+        Title="DayNote"
         Width="1200" Height="800"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource AppBackgroundBrush}">
 
-    <Window.KeyBindings>
-        <KeyBinding Gesture="Ctrl+N" Command="{Binding NewNotebookCommand}"/>
-        <KeyBinding Gesture="Ctrl+O" Command="{Binding OpenNotebookCommand}"/>
-        <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseNotebookCommand}"/>
-        <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding NewNoteCommand}"/>
-        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveNowCommand}"/>
-        <KeyBinding Gesture="Ctrl+J" Command="{Binding CycleTextStyleCommand}"/>
-        <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}"/>
-        <KeyBinding Gesture="F1" Command="{Binding OpenShortcutsCommand}"/>
-        <KeyBinding Gesture="Ctrl+OemQuestion" Command="{Binding OpenShortcutsCommand}"/>
-    </Window.KeyBindings>
+    <!-- Accelerators are driven from ShortcutCatalog in code-behind so the command key resolves to
+         Cmd on macOS and Ctrl on Windows (a static XAML gesture cannot do that). -->
 
     <Window.Styles>
         <Style Selector="TextBlock.over">
@@ -39,6 +30,7 @@
         </Style>
     </Window.Styles>
 
+    <Panel>
     <DockPanel>
         <!-- Toolbar -->
         <Border DockPanel.Dock="Top" Background="{StaticResource SurfaceBrush}"
@@ -52,7 +44,6 @@
                     </Border>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
-                    <Button Content="Close notebook" Classes="utility" Command="{Binding CloseNotebookCommand}" IsEnabled="{Binding HasNotebook}"/>
                     <!-- Settings / Shortcuts / About live in a hamburger menu, matching the fleet. -->
                     <Button Classes="utility" Padding="14,6" ToolTip.Tip="Menu" AutomationProperties.Name="Menu">
                         <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across fonts. -->
@@ -74,15 +65,12 @@
         <!-- Status bar -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="12,5">
+            <!-- Status bar carries app-wide state only; per-entry info lives under the editor. -->
+            <Grid ColumnDefinitions="Auto,*" Margin="12,5">
                 <TextBlock Text="{Binding SaveStateText}" VerticalAlignment="Center" FontWeight="SemiBold"/>
                 <TextBlock Grid.Column="1" Text="{Binding DataDirectory}" Margin="16,0,0,0"
                            VerticalAlignment="Center" FontSize="11" TextTrimming="CharacterEllipsis"
                            Foreground="{StaticResource TextSecondaryBrush}"/>
-                <TextBlock Grid.Column="3" Text="{Binding Editor.WordsText}" Margin="12,0" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="4" Text="{Binding Editor.CharsText}" Margin="12,0" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="5" Text="{Binding Editor.XCountText}" Margin="12,0" VerticalAlignment="Center"
-                           Classes.over="{Binding !Editor.IsWithinXLimit}"/>
             </Grid>
         </Border>
 
@@ -109,9 +97,13 @@
                         </StackPanel>
                     </Grid>
                     <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding RecentFilter}" Margin="0,0,0,8"/>
+                    <!-- Closes the open notebook; lives in this pane next to the notebook list. -->
+                    <Button DockPanel.Dock="Bottom" Content="Close notebook" Classes="utility"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,8,0,0"
+                            Command="{Binding CloseNotebookCommand}" IsEnabled="{Binding HasNotebook}"/>
+                    <!-- Selecting a notebook opens it (single click or arrow key); no double-click needed. -->
                     <ListBox x:Name="RecentList" ItemsSource="{Binding RecentNotebooks}"
-                             SelectedItem="{Binding SelectedRecent}"
-                             Tapped="RecentList_Tapped" KeyDown="RecentList_KeyDown">
+                             SelectedItem="{Binding SelectedRecent}">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="vm:RecentNotebookItemViewModel">
                                 <StackPanel Spacing="2">
@@ -162,10 +154,16 @@
                                               Text="{Binding Editor.Title}" PlaceholderText="Title"
                                               FontSize="18" FontWeight="SemiBold" AcceptsReturn="False"
                                               Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
-                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="16" Margin="2,8,0,0">
-                            <TextBlock Text="{Binding Editor.CreatedText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-                        </StackPanel>
+                        <!-- All per-entry info in one place: timestamps + counts, wrapping when narrow. -->
+                        <WrapPanel DockPanel.Dock="Bottom" Margin="2,8,0,0">
+                            <TextBlock Text="{Binding Editor.CreatedText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Editor.WordsText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Editor.CharsText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Editor.XCountText}" FontSize="11" Margin="0,0,16,2"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Classes.over="{Binding !Editor.IsWithinXLimit}"/>
+                        </WrapPanel>
                         <TextBox x:Name="BodyBox" Margin="0,8"
                                  Text="{Binding Editor.Body}"
                                  AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
@@ -219,4 +217,24 @@
             </Border>
         </Grid>
     </DockPanel>
+
+    <!-- Toast overlay: top-right, below the toolbar; auto-dismissing cards from the Toasts collection. -->
+    <ItemsControl ItemsSource="{Binding Toasts}"
+                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Margin="0,56,24,0" Width="320" ZIndex="100">
+        <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:ToastViewModel">
+                <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Margin="0,0,0,8" BoxShadow="0 6 20 0 #50000000">
+                    <Grid ColumnDefinitions="4,*">
+                        <Border Background="{Binding Accent}" CornerRadius="8,0,0,8"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap"
+                                   Margin="12,10" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </Grid>
+                </Border>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    </Panel>
 </Window>

@@ -8,6 +8,16 @@
         Background="{StaticResource AppBackgroundBrush}">
 
     <DockPanel Margin="24">
+        <!-- Header: the window Title rendered as a prominent in-dialog heading, so every dialog
+             (confirm, error, settings, about) reads with a clear header above its body. -->
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="HeaderText"
+                   Text="{Binding $parent[Window].Title}"
+                   FontSize="18"
+                   FontWeight="Bold"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,16"/>
+
         <StackPanel DockPanel.Dock="Bottom"
                     x:Name="ButtonPanel"
                     Orientation="Horizontal"

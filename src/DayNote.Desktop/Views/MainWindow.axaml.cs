@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -9,6 +11,7 @@ namespace DayNote.Desktop.Views;
 public partial class MainWindow : Window
 {
     private bool _shutdownComplete;
+    private IReadOnlyList<ShortcutItem>? _shortcuts;
 
     public MainWindow()
     {
@@ -67,28 +70,6 @@ public partial class MainWindow : Window
         vm.AttachmentsPaneWidth = AttachPane.Bounds.Width;
     }
 
-    // A single tap opens the tapped notebook (re-opening the already-open one is a no-op in the view
-    // model). Keyboard arrows still only move the selection — Enter opens — so arrowing through the
-    // list does not churn through open/close. (The list is not a text-entry surface, so no IME guard.)
-    private void RecentList_Tapped(object? sender, TappedEventArgs e)
-    {
-        if (RecentList.SelectedItem is RecentNotebookItemViewModel item && DataContext is MainWindowViewModel vm)
-        {
-            vm.OpenRecentCommand.Execute(item);
-        }
-    }
-
-    private void RecentList_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter
-            && RecentList.SelectedItem is RecentNotebookItemViewModel item
-            && DataContext is MainWindowViewModel vm)
-        {
-            vm.OpenRecentCommand.Execute(item);
-            e.Handled = true;
-        }
-    }
-
     private void RemoveAttachment_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: AttachmentItemViewModel item } && DataContext is MainWindowViewModel vm)
@@ -125,15 +106,68 @@ public partial class MainWindow : Window
     private void Title_LostFocus(object? sender, RoutedEventArgs e) =>
         (DataContext as MainWindowViewModel)?.Editor.NormalizeTitle();
 
+    // Built lazily from this window (a TopLevel) so the command modifier resolves to Cmd on macOS.
+    private IReadOnlyList<ShortcutItem> Shortcuts => _shortcuts ??= ShortcutCatalog.Build(this);
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        if (!e.Handled && TryHandleShortcut(e))
         {
-            NotesFilterBox.Focus();
             e.Handled = true;
             return;
         }
 
         base.OnKeyDown(e);
+    }
+
+    private bool TryHandleShortcut(KeyEventArgs e)
+    {
+        foreach (var item in Shortcuts)
+        {
+            if (item.Gesture is { } gesture && item.Action is { } action && gesture.Matches(e))
+            {
+                return TryRunShortcut(action);
+            }
+        }
+
+        // F1 is a universal help key in addition to Cmd/Ctrl+/.
+        return e.Key == Key.F1 && TryRunShortcut(ShortcutAction.ShowShortcuts);
+    }
+
+    private bool TryRunShortcut(ShortcutAction action)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return false;
+        }
+
+        switch (action)
+        {
+            case ShortcutAction.NewNotebook: return Run(vm.NewNotebookCommand);
+            case ShortcutAction.OpenNotebook: return Run(vm.OpenNotebookCommand);
+            case ShortcutAction.SaveNow: return Run(vm.SaveNowCommand);
+            case ShortcutAction.CloseNotebook: return Run(vm.CloseNotebookCommand);
+            case ShortcutAction.NewNote: return Run(vm.NewNoteCommand);
+            case ShortcutAction.CycleTextStyle: return Run(vm.CycleTextStyleCommand);
+            case ShortcutAction.OpenSettings: return Run(vm.OpenSettingsCommand);
+            case ShortcutAction.ShowShortcuts: return Run(vm.OpenShortcutsCommand);
+            case ShortcutAction.FilterNotes:
+                NotesFilterBox.Focus();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // Runs a command if enabled; a disabled command lets the key fall through to default handling.
+    private static bool Run(ICommand command)
+    {
+        if (!command.CanExecute(null))
+        {
+            return false;
+        }
+
+        command.Execute(null);
+        return true;
     }
 }

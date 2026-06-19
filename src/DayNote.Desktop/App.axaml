@@ -12,10 +12,15 @@
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
-                    <!-- Tone down FluentTheme's input borders (TextBox/ComboBox/NumericUpDown), whose
-                         dark-theme stroke defaults to a near-white line that reads like high contrast. -->
-                    <Color x:Key="ControlStrokeColorDefault">#3A4150</Color>
-                    <Color x:Key="ControlStrokeColorSecondary">#3A4150</Color>
+                    <!-- Tone down FluentTheme's near-white input borders (TextBox/ComboBox/NumericUpDown)
+                         to a subtle neutral. The inputs resolve their border from these brushes; flat
+                         overrides replace the bright gradient edge. Focus keeps the accent indicator. -->
+                    <Color x:Key="ControlStrokeColorDefault">#2C313A</Color>
+                    <Color x:Key="ControlStrokeColorSecondary">#2C313A</Color>
+                    <SolidColorBrush x:Key="ControlElevationBorderBrush" Color="#2C313A"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#2C313A"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#3A4150"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#2C313A"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
@@ -78,6 +83,23 @@
         <Style Selector="Button.destructive:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{StaticResource DangerHover}"/>
             <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Neutral list selection/hover. FluentTheme tints these with the macOS system accent, which
+             can read as yellow/orange depending on the user's system setting; force a neutral dark. -->
+        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource UtilityHover}"/>
+        </Style>
+
+        <!-- Subtle resting border on text inputs; the theme's accent focus indicator still shows on focus. -->
+        <Style Selector="TextBox /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         </Style>
 
         <!-- Flat list-item button used for recent notebooks -->

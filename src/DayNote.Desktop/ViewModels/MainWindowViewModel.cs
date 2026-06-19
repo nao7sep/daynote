@@ -101,6 +101,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<RecentNotebookItemViewModel> RecentNotebooks { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
 
+    /// <summary>Active toast notifications, rendered as a top-right overlay; each auto-dismisses.</summary>
+    public ObservableCollection<ToastViewModel> Toasts { get; } = new();
+
     [ObservableProperty]
     private bool _isReady;
 
@@ -272,7 +275,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         };
 
         _current.Notebook.Notes.Add(note);
-        _allNotes.Add(new NoteListItemViewModel(note, _config.DisplayTimeZone));
+        // A brand-new note is the newest, so it goes to the top of the newest-first list.
+        _allNotes.Insert(0, new NoteListItemViewModel(note, _config.DisplayTimeZone));
         NotesFilter = string.Empty;
         RebuildNotes();
         SelectedNote = Notes.FirstOrDefault(n => n.Note.Id == note.Id);
@@ -816,7 +820,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private void BuildNotes(Notebook notebook, string? selectNoteId)
     {
         _allNotes.Clear();
-        foreach (var note in notebook.Notes)
+        // Newest first (by creation time). Sorting by Created, not Modified, keeps the order stable
+        // while editing; the stored file order is left untouched.
+        foreach (var note in notebook.Notes.OrderByDescending(n => n.Created))
         {
             _allNotes.Add(new NoteListItemViewModel(note, _config.DisplayTimeZone));
         }
@@ -952,7 +958,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void RefreshSelectedListItem() => SelectedNote?.Refresh();
 
-    private void ShowToast(ToastKind kind, string message) => _dialogs.Notify(kind, message);
+    private const int MaxToasts = 4;
+    private static readonly TimeSpan ToastLifetime = TimeSpan.FromSeconds(4);
+
+    private void ShowToast(ToastKind kind, string message)
+    {
+        var toast = new ToastViewModel(kind, message);
+        Toasts.Add(toast);
+        while (Toasts.Count > MaxToasts)
+        {
+            Toasts.RemoveAt(0);
+        }
+
+        var timer = new DispatcherTimer { Interval = ToastLifetime };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            Toasts.Remove(toast);
+        };
+        timer.Start();
+    }
 
     partial void OnNotesFilterChanged(string value) => RebuildNotes();
 
@@ -963,6 +988,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Editor.Load(value?.Note);
         LoadAttachments(value?.Note);
         _state.CurrentNoteId = value?.Note.Id;
+    }
+
+    partial void OnSelectedRecentChanged(RecentNotebookItemViewModel? value)
+    {
+        // Selecting a notebook opens it (single click or arrow key) — no double-click. Skip when
+        // nothing is selected or it is already open; the command's own concurrency guard keeps rapid
+        // selection changes from overlapping.
+        if (value is null || (_current is not null && PathKey.Equal(_current.Path, value.Path)))
+        {
+            return;
+        }
+
+        if (OpenRecentCommand.CanExecute(value))
+        {
+            OpenRecentCommand.Execute(value);
+        }
     }
 
     // ----- Configuration / state -----------------------------------------------------------------

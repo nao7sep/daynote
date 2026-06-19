@@ -41,7 +41,4 @@ public interface IDialogService
 
     /// <summary>Opens a file with the operating system's default handler.</summary>
     Task OpenPathExternallyAsync(string path);
-
-    /// <summary>Shows a transient in-window notification (toast).</summary>
-    void Notify(ToastKind kind, string message);
 }

@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Notifications;
 using Avalonia.Platform.Storage;
 using DayNote.Core.Configuration;
 using DayNote.Core.Storage;
@@ -17,10 +16,6 @@ public sealed class DialogService : IDialogService
     {
         Patterns = new[] { "*.daynote" },
     };
-
-    private static readonly TimeSpan ToastLifetime = TimeSpan.FromSeconds(4);
-
-    private WindowNotificationManager? _notifications;
 
     public Window? Owner { get; set; }
 
@@ -82,31 +77,15 @@ public sealed class DialogService : IDialogService
 
     public async Task ShowAboutAsync()
     {
-        var message =
-            $"{AppInfo.Name} {AppInfo.Version}\n\n" +
-            "A plain-text notes desktop application: notebooks containing notes.\n" +
-            "Successor to quickdeck.\n\n" +
-            "© 2026 Yoshinao Inoguchi · MIT License";
-        var dialog = new MessageDialog("About DayNote", message, new[] { ("OK", "ok", true) });
+        var dialog = new AboutDialog();
         await dialog.ShowDialog(RequireOwner());
     }
 
     public async Task ShowShortcutsAsync()
     {
-        var message = string.Join('\n', new[]
-        {
-            "Ctrl+N        New notebook",
-            "Ctrl+O        Open notebook",
-            "Ctrl+W        Close notebook",
-            "Ctrl+Shift+N  New note",
-            "Ctrl+S        Save now",
-            "Ctrl+F        Filter notes",
-            "Ctrl+J        Cycle text style",
-            "Ctrl+,        Settings",
-            "F1 / Ctrl+/   Keyboard shortcuts",
-        });
-        var dialog = new MessageDialog("Keyboard shortcuts", message, new[] { ("OK", "ok", true) });
-        await dialog.ShowDialog(RequireOwner());
+        var owner = RequireOwner();
+        var dialog = new ShortcutsDialog(ShortcutCatalog.Build(owner));
+        await dialog.ShowDialog(owner);
     }
 
     public async Task<bool> ShowSettingsAsync(AppConfig config)
@@ -142,24 +121,6 @@ public sealed class DialogService : IDialogService
     {
         var owner = RequireOwner();
         await owner.Launcher.LaunchFileInfoAsync(new FileInfo(path));
-    }
-
-    public void Notify(ToastKind kind, string message)
-    {
-        _notifications ??= new WindowNotificationManager(RequireOwner())
-        {
-            Position = NotificationPosition.TopRight,
-            MaxItems = 4,
-        };
-
-        var type = kind switch
-        {
-            ToastKind.Warning => NotificationType.Warning,
-            ToastKind.Error => NotificationType.Error,
-            _ => NotificationType.Information,
-        };
-
-        _notifications.Show(new Notification(title: null, message, type, ToastLifetime));
     }
 
     private Window RequireOwner() =>
