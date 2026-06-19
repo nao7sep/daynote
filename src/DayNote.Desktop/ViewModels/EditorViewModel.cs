@@ -74,6 +74,24 @@ public sealed partial class EditorViewModel : ViewModelBase
         _suppress = false;
     }
 
+    /// <summary>
+    /// Normalizes the title to a single line at a commit point (blur or submit) — never per keystroke,
+    /// per the text-input-ime-conventions. No-op when nothing changes, so it does not spuriously dirty.
+    /// </summary>
+    public void NormalizeTitle()
+    {
+        if (_note is null)
+        {
+            return;
+        }
+
+        var cleaned = TextCleanup.SingleLine(Title);
+        if (!string.Equals(cleaned, Title, StringComparison.Ordinal))
+        {
+            Title = cleaned; // setter raises OnTitleChanged → writes the note and marks dirty
+        }
+    }
+
     /// <summary>Re-reads the created/modified metadata after a save updates the note's timestamps.</summary>
     public void RefreshMetadata()
     {

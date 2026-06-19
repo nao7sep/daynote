@@ -105,7 +105,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Title_Submitted(object? sender, RoutedEventArgs e) => BodyBox.Focus();
+    private void Title_Submitted(object? sender, RoutedEventArgs e)
+    {
+        (DataContext as MainWindowViewModel)?.Editor.NormalizeTitle();
+        BodyBox.Focus();
+    }
+
+    private void Title_LostFocus(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.Editor.NormalizeTitle();
 
     protected override void OnKeyDown(KeyEventArgs e)
     {

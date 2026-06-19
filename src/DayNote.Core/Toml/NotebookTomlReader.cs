@@ -44,7 +44,7 @@ public static class NotebookTomlReader
         var notebook = new Notebook
         {
             Id = document.Id ?? string.Empty,
-            Title = document.Title ?? string.Empty,
+            Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
             Created = ParseTimestamp(document.Created, fallback),
             Modified = ParseTimestamp(document.Modified, fallback),
         };
@@ -65,7 +65,7 @@ public static class NotebookTomlReader
         var note = new Note
         {
             Id = document.Id ?? string.Empty,
-            Title = document.Title ?? string.Empty,
+            Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
             Created = ParseTimestamp(document.Created, fallback),
             Modified = ParseTimestamp(document.Modified, fallback),
             Body = BodyCleanup.Normalize(document.Body ?? string.Empty),

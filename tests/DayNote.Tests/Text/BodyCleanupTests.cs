@@ -51,4 +51,11 @@ public sealed class BodyCleanupTests
     {
         Assert.Equal("first\n\tindented\nlast", BodyCleanup.Normalize("first\n\tindented\nlast"));
     }
+
+    [Fact]
+    public void Trailing_whitespace_on_content_lines_is_trimmed()
+    {
+        // Per the text-cleanup-conventions multiline default; leading indentation stays untouched.
+        Assert.Equal("a\n\tb\nc", BodyCleanup.Normalize("a   \n\tb\t \nc"));
+    }
 }

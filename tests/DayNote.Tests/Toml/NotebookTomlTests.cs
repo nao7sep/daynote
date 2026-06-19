@@ -97,6 +97,15 @@ public sealed class NotebookTomlTests
     }
 
     [Fact]
+    public void Title_is_normalized_to_a_single_line()
+    {
+        // A pasted multi-line title is flattened to one line on the way through the TOML boundary.
+        var restored = NotebookTomlReader.Read(NotebookTomlWriter.Write(OneNote(title: "  Hello\nWorld  ")));
+
+        Assert.Equal("Hello World", restored.Notes[0].Title);
+    }
+
+    [Fact]
     public void Non_ascii_text_round_trips()
     {
         var notebook = OneNote(title: "日本語のメモ", body: "一行目\n二行目 — em dash & emoji 😀");

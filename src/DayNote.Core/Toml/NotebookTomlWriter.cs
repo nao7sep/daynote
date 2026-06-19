@@ -29,7 +29,7 @@ public static class NotebookTomlWriter
         var builder = new StringBuilder();
 
         AppendBasic(builder, "id", notebook.Id);
-        AppendBasic(builder, "title", notebook.Title);
+        AppendBasic(builder, "title", TextCleanup.SingleLine(notebook.Title));
         AppendTimestamp(builder, "created", notebook.Created);
         AppendTimestamp(builder, "modified", notebook.Modified);
 
@@ -38,7 +38,7 @@ public static class NotebookTomlWriter
             builder.Append('\n');
             builder.Append("[[note]]\n");
             AppendBasic(builder, "id", note.Id);
-            AppendBasic(builder, "title", note.Title);
+            AppendBasic(builder, "title", TextCleanup.SingleLine(note.Title));
             AppendTimestamp(builder, "created", note.Created);
             AppendTimestamp(builder, "modified", note.Modified);
             AppendAttachments(builder, note.Attachments);
