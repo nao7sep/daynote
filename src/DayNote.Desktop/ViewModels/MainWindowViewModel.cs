@@ -9,6 +9,7 @@ using DayNote.Core.Configuration;
 using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
+using DayNote.Core.Text;
 using DayNote.Desktop.Logging;
 using DayNote.Desktop.Services;
 using DayNote.Desktop.State;
@@ -16,16 +17,17 @@ using DayNote.Desktop.State;
 namespace DayNote.Desktop.ViewModels;
 
 /// <summary>
-/// Orchestrates the main window: the four panes (recent notebooks, notes, editor, attachments),
-/// load-gated configuration and state, opening and closing notebooks with per-notebook locking,
-/// autosave with per-note dirty tracking, external-modification detection, and the recent-notebooks
-/// list. Side-effecting file work is delegated to the Core storage layer; dialogs and the native
-/// file picker go through <see cref="IDialogService"/>.
+/// Orchestrates the main window: the four panes (binders, notes, editor, attachments),
+/// load-gated configuration and state, opening/closing binders, autosave with per-note dirty
+/// tracking, external-modification detection, and the known-binders list. Multiple instances may
+/// open the same binder concurrently — there is no lock; external-change detection reconciles
+/// concurrent edits. Side-effecting file work is delegated to the Core storage layer; dialogs and
+/// the native file picker go through <see cref="IDialogService"/>.
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
     private readonly AppPaths _paths;
-    private readonly NotebookStore _notebooks = new();
+    private readonly BinderStore _binders = new();
     private readonly JsonStore<AppConfig> _configStore;
     private readonly JsonStore<AppState> _stateStore;
     private readonly IDialogService _dialogs;
@@ -36,15 +38,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly DispatcherTimer _savedFadeTimer;
 
     private readonly List<NoteListItemViewModel> _allNotes = new();
-    private readonly List<RecentNotebookItemViewModel> _allRecents = new();
+    private readonly List<RecentBinderItemViewModel> _allRecents = new();
     private readonly HashSet<string> _dirtyNoteIds = new();
 
     private AppConfig _config = new();
     private AppState _state = new();
     private Exception? _loadError;
 
-    private LoadedNotebook? _current;
-    private NotebookLock? _lock;
+    private LoadedBinder? _current;
     private string _baselineHash = string.Empty;
     private bool _dirty;
     private bool _externalChangeAcknowledged;
@@ -110,7 +111,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public EditorViewModel Editor { get; }
 
     public ObservableCollection<NoteListItemViewModel> Notes { get; } = new();
-    public ObservableCollection<RecentNotebookItemViewModel> RecentNotebooks { get; } = new();
+    public ObservableCollection<RecentBinderItemViewModel> RecentBinders { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
 
     /// <summary>Active toast notifications, rendered as a top-right overlay; each auto-dismisses.</summary>
@@ -123,19 +124,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private string _saveStateText = "Saved";
 
     [ObservableProperty]
-    private bool _hasNotebook;
-
-    [ObservableProperty]
-    private bool _isReadOnly;
+    private bool _hasBinder;
 
     [ObservableProperty]
     private bool _showAttachmentsEmptyHint;
 
     [ObservableProperty]
-    private string _notebookTitle = "DayNote";
+    private string _binderTitle = "DayNote";
 
     [ObservableProperty]
-    private string _notebookPath = string.Empty;
+    private string _binderPath = string.Empty;
 
     [ObservableProperty]
     private string _notesFilter = string.Empty;
@@ -146,10 +144,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private NoteListItemViewModel? _selectedNote;
 
-    // The highlighted notebook row. Selecting a row opens that notebook (single click or arrow key) via
-    // OnSelectedRecentChanged — no double-click — so the highlight and the open notebook stay in sync.
+    // The highlighted binder row. Selecting a row opens that binder (single click or arrow key) via
+    // OnSelectedRecentChanged — no double-click — so the highlight and the open binder stay in sync.
     [ObservableProperty]
-    private RecentNotebookItemViewModel? _selectedRecent;
+    private RecentBinderItemViewModel? _selectedRecent;
 
     [ObservableProperty]
     private double _recentPaneWidth = 220;
@@ -193,22 +191,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (!string.IsNullOrEmpty(_state.CurrentNotebookPath) && File.Exists(_state.CurrentNotebookPath))
+        if (!string.IsNullOrEmpty(_state.CurrentBinderPath) && File.Exists(_state.CurrentBinderPath))
         {
-            await OpenNotebookPathAsync(_state.CurrentNotebookPath!, isNew: false, selectNoteId: _state.CurrentNoteId);
+            await OpenBinderPathAsync(_state.CurrentBinderPath!, isNew: false, selectNoteId: _state.CurrentNoteId);
         }
 
         _externalTimer.Start();
     }
 
-    /// <summary>Flushes pending work and releases the lock on shutdown. Pane widths are captured first by the view.</summary>
+    /// <summary>Flushes pending work on shutdown. Pane widths are captured first by the view.</summary>
     public async Task ShutdownAsync()
     {
         _externalTimer.Stop();
         _autosaveTimer.Stop();
         _log.Info("Application shutting down", new { path = _current?.Path });
 
-        // Persist state (including the current note id) while the notebook is still open;
+        // Persist state (including the current note id) while the binder is still open;
         // CloseCurrentAsync clears the selection, which would otherwise null out CurrentNoteId.
         PersistState();
         await CloseCurrentAsync(clearSelection: false);
@@ -217,58 +215,92 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     // ----- Commands ------------------------------------------------------------------------------
 
     [RelayCommand]
-    private async Task NewNotebook()
+    private async Task NewBinder()
     {
         if (!IsReady)
         {
             return;
         }
 
-        var path = await _dialogs.PickNotebookToCreateAsync();
+        var path = await _dialogs.PickBinderToCreateAsync();
         if (path is null)
         {
             return;
         }
 
-        await OpenNotebookPathAsync(EnsureDaynoteExtension(path), isNew: true);
+        await OpenBinderPathAsync(EnsureDaynoteExtension(path), isNew: true);
     }
 
     [RelayCommand]
-    private async Task OpenNotebook()
+    private async Task OpenBinder()
     {
         if (!IsReady)
         {
             return;
         }
 
-        var path = await _dialogs.PickNotebookToOpenAsync();
+        var path = await _dialogs.PickBinderToOpenAsync();
         if (path is not null)
         {
-            await OpenNotebookPathAsync(path, isNew: false);
+            await OpenBinderPathAsync(path, isNew: false);
         }
     }
 
     [RelayCommand]
-    private async Task OpenRecent(RecentNotebookItemViewModel item)
+    private async Task OpenRecent(RecentBinderItemViewModel item)
     {
         if (!File.Exists(item.Path))
         {
             item.IsMissing = true;
-            _log.Warn("Recent notebook is missing", new { path = item.Path });
-            ShowToast(ToastKind.Warning, "That notebook is no longer at " + item.Path);
+            _log.Warn("Recent binder is missing", new { path = item.Path });
+            ShowToast(ToastKind.Warning, "That binder is no longer at " + item.Path);
             return;
         }
 
-        await OpenNotebookPathAsync(item.Path, isNew: false);
+        await OpenBinderPathAsync(item.Path, isNew: false);
     }
 
+    /// <summary>
+    /// Closes the open binder and forgets it (removes it from the list) — closing <em>is</em> forgetting,
+    /// matching the "known binders" model. Bound to Cmd/Ctrl+W.
+    /// </summary>
     [RelayCommand]
-    private async Task CloseNotebook() => await CloseCurrentAsync(clearSelection: true);
+    private async Task CloseBinder()
+    {
+        if (_current is null)
+        {
+            return;
+        }
+
+        var path = _current.Path;
+        await CloseCurrentAsync(clearSelection: true);
+        ForgetBinder(path);
+    }
+
+    /// <summary>
+    /// The row's ✕: removes a binder from the list. If it is the open one, it is closed (and its edits
+    /// flushed) first; otherwise the open binder is untouched. This also clears a stale/missing entry.
+    /// </summary>
+    [RelayCommand]
+    private async Task RemoveBinder(RecentBinderItemViewModel item)
+    {
+        if (!IsReady)
+        {
+            return;
+        }
+
+        if (_current is not null && PathKey.Equal(_current.Path, item.Path))
+        {
+            await CloseCurrentAsync(clearSelection: true);
+        }
+
+        ForgetBinder(item.Path);
+    }
 
     [RelayCommand]
     private void NewNote()
     {
-        if (!IsReady || _current is null || IsReadOnly)
+        if (!IsReady || _current is null)
         {
             return;
         }
@@ -276,14 +308,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var now = DateTimeOffset.UtcNow;
         var note = new Note
         {
-            Id = IdGenerator.NewUnique(_current.Notebook.Notes.Select(n => n.Id)),
+            Id = IdGenerator.NewUnique(_current.Binder.Notes.Select(n => n.Id)),
             Title = string.Empty,
             Created = now,
             Modified = now,
             Body = string.Empty,
         };
 
-        _current.Notebook.Notes.Add(note);
+        _current.Binder.Notes.Add(note);
         // A brand-new note is the newest, so it goes to the top of the newest-first list.
         _allNotes.Insert(0, new NoteListItemViewModel(note, _config.DisplayTimeZone));
         NotesFilter = string.Empty;
@@ -298,7 +330,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         // The row's ✕ passes that row; the keyboard/menu path passes null and targets the selection.
         var target = item ?? SelectedNote;
-        if (!IsReady || _current is null || IsReadOnly || target is null)
+        if (!IsReady || _current is null || target is null)
         {
             return;
         }
@@ -310,8 +342,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        // The notebook may have been reloaded/closed while the confirm dialog was open; if the captured
-        // note is no longer live, abort rather than mutate a stale notebook.
+        // The binder may have been reloaded/closed while the confirm dialog was open; if the captured
+        // note is no longer live, abort rather than mutate a stale binder.
         if (!IsLiveNote(note))
         {
             return;
@@ -320,7 +352,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         var deletingSelected = ReferenceEquals(target, SelectedNote);
         var index = Notes.IndexOf(target);
 
-        _current.Notebook.Notes.Remove(note);
+        _current.Binder.Notes.Remove(note);
         _allNotes.RemoveAll(n => ReferenceEquals(n.Note, note));
         RebuildNotes();
 
@@ -338,7 +370,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task AddAttachment()
     {
-        if (!IsReady || _current is null || IsReadOnly || SelectedNote is null)
+        if (!IsReady || _current is null || SelectedNote is null)
         {
             return;
         }
@@ -350,7 +382,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var directory = NotebookStore.NoteAssetsDirectory(_current.Path, note.Id);
+        var directory = BinderStore.NoteAssetsDirectory(_current.Path, note.Id);
         Directory.CreateDirectory(directory);
 
         // Hash the note's current attachments so a file whose content the note already has is not
@@ -421,7 +453,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task RemoveAttachment(AttachmentItemViewModel item)
     {
-        if (!IsReady || _current is null || IsReadOnly || SelectedNote is null)
+        if (!IsReady || _current is null || SelectedNote is null)
         {
             return;
         }
@@ -432,7 +464,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        // The notebook may have been reloaded (replacing note objects) while the dialog was open;
+        // The binder may have been reloaded (replacing note objects) while the dialog was open;
         // if the captured note is no longer live, abort rather than delete a file out from under it.
         if (!IsLiveNote(note))
         {
@@ -557,91 +589,66 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         ShowToast(ToastKind.Info, "Text style: " + next.Name);
     }
 
-    // ----- Notebook open / close / save ----------------------------------------------------------
+    // ----- Binder open / close / save ----------------------------------------------------------
 
-    private async Task OpenNotebookPathAsync(string path, bool isNew, string? selectNoteId = null)
+    private async Task OpenBinderPathAsync(string path, bool isNew, string? selectNoteId = null)
     {
         if (!IsReady)
         {
             return;
         }
 
-        // Re-selecting the notebook that is already open (e.g. tapping its row again) is a no-op.
+        // Re-selecting the binder that is already open (e.g. tapping its row again) is a no-op.
         if (!isNew && _current is not null && PathKey.Equal(_current.Path, path))
         {
             return;
         }
 
-        _log.Info("Opening notebook", new { path, isNew });
+        _log.Info("Opening binder", new { path, isNew });
         var stopwatch = Stopwatch.StartNew();
 
         await CloseCurrentAsync(clearSelection: false);
 
-        var acquired = NotebookLock.TryAcquire(_paths, path);
-        var readOnly = false;
-        if (acquired is null)
-        {
-            var choice = await _dialogs.AskLockedNotebookAsync(Path.GetFileNameWithoutExtension(path));
-            if (choice == LockedNotebookChoice.Cancel)
-            {
-                _log.Info("Open cancelled: notebook is locked", new { path });
-                return;
-            }
-
-            readOnly = true;
-            _log.Warn("Notebook is locked by another instance; opening read-only", new { path });
-        }
-
-        LoadedNotebook loaded;
+        LoadedBinder loaded;
         try
         {
             if (isNew)
             {
-                var notebook = new Notebook
+                var binder = new Binder
                 {
                     Id = IdGenerator.New(),
-                    Title = Path.GetFileNameWithoutExtension(path),
                     Created = DateTimeOffset.UtcNow,
                     Modified = DateTimeOffset.UtcNow,
                 };
-                var saved = _notebooks.Save(path, notebook);
-                loaded = new LoadedNotebook(notebook, saved.Path, saved.ContentHash);
+                var saved = _binders.Save(path, binder);
+                loaded = new LoadedBinder(binder, saved.Path, saved.ContentHash);
             }
             else
             {
-                loaded = _notebooks.Load(path);
+                loaded = _binders.Load(path);
             }
         }
         catch (Exception ex)
         {
-            _log.Error("Failed to open notebook", new { path }, ex);
-            acquired?.Dispose();
-            await _dialogs.ShowErrorAsync("Could not open notebook", ex.Message);
+            _log.Error("Failed to open binder", new { path }, ex);
+            await _dialogs.ShowErrorAsync("Could not open binder", ex.Message);
             return;
         }
 
-        _lock = acquired;
-        IsReadOnly = readOnly;
         AdoptLoaded(loaded, selectNoteId);
-        NotebookPath = loaded.Path;
+        BinderPath = loaded.Path;
 
-        AddRecent(loaded.Path);
-        _state.CurrentNotebookPath = loaded.Path;
+        AddBinder(loaded.Path);
+        _state.CurrentBinderPath = loaded.Path;
         PersistState();
 
-        _log.Info("Notebook opened", new
+        _log.Info("Binder opened", new
         {
             path = loaded.Path,
             isNew,
-            readOnly,
-            noteCount = loaded.Notebook.Notes.Count,
+            noteCount = loaded.Binder.Notes.Count,
             durationMs = stopwatch.ElapsedMilliseconds,
         });
-
-        if (readOnly)
-        {
-            ShowToast(ToastKind.Warning, "Opened read-only — the notebook is in use by another instance.");
-        }
     }
 
     private async Task CloseCurrentAsync(bool clearSelection)
@@ -651,19 +658,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        _log.Info("Closing notebook", new { path = _current.Path });
+        _log.Info("Closing binder", new { path = _current.Path });
         _autosaveTimer.Stop();
-        if (!IsReadOnly && _dirty)
+        if (_dirty)
         {
             // Flush any pending edits before closing.
             await SaveCurrentAsync();
         }
 
-        _lock?.Dispose();
-        _lock = null;
         _current = null;
-        IsReadOnly = false;
-        HasNotebook = false;
+        HasBinder = false;
         _dirty = false;
         _dirtyNoteIds.Clear();
         Editor.Load(null);
@@ -672,13 +676,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         DisposeAttachments();
         Attachments.Clear();
         SelectedNote = null;
-        NotebookTitle = "DayNote";
-        NotebookPath = string.Empty;
+        BinderTitle = "DayNote";
+        BinderPath = string.Empty;
         SetSaveState(SaveState.Saved);
 
         if (clearSelection)
         {
-            _state.CurrentNotebookPath = null;
+            _state.CurrentBinderPath = null;
             _state.CurrentNoteId = null;
             PersistState();
         }
@@ -686,7 +690,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private async Task SaveCurrentAsync()
     {
-        if (!IsReady || _current is null || IsReadOnly || _externalCheckInProgress)
+        if (!IsReady || _current is null || _externalCheckInProgress)
         {
             // Do not save while an external-change conflict is being resolved; the autosave Tick
             // reschedules so the edits are not lost.
@@ -704,12 +708,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             SetSaveState(SaveState.Saving);
             var now = DateTimeOffset.UtcNow;
-            var notebook = _current.Notebook;
-            _log.Info("Saving notebook", new { path = _current.Path, noteCount = notebook.Notes.Count });
+            var binder = _current.Binder;
+            _log.Info("Saving binder", new { path = _current.Path, noteCount = binder.Notes.Count });
 
             foreach (var id in _dirtyNoteIds)
             {
-                var note = notebook.Notes.FirstOrDefault(n => n.Id == id);
+                var note = binder.Notes.FirstOrDefault(n => n.Id == id);
                 if (note is not null)
                 {
                     note.Modified = now;
@@ -718,10 +722,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
             if (_dirty)
             {
-                notebook.Modified = now;
+                binder.Modified = now;
             }
 
-            var saved = _notebooks.Save(_current.Path, notebook);
+            var saved = _binders.Save(_current.Path, binder);
             _baselineHash = saved.ContentHash;
             _externalChangeAcknowledged = false;
             _dirty = false;
@@ -730,11 +734,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Editor.RefreshMetadata();
             RefreshSelectedListItem();
             SetSaveState(SaveState.Saved);
-            _log.Info("Notebook saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
+            _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
         }
         catch (Exception ex)
         {
-            _log.Error("Failed to save notebook", new { path = _current?.Path }, ex);
+            _log.Error("Failed to save binder", new { path = _current?.Path }, ex);
             SetSaveState(SaveState.Error);
             ShowToast(ToastKind.Error, "Save failed: " + ex.Message);
         }
@@ -746,7 +750,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private async Task CheckExternalChangeAsync()
     {
-        if (!IsReady || _current is null || IsReadOnly || _externalChangeAcknowledged
+        if (!IsReady || _current is null || _externalChangeAcknowledged
             || _externalCheckInProgress || _savingInProgress)
         {
             return;
@@ -755,7 +759,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _externalCheckInProgress = true;
         try
         {
-            var change = _notebooks.CheckExternalChange(_current.Path, _baselineHash);
+            var change = _binders.CheckExternalChange(_current.Path, _baselineHash);
             switch (change)
             {
                 case ExternalChange.None:
@@ -763,18 +767,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
                 case ExternalChange.Deleted:
                     _externalChangeAcknowledged = true;
-                    _log.Warn("Notebook file was deleted on disk", new { path = _current.Path });
-                    ShowToast(ToastKind.Warning, "The notebook file was deleted. Your edits remain; saving will recreate it.");
+                    _log.Warn("Binder file was deleted on disk", new { path = _current.Path });
+                    ShowToast(ToastKind.Warning, "The binder file was deleted. Your edits remain; saving will recreate it.");
                     return;
 
                 case ExternalChange.Modified when !_dirty:
-                    _log.Info("Notebook changed on disk; reloading", new { path = _current.Path });
+                    _log.Info("Binder changed on disk; reloading", new { path = _current.Path });
                     ReloadFromDisk();
                     ShowToast(ToastKind.Info, "Reloaded after an external change.");
                     return;
 
                 case ExternalChange.Modified:
-                    var choice = await _dialogs.AskExternalChangeAsync(NotebookTitle, change);
+                    var choice = await _dialogs.AskExternalChangeAsync(BinderTitle, change);
                     if (choice == ExternalChangeChoice.ReloadFromDisk)
                     {
                         _log.Info("External change: reloading from disk, discarding local edits", new { path = _current.Path });
@@ -786,7 +790,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                         // next save overwrites it, and so any *further* external change is still
                         // detected rather than silently suppressed.
                         _log.Info("External change: keeping local edits", new { path = _current.Path });
-                        _baselineHash = _notebooks.ComputeHash(_current.Path);
+                        _baselineHash = _binders.ComputeHash(_current.Path);
                     }
 
                     return;
@@ -813,17 +817,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         try
         {
-            AdoptLoaded(_notebooks.Load(_current.Path), SelectedNote?.Note.Id);
+            AdoptLoaded(_binders.Load(_current.Path), SelectedNote?.Note.Id);
         }
         catch (Exception ex)
         {
-            _log.Error("Failed to reload notebook", new { path = _current.Path }, ex);
+            _log.Error("Failed to reload binder", new { path = _current.Path }, ex);
         }
     }
 
     // ----- View-model plumbing -------------------------------------------------------------------
 
-    private void AdoptLoaded(LoadedNotebook loaded, string? selectNoteId)
+    private void AdoptLoaded(LoadedBinder loaded, string? selectNoteId)
     {
         _current = loaded;
         _baselineHash = loaded.ContentHash;
@@ -831,21 +835,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _dirty = false;
         _dirtyNoteIds.Clear();
 
-        HasNotebook = true;
-        NotebookTitle = string.IsNullOrWhiteSpace(loaded.Notebook.Title)
-            ? Path.GetFileNameWithoutExtension(loaded.Path)
-            : loaded.Notebook.Title;
+        HasBinder = true;
+        BinderTitle = TitleFor(loaded.Path);
 
-        BuildNotes(loaded.Notebook, selectNoteId);
+        BuildNotes(loaded.Binder, selectNoteId);
         SetSaveState(SaveState.Saved);
     }
 
-    private void BuildNotes(Notebook notebook, string? selectNoteId)
+    private void BuildNotes(Binder binder, string? selectNoteId)
     {
         _allNotes.Clear();
         // Newest first (by creation time). Sorting by Created, not Modified, keeps the order stable
         // while editing; the stored file order is left untouched.
-        foreach (var note in notebook.Notes.OrderByDescending(n => n.Created))
+        foreach (var note in binder.Notes.OrderByDescending(n => n.Created))
         {
             _allNotes.Add(new NoteListItemViewModel(note, _config.DisplayTimeZone));
         }
@@ -871,37 +873,88 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Rebuilds the master recents list from state, then applies the current filter.</summary>
+    /// <summary>Rebuilds the master binders list from state, then applies the current filter.</summary>
     private void RebuildRecents()
     {
         _allRecents.Clear();
-        foreach (var path in _state.RecentNotebooks)
+        foreach (var entry in _state.Binders)
         {
-            _allRecents.Add(new RecentNotebookItemViewModel(path) { IsMissing = !File.Exists(path) });
+            _allRecents.Add(new RecentBinderItemViewModel(entry.Path)
+            {
+                IsMissing = !File.Exists(entry.Path),
+                Title = TitleFor(entry.Path),
+            });
         }
 
         ApplyRecentFilter();
     }
 
     /// <summary>
+    /// The binder's display title: its locally-stored title from app state, or the file name when no
+    /// title is stored. Titles live in state (not the .daynote file), so this needs no file I/O.
+    /// </summary>
+    private string TitleFor(string path)
+    {
+        var title = _state.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path))?.Title;
+        return string.IsNullOrWhiteSpace(title) ? Path.GetFileNameWithoutExtension(path) : title;
+    }
+
+    /// <summary>
+    /// Applies an inline title edit to a binder. The title is a local label stored in app state (never
+    /// in the .daynote file), so this just updates that state entry and persists. A blank or unchanged
+    /// title is ignored. Called by the view on blur / Enter.
+    /// </summary>
+    public void ApplyBinderRename(RecentBinderItemViewModel item, string rawTitle)
+    {
+        if (!item.IsEditing)
+        {
+            return;
+        }
+
+        item.IsEditing = false;
+        var newTitle = TextCleanup.SingleLine(rawTitle ?? string.Empty);
+        if (string.IsNullOrEmpty(newTitle) || string.Equals(newTitle, item.Title, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var entry = _state.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, item.Path));
+        if (entry is null)
+        {
+            return; // not a known binder (shouldn't happen for a visible row)
+        }
+
+        entry.Title = newTitle;
+        item.Title = newTitle;
+        if (_current is not null && PathKey.Equal(_current.Path, item.Path))
+        {
+            BinderTitle = newTitle;
+        }
+
+        PersistState();
+        _log.Info("Renamed binder", new { path = item.Path });
+    }
+
+    /// <summary>
     /// Re-applies the recents filter without rebuilding the master list, so typing in the filter does
-    /// not churn the rows (and the open notebook's highlight survives keystroke to keystroke).
+    /// not churn the rows (and the open binder's highlight survives keystroke to keystroke).
     /// </summary>
     private void ApplyRecentFilter()
     {
-        // Flag the open notebook so its row shows the inline close affordance; keep it visible even when
-        // the filter would exclude it, so filtering never hides the notebook you are working in.
+        // Flag the open binder so its row shows the inline close affordance; keep it visible even when
+        // the filter would exclude it, so filtering never hides the binder you are working in.
         foreach (var recent in _allRecents)
         {
             recent.IsCurrent = _current is not null && PathKey.Equal(recent.Path, _current.Path);
         }
 
-        FilterInto(_allRecents, RecentNotebooks, RecentFilter, r => r.Name, r => r.IsCurrent);
+        // Match the displayed title and the file name, so the filter lines up with what the row shows.
+        FilterInto(_allRecents, RecentBinders, RecentFilter, r => r.Title + " " + r.Name, r => r.IsCurrent);
 
-        // Keep the open notebook highlighted across rebuilds (open, filter, recents reorder).
+        // Keep the open binder highlighted across rebuilds (open, filter, recents reorder).
         SelectedRecent = _current is null
             ? null
-            : RecentNotebooks.FirstOrDefault(r => PathKey.Equal(r.Path, _current.Path));
+            : RecentBinders.FirstOrDefault(r => PathKey.Equal(r.Path, _current.Path));
     }
 
     /// <summary>
@@ -958,18 +1011,31 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private void AddRecent(string path)
+    // Records a binder as known. An already-known binder keeps its place (the list is a stable managed
+    // set, not a reshuffling MRU); a new one is added at the top, titled with its file name initially.
+    // No cap — the user prunes explicitly via the row ✕, so a known binder never silently disappears.
+    private void AddBinder(string path)
     {
-        _state.RecentNotebooks.RemoveAll(p => PathKey.Equal(p, path));
-        _state.RecentNotebooks.Insert(0, Path.GetFullPath(path));
-        if (_state.RecentNotebooks.Count > AppState.MaxRecentNotebooks)
+        var full = Path.GetFullPath(path);
+        if (_state.Binders.Any(b => PathKey.Equal(b.Path, full)))
         {
-            _state.RecentNotebooks.RemoveRange(
-                AppState.MaxRecentNotebooks,
-                _state.RecentNotebooks.Count - AppState.MaxRecentNotebooks);
+            // Already known: don't churn the list (which is this ListBox's ItemsSource); just refresh
+            // which row is marked current.
+            ApplyRecentFilter();
+            return;
         }
 
+        _state.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
         RebuildRecents();
+    }
+
+    // Removes a binder from the known list and persists. Caller closes it first if it is the open one.
+    private void ForgetBinder(string path)
+    {
+        _state.Binders.RemoveAll(b => PathKey.Equal(b.Path, path));
+        PersistState();
+        RebuildRecents();
+        _log.Info("Forgot binder", new { path });
     }
 
     private void LoadAttachments(Note? note)
@@ -982,7 +1048,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        foreach (var attachment in NotebookStore.ResolveAttachments(_current.Path, note))
+        foreach (var attachment in BinderStore.ResolveAttachments(_current.Path, note))
         {
             Attachments.Add(new AttachmentItemViewModel(attachment, _log));
         }
@@ -998,9 +1064,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Whether a captured note is still editable in the currently-open notebook (it survives reloads/closes).</summary>
+    /// <summary>Whether a captured note is still editable in the currently-open binder (it survives reloads/closes).</summary>
     private bool IsLiveNote(Note note) =>
-        _current is not null && !IsReadOnly && _current.Notebook.Notes.Contains(note);
+        _current is not null && _current.Binder.Notes.Contains(note);
 
     private void OnEditorEdited(object? sender, EventArgs e)
     {
@@ -1010,7 +1076,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void MarkDirty(string? noteId)
     {
-        if (!IsReady || _current is null || IsReadOnly)
+        if (!IsReady || _current is null)
         {
             return;
         }
@@ -1060,20 +1126,32 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _state.CurrentNoteId = value?.Note.Id;
     }
 
-    partial void OnSelectedRecentChanged(RecentNotebookItemViewModel? value)
+    partial void OnSelectedRecentChanged(RecentBinderItemViewModel? value)
     {
-        // Selecting a notebook opens it (single click or arrow key) — no double-click. Skip when
-        // nothing is selected or it is already open; the command's own concurrency guard keeps rapid
-        // selection changes from overlapping.
+        // Selecting a binder opens it (single click or arrow key) — no double-click. Skip when
+        // nothing is selected or it is already open.
         if (value is null || (_current is not null && PathKey.Equal(_current.Path, value.Path)))
         {
             return;
         }
 
-        if (OpenRecentCommand.CanExecute(value))
+        // Defer the open: it rebuilds the binders list — this very ListBox's ItemsSource — and mutating
+        // it synchronously inside the selection-changed notification corrupts Avalonia's selection model
+        // (an ArgumentOutOfRangeException that crashes the app). Posting runs the open after the
+        // selection commit has finished.
+        var target = value;
+        Dispatcher.UIThread.Post(() =>
         {
-            OpenRecentCommand.Execute(value);
-        }
+            if (_current is not null && PathKey.Equal(_current.Path, target.Path))
+            {
+                return;
+            }
+
+            if (OpenRecentCommand.CanExecute(target))
+            {
+                OpenRecentCommand.Execute(target);
+            }
+        });
     }
 
     // ----- Configuration / state -----------------------------------------------------------------

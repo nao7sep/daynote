@@ -5,8 +5,8 @@ using Xunit;
 namespace DayNote.Tests.Storage;
 
 /// <summary>
-/// Path keys back per-notebook locks, and are compared case-insensitively for Windows
-/// compatibility, so two spellings of the same path must produce one key.
+/// Path keys compare binder paths case-insensitively for Windows compatibility, so two spellings
+/// of the same path must produce one key.
 /// </summary>
 public sealed class PathKeyTests
 {
@@ -21,8 +21,8 @@ public sealed class PathKeyTests
     [Fact]
     public void Paths_differing_only_in_case_are_equal()
     {
-        var upper = Path.Combine(Path.GetTempPath(), "Notebooks", "Journal.daynote");
-        var lower = Path.Combine(Path.GetTempPath(), "notebooks", "journal.DayNote");
+        var upper = Path.Combine(Path.GetTempPath(), "Binders", "Journal.daynote");
+        var lower = Path.Combine(Path.GetTempPath(), "binders", "journal.DayNote");
 
         Assert.True(PathKey.Equal(upper, lower));
     }

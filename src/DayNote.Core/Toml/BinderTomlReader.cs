@@ -6,34 +6,34 @@ using Tomlyn;
 namespace DayNote.Core.Toml;
 
 /// <summary>
-/// Parses <c>.daynote</c> TOML text into a <see cref="Notebook"/>. Field order is irrelevant on
+/// Parses <c>.daynote</c> TOML text into a <see cref="Binder"/>. Field order is irrelevant on
 /// read; only the canonical writer enforces order. Reading is case-insensitive and tolerant of
 /// missing keys so hand-edited files still load. Bodies are run through <see cref="BodyCleanup"/>
 /// so the in-memory body equals the canonical stored form (this also removes the trailing newline
 /// that TOML multiline strings retain).
 /// </summary>
-public static class NotebookTomlReader
+public static class BinderTomlReader
 {
     private static readonly TomlSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,
     };
 
-    public static Notebook Read(string text)
+    public static Binder Read(string text)
     {
-        NotebookDocument? document;
+        BinderDocument? document;
         try
         {
-            document = TomlSerializer.Deserialize<NotebookDocument>(text, Options);
+            document = TomlSerializer.Deserialize<BinderDocument>(text, Options);
         }
         catch (TomlException ex)
         {
-            throw new NotebookFormatException($"Notebook is not valid TOML: {ex.Message}", ex);
+            throw new BinderFormatException($"Binder is not valid TOML: {ex.Message}", ex);
         }
 
         if (document is null)
         {
-            throw new NotebookFormatException("Notebook is empty or not a TOML table.");
+            throw new BinderFormatException("Binder is empty or not a TOML table.");
         }
 
         // Timestamps that are absent or malformed (a hand-edit typo) fall back to load time rather
@@ -41,10 +41,9 @@ public static class NotebookTomlReader
         // year-0001 date and corrupt chronological ordering.
         var fallback = DateTimeOffset.UtcNow;
 
-        var notebook = new Notebook
+        var binder = new Binder
         {
             Id = document.Id ?? string.Empty,
-            Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
             Created = ParseTimestamp(document.Created, fallback),
             Modified = ParseTimestamp(document.Modified, fallback),
         };
@@ -53,11 +52,11 @@ public static class NotebookTomlReader
         {
             foreach (var noteDocument in notes)
             {
-                notebook.Notes.Add(MapNote(noteDocument, fallback));
+                binder.Notes.Add(MapNote(noteDocument, fallback));
             }
         }
 
-        return notebook;
+        return binder;
     }
 
     private static Note MapNote(NoteDocument document, DateTimeOffset fallback)
@@ -91,7 +90,7 @@ public static class NotebookTomlReader
     /// component and not a <c>.</c>/<c>..</c> traversal segment. Attachment references must be bare
     /// filenames resolved under the note's assets directory (see <see cref="Models.Note"/>); a name
     /// carrying a path separator or a traversal segment — which the app never writes, but a
-    /// hand-edited or hostile notebook could — would resolve <em>outside</em> that directory, where
+    /// hand-edited or hostile binder could — would resolve <em>outside</em> that directory, where
     /// removing it would delete an unrelated file. Such names are dropped on read, the same way empty
     /// names are, so the malformed reference never reaches the storage layer.
     /// </summary>
@@ -106,10 +105,9 @@ public static class NotebookTomlReader
 
     // Internal DTOs mirroring the on-disk shape. Timestamps are read as strings because the format
     // stores them as quoted ISO-8601 values rather than TOML-native datetimes.
-    private sealed class NotebookDocument
+    private sealed class BinderDocument
     {
         public string? Id { get; set; }
-        public string? Title { get; set; }
         public string? Created { get; set; }
         public string? Modified { get; set; }
         public List<NoteDocument>? Note { get; set; }

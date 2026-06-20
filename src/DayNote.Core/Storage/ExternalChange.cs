@@ -1,7 +1,7 @@
 namespace DayNote.Core.Storage;
 
 /// <summary>
-/// The result of comparing a notebook file on disk against the content hash captured when it was
+/// The result of comparing a binder file on disk against the content hash captured when it was
 /// loaded (the hash alone; modification time is deliberately not used).
 /// </summary>
 public enum ExternalChange

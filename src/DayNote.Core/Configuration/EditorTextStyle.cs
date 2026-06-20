@@ -3,7 +3,7 @@ namespace DayNote.Core.Configuration;
 /// <summary>
 /// A named editor text-style preset, chosen by <see cref="Name"/>. It bundles the full set of
 /// typographic settings applied to the note body: family, size, line spacing, padding, and weight/
-/// slant. The notebook's stored text never carries styling — a preset is a view-only preference for
+/// slant. The binder's stored text never carries styling — a preset is a view-only preference for
 /// how the plain-text body is rendered, so switching presets never changes saved content.
 /// </summary>
 public sealed class EditorTextStyle

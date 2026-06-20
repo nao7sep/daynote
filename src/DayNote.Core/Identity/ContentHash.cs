@@ -4,7 +4,7 @@ using System.Text;
 namespace DayNote.Core.Identity;
 
 /// <summary>
-/// SHA-256 content hashing, used to detect external modification of notebook files. Ported from
+/// SHA-256 content hashing, used to detect external modification of binder files. Ported from
 /// quickdeck's content-hash comparison.
 /// </summary>
 public static class ContentHash

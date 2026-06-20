@@ -7,7 +7,7 @@ namespace DayNote.Tests.Identity;
 
 /// <summary>
 /// Identifiers double as attachment directory names, so they must stay within a 21-character
-/// URL-safe alphabet and be unique within a notebook (checked case-insensitively for Windows).
+/// URL-safe alphabet and be unique within a binder (checked case-insensitively for Windows).
 /// </summary>
 public sealed class IdGeneratorTests
 {

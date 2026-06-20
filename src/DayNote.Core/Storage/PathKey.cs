@@ -1,9 +1,9 @@
 namespace DayNote.Core.Storage;
 
 /// <summary>
-/// Normalizes filesystem paths into a stable key used for per-notebook locks and equality checks.
-/// Paths are compared case-insensitively for Windows compatibility; on a case-sensitive filesystem
-/// this is an accepted tradeoff.
+/// Normalizes filesystem paths into a stable key used to compare binder paths for equality (e.g.
+/// "is this binder already open?"). Paths are compared case-insensitively for Windows compatibility;
+/// on a case-sensitive filesystem this is an accepted tradeoff.
 /// </summary>
 public static class PathKey
 {

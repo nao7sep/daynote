@@ -8,18 +8,18 @@ using Xunit;
 namespace DayNote.Tests.Storage;
 
 /// <summary>
-/// The notebook store is the file-I/O edge: it must round-trip a notebook losslessly, record a
+/// The binder store is the file-I/O edge: it must round-trip a binder losslessly, record a
 /// content-hash baseline, and detect a later external modification (the hash, never the mtime, is
 /// the signal). These guarantees drive autosave conflict handling, so each runs against a throwaway
 /// file in a temp directory.
 /// </summary>
-public sealed class NotebookStoreTests : IDisposable
+public sealed class BinderStoreTests : IDisposable
 {
     private readonly string _directory;
     private readonly string _path;
-    private readonly NotebookStore _store = new();
+    private readonly BinderStore _store = new();
 
-    public NotebookStoreTests()
+    public BinderStoreTests()
     {
         _directory = Path.Combine(Path.GetTempPath(), "daynote-store-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_directory);
@@ -34,9 +34,8 @@ public sealed class NotebookStoreTests : IDisposable
         var loaded = _store.Load(_path);
 
         Assert.Equal(saved.ContentHash, loaded.ContentHash);
-        Assert.Equal("My Notebook", loaded.Notebook.Title);
-        Assert.Single(loaded.Notebook.Notes);
-        Assert.Equal("hello body", loaded.Notebook.Notes[0].Body);
+        Assert.Single(loaded.Binder.Notes);
+        Assert.Equal("hello body", loaded.Binder.Notes[0].Body);
     }
 
     [Fact]
@@ -83,20 +82,19 @@ public sealed class NotebookStoreTests : IDisposable
 
     private Attachment ResolveOne(Note note)
     {
-        var list = NotebookStore.ResolveAttachments(_path, note);
+        var list = BinderStore.ResolveAttachments(_path, note);
         return Assert.Single(list);
     }
 
-    private static Notebook Sample()
+    private static Binder Sample()
     {
-        var notebook = new Notebook
+        var binder = new Binder
         {
             Id = "nb1",
-            Title = "My Notebook",
             Created = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero),
         };
-        notebook.Notes.Add(new Note
+        binder.Notes.Add(new Note
         {
             Id = "n1",
             Title = "Note",
@@ -104,7 +102,7 @@ public sealed class NotebookStoreTests : IDisposable
             Modified = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero),
             Body = "hello body",
         });
-        return notebook;
+        return binder;
     }
 
     public void Dispose()

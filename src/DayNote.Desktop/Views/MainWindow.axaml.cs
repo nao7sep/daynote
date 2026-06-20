@@ -1,9 +1,12 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using DayNote.Desktop.ViewModels;
 
 namespace DayNote.Desktop.Views;
@@ -87,9 +90,71 @@ public partial class MainWindow : Window
         }
     }
 
-    // The inline "✕" on the open notebook's row closes it (replacing the old Close-notebook button).
-    private void CloseNotebookRow_Click(object? sender, RoutedEventArgs e) =>
-        (DataContext as MainWindowViewModel)?.CloseNotebookCommand.Execute(null);
+    // The inline "✕" removes a binder from the list (closing it first if it's the open one).
+    private void RemoveBinderRow_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: RecentBinderItemViewModel item } && DataContext is MainWindowViewModel vm)
+        {
+            vm.RemoveBinderCommand.Execute(item);
+        }
+    }
+
+    // Double-tap a binder row to rename its title inline. The first tap of the double already selected
+    // (and opened) the binder; this just enters edit mode and focuses the field.
+    private void BinderRow_DoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not Control { DataContext: RecentBinderItemViewModel item } || item.IsEditing)
+        {
+            return;
+        }
+
+        item.EditText = item.Title;
+        item.IsEditing = true;
+
+        // The editor just became visible; post focus so it is realized first.
+        if (sender is Visual visual)
+        {
+            Dispatcher.UIThread.Post(
+                () =>
+                {
+                    if (visual.GetVisualDescendants().OfType<TextBox>().FirstOrDefault() is { } box)
+                    {
+                        box.Focus();
+                        box.SelectAll();
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+    }
+
+    // Blur applies the title edit. (Enter/Escape are handled in BinderTitle_KeyDown first, which
+    // clears IsEditing, so this becomes a no-op for those paths.)
+    private void BinderTitle_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: RecentBinderItemViewModel item } && DataContext is MainWindowViewModel vm)
+        {
+            vm.ApplyBinderRename(item, item.EditText);
+        }
+    }
+
+    private void BinderTitle_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not Control { DataContext: RecentBinderItemViewModel item } || DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            vm.ApplyBinderRename(item, item.EditText);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            item.IsEditing = false; // discard the buffer; Title is untouched
+            e.Handled = true;
+        }
+    }
 
     private void Attachment_DoubleTapped(object? sender, TappedEventArgs e)
     {
@@ -156,10 +221,10 @@ public partial class MainWindow : Window
 
         switch (action)
         {
-            case ShortcutAction.NewNotebook: return Run(vm.NewNotebookCommand);
-            case ShortcutAction.OpenNotebook: return Run(vm.OpenNotebookCommand);
+            case ShortcutAction.NewBinder: return Run(vm.NewBinderCommand);
+            case ShortcutAction.OpenBinder: return Run(vm.OpenBinderCommand);
             case ShortcutAction.SaveNow: return Run(vm.SaveNowCommand);
-            case ShortcutAction.CloseNotebook: return Run(vm.CloseNotebookCommand);
+            case ShortcutAction.CloseBinder: return Run(vm.CloseBinderCommand);
             case ShortcutAction.NewNote: return Run(vm.NewNoteCommand);
             case ShortcutAction.CycleTextStyle: return Run(vm.CycleTextStyleCommand);
             case ShortcutAction.OpenSettings: return Run(vm.OpenSettingsCommand);

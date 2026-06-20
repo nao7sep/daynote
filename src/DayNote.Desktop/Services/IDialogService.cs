@@ -9,11 +9,11 @@ namespace DayNote.Desktop.Services;
 /// </summary>
 public interface IDialogService
 {
-    /// <summary>Native open picker for an existing notebook. Returns the chosen path or null.</summary>
-    Task<string?> PickNotebookToOpenAsync();
+    /// <summary>Native open picker for an existing binder. Returns the chosen path or null.</summary>
+    Task<string?> PickBinderToOpenAsync();
 
-    /// <summary>Native save picker for a new notebook. Returns the chosen path or null.</summary>
-    Task<string?> PickNotebookToCreateAsync();
+    /// <summary>Native save picker for a new binder. Returns the chosen path or null.</summary>
+    Task<string?> PickBinderToCreateAsync();
 
     /// <summary>Native open picker for attachment files. Returns the chosen paths (possibly empty).</summary>
     Task<IReadOnlyList<string>> PickAttachmentsAsync();
@@ -33,11 +33,8 @@ public interface IDialogService
     /// <summary>The custom settings dialog; mutates <paramref name="config"/> and returns true if applied.</summary>
     Task<bool> ShowSettingsAsync(AppConfig config);
 
-    /// <summary>Asks how to handle a notebook already locked by another instance.</summary>
-    Task<LockedNotebookChoice> AskLockedNotebookAsync(string notebookName);
-
     /// <summary>Asks how to handle an external modification detected against unsaved edits.</summary>
-    Task<ExternalChangeChoice> AskExternalChangeAsync(string notebookName, ExternalChange change);
+    Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, ExternalChange change);
 
     /// <summary>Opens a file with the operating system's default handler.</summary>
     Task OpenPathExternallyAsync(string path);

@@ -6,7 +6,7 @@ using DayNote.Core.Time;
 namespace DayNote.Core.Toml;
 
 /// <summary>
-/// Emits a notebook as canonical <c>.daynote</c> TOML text. This writer — not Tomlyn's serializer
+/// Emits a binder as canonical <c>.daynote</c> TOML text. This writer — not Tomlyn's serializer
 /// — owns the output shape so files are deterministic and diffs stay minimal:
 ///
 /// <list type="bullet">
@@ -20,20 +20,21 @@ namespace DayNote.Core.Toml;
 ///
 /// Output is UTF-8 (written without a BOM by the storage layer) with LF line endings and a trailing newline.
 /// </summary>
-public static class NotebookTomlWriter
+public static class BinderTomlWriter
 {
     private const string LiteralDelimiter = "'''";
 
-    public static string Write(Notebook notebook)
+    public static string Write(Binder binder)
     {
         var builder = new StringBuilder();
 
-        AppendBasic(builder, "id", notebook.Id);
-        AppendBasic(builder, "title", TextCleanup.SingleLine(notebook.Title));
-        AppendTimestamp(builder, "created", notebook.Created);
-        AppendTimestamp(builder, "modified", notebook.Modified);
+        // The binder has no title line — its display title is a local label kept in app state, not
+        // carried in the file (a collection's title does not travel to other machines).
+        AppendBasic(builder, "id", binder.Id);
+        AppendTimestamp(builder, "created", binder.Created);
+        AppendTimestamp(builder, "modified", binder.Modified);
 
-        foreach (var note in notebook.Notes)
+        foreach (var note in binder.Notes)
         {
             builder.Append('\n');
             builder.Append("[[note]]\n");

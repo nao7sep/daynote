@@ -38,11 +38,8 @@
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,8" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding NotebookTitle}" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
-                    <Border Background="{StaticResource Utility}" CornerRadius="4" Padding="6,2"
-                            VerticalAlignment="Center" IsVisible="{Binding IsReadOnly}">
-                        <TextBlock Text="read-only" FontSize="11"/>
-                    </Border>
+                    <!-- The app name, always — never the open binder's title (that shows, highlighted, in the list). -->
+                    <TextBlock Text="DayNote" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
                     <!-- Settings / Shortcuts / About live in a hamburger menu, matching the fleet. -->
@@ -83,35 +80,43 @@
                 <ColumnDefinition Width="260" MinWidth="170"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Recent notebooks -->
+            <!-- Recent binders -->
             <Border x:Name="RecentPane" Grid.Column="0" Classes="pane">
                 <DockPanel>
                     <Border DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="Notebooks" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="Binders" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                                <Button Content="New" Classes="accent" Command="{Binding NewNotebookCommand}"/>
-                                <Button Content="Open" Classes="utility" Command="{Binding OpenNotebookCommand}"/>
+                                <Button Content="New" Classes="accent" Command="{Binding NewBinderCommand}"/>
+                                <Button Content="Open" Classes="utility" Command="{Binding OpenBinderCommand}"/>
                             </StackPanel>
                         </Grid>
                     </Border>
                     <DockPanel Margin="10">
                         <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding RecentFilter}" Margin="0,0,0,8"/>
-                        <!-- Selecting a notebook opens it (single click or arrow key); no double-click needed. -->
-                        <ListBox x:Name="RecentList" ItemsSource="{Binding RecentNotebooks}"
+                        <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
+                        <ListBox x:Name="RecentList" ItemsSource="{Binding RecentBinders}"
                                  SelectedItem="{Binding SelectedRecent}">
                             <ListBox.ItemTemplate>
-                                <DataTemplate DataType="vm:RecentNotebookItemViewModel">
-                                    <Grid ColumnDefinitions="*,Auto">
+                                <DataTemplate DataType="vm:RecentBinderItemViewModel">
+                                    <!-- Primary label is the binder title (capitalized, human-friendly); the path
+                                         below shows the lowercase file. Double-tap the row to rename the title. -->
+                                    <Grid ColumnDefinitions="*,Auto" Background="Transparent" DoubleTapped="BinderRow_DoubleTapped">
                                         <StackPanel Spacing="2">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding Directory}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                            <Panel>
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                           IsVisible="{Binding !IsEditing}"/>
+                                                <TextBox Text="{Binding EditText}" IsVisible="{Binding IsEditing}"
+                                                         FontWeight="SemiBold" Padding="2,0" MinHeight="0"
+                                                         LostFocus="BinderTitle_LostFocus" KeyDown="BinderTitle_KeyDown"/>
+                                            </Panel>
+                                            <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="CharacterEllipsis"
                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                         </StackPanel>
-                                        <!-- Close affordance on the open notebook's row (revealed on hover/selection),
-                                             replacing the old separate "Close notebook" button. -->
-                                        <Button Grid.Column="1" Classes="rowAction" Click="CloseNotebookRow_Click"
-                                                IsVisible="{Binding IsCurrent}" ToolTip.Tip="Close notebook">
+                                        <!-- Remove from the list (revealed on hover/selection). If it's the open
+                                             binder, this closes it (flushing edits) first; closing == forgetting. -->
+                                        <Button Grid.Column="1" Classes="rowAction" Click="RemoveBinderRow_Click"
+                                                ToolTip.Tip="Remove from list">
                                             <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
                                         </Button>
@@ -132,7 +137,7 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Notes" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             <Button Grid.Column="1" Content="New" Classes="accent"
-                                    Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasNotebook}"/>
+                                    Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasBinder}"/>
                         </Grid>
                     </Border>
                     <DockPanel Margin="10">

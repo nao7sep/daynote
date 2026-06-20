@@ -1,20 +1,20 @@
 # DayNote
 
-A cross-platform desktop application, with macOS as the primary target, for managing many plain-text notes organized into **notebooks**. DayNote is persistence-first: everything written is intended to be kept, so the live data files are the source of truth. A daily-journal workflow is the intended direction; what is implemented today is the flat two-level model below (notebooks contain notes, with no date-based grouping yet).
+A cross-platform desktop application, with macOS as the primary target, for managing many plain-text notes organized into **binders**. DayNote is persistence-first: everything written is intended to be kept, so the live data files are the source of truth. A daily-journal workflow is the intended direction; what is implemented today is the flat two-level model below (binders contain notes, with no date-based grouping yet).
 
-DayNote is the successor to *quickdeck*, porting its proven mechanisms and generalizing quickdeck's flat panes into a two-level model of **notebooks** containing **notes**.
+DayNote is the successor to *quickdeck*, porting its proven mechanisms and generalizing quickdeck's flat panes into a two-level model of **binders** containing **notes**.
 
 > **Status:** early development (0.1.0). DayNote is a work in progress; the data formats, APIs, and feature set may change without notice while the version stays in the 0.x range. No backward-compatibility guarantees are made before 1.0.
 
 ## Domain model
 
-- **Notebook** — one `.daynote` file (TOML); an ordered collection of notes plus metadata.
+- **Binder** — one `.daynote` file (TOML); an ordered collection of notes plus metadata.
 - **Note** — a single text entry: identity, title, timestamps, attachment references, body.
-- **Attachment** — a file associated with a note, stored beside the notebook.
+- **Attachment** — a file associated with a note, stored beside the binder.
 
 ## Persistence stores
 
-1. Notebook data files (`.daynote`, TOML) — human-owned and portable.
+1. Binder data files (`.daynote`, TOML) — human-owned and portable.
 2. Application configuration and UI state (JSON under `~/.daynote/`).
 3. Logs (`~/.daynote/logs/`) — one JSON Lines file per launch, named with the UTC start stamp and nothing else (`yyyymmdd-hhmmss-utc.log`) and kept indefinitely; logs are never pruned or rotated.
 

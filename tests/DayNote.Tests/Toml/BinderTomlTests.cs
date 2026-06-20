@@ -9,17 +9,16 @@ namespace DayNote.Tests.Toml;
 /// The writer owns the canonical on-disk shape and the reader must round-trip it losslessly, since
 /// the live files are the source of truth — a serialization bug here silently corrupts user data.
 /// </summary>
-public sealed class NotebookTomlTests
+public sealed class BinderTomlTests
 {
     [Fact]
     public void Round_trip_preserves_every_field()
     {
-        var original = SampleNotebook();
+        var original = SampleBinder();
 
-        var restored = NotebookTomlReader.Read(NotebookTomlWriter.Write(original));
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(original));
 
         Assert.Equal(original.Id, restored.Id);
-        Assert.Equal(original.Title, restored.Title);
         Assert.Equal(original.Created, restored.Created);
         Assert.Equal(original.Modified, restored.Modified);
         Assert.Equal(original.Notes.Count, restored.Notes.Count);
@@ -41,48 +40,50 @@ public sealed class NotebookTomlTests
     [Fact]
     public void Write_is_deterministic()
     {
-        var notebook = SampleNotebook();
-        Assert.Equal(NotebookTomlWriter.Write(notebook), NotebookTomlWriter.Write(notebook));
+        var binder = SampleBinder();
+        Assert.Equal(BinderTomlWriter.Write(binder), BinderTomlWriter.Write(binder));
     }
 
     [Fact]
     public void Write_emits_keys_in_canonical_order()
     {
-        var text = NotebookTomlWriter.Write(SampleNotebook());
+        var text = BinderTomlWriter.Write(SampleBinder());
 
         Assert.StartsWith("id = ", text);
         var noteStart = text.IndexOf("[[note]]", StringComparison.Ordinal);
-        AssertInOrder(text[..noteStart], "id =", "title =", "created =", "modified =");
+        // The binder has no title line (its title is local app state, not stored in the file).
+        Assert.DoesNotContain("title =", text[..noteStart]);
+        AssertInOrder(text[..noteStart], "id =", "created =", "modified =");
         AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "status =", "attachments =", "body =");
     }
 
     [Fact]
     public void Write_ends_with_a_trailing_newline()
     {
-        Assert.EndsWith("\n", NotebookTomlWriter.Write(SampleNotebook()));
+        Assert.EndsWith("\n", BinderTomlWriter.Write(SampleBinder()));
     }
 
     [Fact]
     public void Body_containing_the_literal_delimiter_round_trips_via_the_basic_string_fallback()
     {
-        var notebook = OneNote(body: "code block:\n''' not a real fence '''\nend");
+        var binder = OneNote(body: "code block:\n''' not a real fence '''\nend");
 
-        var text = NotebookTomlWriter.Write(notebook);
+        var text = BinderTomlWriter.Write(binder);
         // The literal-string form would be closed early by the embedded ''' , so the writer must
         // switch this one body to an escaped basic multiline string.
         Assert.Contains("body = \"\"\"", text);
         Assert.DoesNotContain("body = '''", text);
 
-        var restored = NotebookTomlReader.Read(text);
+        var restored = BinderTomlReader.Read(text);
         Assert.Equal("code block:\n''' not a real fence '''\nend", restored.Notes[0].Body);
     }
 
     [Fact]
     public void Body_with_backslashes_and_quotes_round_trips_verbatim()
     {
-        var notebook = OneNote(body: "path C:\\temp \"quoted\" and a tab\there");
+        var binder = OneNote(body: "path C:\\temp \"quoted\" and a tab\there");
 
-        var restored = NotebookTomlReader.Read(NotebookTomlWriter.Write(notebook));
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
 
         Assert.Equal("path C:\\temp \"quoted\" and a tab\there", restored.Notes[0].Body);
     }
@@ -90,18 +91,18 @@ public sealed class NotebookTomlTests
     [Fact]
     public void Empty_body_round_trips_as_empty()
     {
-        var notebook = OneNote(body: string.Empty);
+        var binder = OneNote(body: string.Empty);
 
-        var text = NotebookTomlWriter.Write(notebook);
+        var text = BinderTomlWriter.Write(binder);
         Assert.Contains("body = ''", text);
-        Assert.Equal(string.Empty, NotebookTomlReader.Read(text).Notes[0].Body);
+        Assert.Equal(string.Empty, BinderTomlReader.Read(text).Notes[0].Body);
     }
 
     [Fact]
     public void Title_is_normalized_to_a_single_line()
     {
         // A pasted multi-line title is flattened to one line on the way through the TOML boundary.
-        var restored = NotebookTomlReader.Read(NotebookTomlWriter.Write(OneNote(title: "  Hello\nWorld  ")));
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(OneNote(title: "  Hello\nWorld  ")));
 
         Assert.Equal("Hello World", restored.Notes[0].Title);
     }
@@ -109,9 +110,9 @@ public sealed class NotebookTomlTests
     [Fact]
     public void Non_ascii_text_round_trips()
     {
-        var notebook = OneNote(title: "日本語のメモ", body: "一行目\n二行目 — em dash & emoji 😀");
+        var binder = OneNote(title: "日本語のメモ", body: "一行目\n二行目 — em dash & emoji 😀");
 
-        var restored = NotebookTomlReader.Read(NotebookTomlWriter.Write(notebook));
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
 
         Assert.Equal("日本語のメモ", restored.Notes[0].Title);
         Assert.Equal("一行目\n二行目 — em dash & emoji 😀", restored.Notes[0].Body);
@@ -129,26 +130,27 @@ public sealed class NotebookTomlTests
             "id = \"n1\"\n" +
             "body = '''\nhello\n'''\n";
 
-        var notebook = NotebookTomlReader.Read(text);
+        var binder = BinderTomlReader.Read(text);
 
-        Assert.Equal("nb1", notebook.Id);
-        Assert.Equal(new DateTimeOffset(2026, 6, 3, 14, 23, 5, 482, TimeSpan.Zero), notebook.Created);
+        Assert.Equal("nb1", binder.Id);
+        Assert.Equal(new DateTimeOffset(2026, 6, 3, 14, 23, 5, 482, TimeSpan.Zero), binder.Created);
         // No modified key: it must fall back to load time, never default(DateTimeOffset) (year 0001),
         // which would corrupt chronological ordering.
-        Assert.True(notebook.Modified.Year > 2000);
-        Assert.Equal(string.Empty, notebook.Notes[0].Title);
-        Assert.Equal("hello", notebook.Notes[0].Body);
+        Assert.True(binder.Modified.Year > 2000);
+        Assert.Equal(string.Empty, binder.Notes[0].Title);
+        Assert.Equal("hello", binder.Notes[0].Body);
     }
 
     [Fact]
     public void Reader_matches_keys_case_insensitively()
     {
-        const string text = "ID = \"nb1\"\nTITLE = \"Caps\"\n";
+        const string text = "ID = \"nb1\"\n\n[[NOTE]]\nID = \"n1\"\nTITLE = \"Caps\"\nBODY = ''\n";
 
-        var notebook = NotebookTomlReader.Read(text);
+        var binder = BinderTomlReader.Read(text);
 
-        Assert.Equal("nb1", notebook.Id);
-        Assert.Equal("Caps", notebook.Title);
+        Assert.Equal("nb1", binder.Id);
+        Assert.Equal("n1", binder.Notes[0].Id);
+        Assert.Equal("Caps", binder.Notes[0].Title);
     }
 
     [Fact]
@@ -157,15 +159,15 @@ public sealed class NotebookTomlTests
         const string text =
             "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nattachments = [\"a.png\", \"\", \"b.png\"]\nbody = ''\n";
 
-        var notebook = NotebookTomlReader.Read(text);
+        var binder = BinderTomlReader.Read(text);
 
-        Assert.Equal(new[] { "a.png", "b.png" }, notebook.Notes[0].Attachments);
+        Assert.Equal(new[] { "a.png", "b.png" }, binder.Notes[0].Attachments);
     }
 
     [Fact]
     public void Reader_drops_attachment_names_that_are_not_bare_filenames()
     {
-        // A hostile or hand-edited notebook must not be able to point an attachment outside the
+        // A hostile or hand-edited binder must not be able to point an attachment outside the
         // note's assets directory; only the bare filename "a.png" survives. (POSIX separators; on
         // any platform a forward slash, "." and ".." are rejected.)
         const string text =
@@ -173,9 +175,9 @@ public sealed class NotebookTomlTests
             "attachments = [\"a.png\", \"../escape.txt\", \"sub/dir.png\", \"..\", \".\", \"/etc/passwd\"]\n" +
             "body = ''\n";
 
-        var notebook = NotebookTomlReader.Read(text);
+        var binder = BinderTomlReader.Read(text);
 
-        Assert.Equal(new[] { "a.png" }, notebook.Notes[0].Attachments);
+        Assert.Equal(new[] { "a.png" }, binder.Notes[0].Attachments);
     }
 
     [Theory]
@@ -185,12 +187,12 @@ public sealed class NotebookTomlTests
     [InlineData(NoteStatus.Expired, "expired")]
     public void Status_round_trips_with_a_lowercase_token(NoteStatus status, string token)
     {
-        var notebook = OneNote();
-        notebook.Notes[0].Status = status;
+        var binder = OneNote();
+        binder.Notes[0].Status = status;
 
-        var text = NotebookTomlWriter.Write(notebook);
+        var text = BinderTomlWriter.Write(binder);
         Assert.Contains($"status = \"{token}\"", text);
-        Assert.Equal(status, NotebookTomlReader.Read(text).Notes[0].Status);
+        Assert.Equal(status, BinderTomlReader.Read(text).Notes[0].Status);
     }
 
     [Fact]
@@ -200,8 +202,8 @@ public sealed class NotebookTomlTests
         const string missing = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
         const string unknown = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"archived\"\nbody = ''\n";
 
-        Assert.Equal(NoteStatus.Draft, NotebookTomlReader.Read(missing).Notes[0].Status);
-        Assert.Equal(NoteStatus.Draft, NotebookTomlReader.Read(unknown).Notes[0].Status);
+        Assert.Equal(NoteStatus.Draft, BinderTomlReader.Read(missing).Notes[0].Status);
+        Assert.Equal(NoteStatus.Draft, BinderTomlReader.Read(unknown).Notes[0].Status);
     }
 
     [Fact]
@@ -209,13 +211,13 @@ public sealed class NotebookTomlTests
     {
         const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"Published\"\nbody = ''\n";
 
-        Assert.Equal(NoteStatus.Published, NotebookTomlReader.Read(text).Notes[0].Status);
+        Assert.Equal(NoteStatus.Published, BinderTomlReader.Read(text).Notes[0].Status);
     }
 
     [Fact]
     public void Reader_throws_a_format_exception_on_invalid_toml()
     {
-        Assert.Throws<NotebookFormatException>(() => NotebookTomlReader.Read("this is = = not [[[ valid"));
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read("this is = = not [[[ valid"));
     }
 
     private static void AssertInOrder(string text, params string[] tokens)
@@ -229,12 +231,11 @@ public sealed class NotebookTomlTests
         }
     }
 
-    private static Notebook SampleNotebook()
+    private static Binder SampleBinder()
     {
-        var notebook = new Notebook
+        var binder = new Binder
         {
             Id = "V1StGXR8Z5jdHi6Bmy3kT",
-            Title = "My Notebook",
             Created = new DateTimeOffset(2026, 6, 3, 14, 23, 5, 482, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 3, 15, 1, 22, 1, TimeSpan.Zero),
         };
@@ -250,7 +251,7 @@ public sealed class NotebookTomlTests
         };
         first.Attachments.Add("diagram.png");
         first.Attachments.Add("notes.pdf");
-        notebook.Notes.Add(first);
+        binder.Notes.Add(first);
 
         var second = new Note
         {
@@ -261,21 +262,20 @@ public sealed class NotebookTomlTests
             Status = NoteStatus.Published,
             Body = "copies clean, indentation preserved exactly",
         };
-        notebook.Notes.Add(second);
+        binder.Notes.Add(second);
 
-        return notebook;
+        return binder;
     }
 
-    private static Notebook OneNote(string title = "Note", string body = "")
+    private static Binder OneNote(string title = "Note", string body = "")
     {
-        var notebook = new Notebook
+        var binder = new Binder
         {
             Id = "nb1",
-            Title = "Notebook",
             Created = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero),
         };
-        notebook.Notes.Add(new Note
+        binder.Notes.Add(new Note
         {
             Id = "n1",
             Title = title,
@@ -283,6 +283,6 @@ public sealed class NotebookTomlTests
             Modified = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero),
             Body = body,
         });
-        return notebook;
+        return binder;
     }
 }

@@ -1,9 +1,9 @@
 namespace DayNote.Core.Models;
 
 /// <summary>
-/// A single text entry within a notebook. Attachments are referenced by bare filename, matching
+/// A single text entry within a binder. Attachments are referenced by bare filename, matching
 /// the on-disk file format; the files themselves live in
-/// <c>&lt;notebook-basename&gt;-assets/&lt;note-id&gt;/</c> beside the notebook.
+/// <c>&lt;binder-basename&gt;-assets/&lt;note-id&gt;/</c> beside the binder.
 /// </summary>
 public sealed class Note
 {

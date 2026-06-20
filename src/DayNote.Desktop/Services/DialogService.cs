@@ -12,35 +12,36 @@ namespace DayNote.Desktop.Services;
 /// </summary>
 public sealed class DialogService : IDialogService
 {
-    private static readonly FilePickerFileType NotebookType = new("DayNote notebook")
+    private static readonly FilePickerFileType BinderType = new("DayNote binder")
     {
         Patterns = new[] { "*.daynote" },
     };
 
     public Window? Owner { get; set; }
 
-    public async Task<string?> PickNotebookToOpenAsync()
+    public async Task<string?> PickBinderToOpenAsync()
     {
         var owner = RequireOwner();
         var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Open notebook",
+            Title = "Open binder",
             AllowMultiple = false,
-            FileTypeFilter = new[] { NotebookType },
+            FileTypeFilter = new[] { BinderType },
         });
 
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
-    public async Task<string?> PickNotebookToCreateAsync()
+    public async Task<string?> PickBinderToCreateAsync()
     {
         var owner = RequireOwner();
         var file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "New notebook",
+            Title = "New binder",
             DefaultExtension = "daynote",
-            SuggestedFileName = "Notebook",
-            FileTypeChoices = new[] { NotebookType },
+            // Lowercase default filename (the human-friendly capitalized name lives in the binder title).
+            SuggestedFileName = "binder",
+            FileTypeChoices = new[] { BinderType },
         });
 
         return file?.TryGetLocalPath();
@@ -96,21 +97,11 @@ public sealed class DialogService : IDialogService
         return dialog.Applied;
     }
 
-    public async Task<LockedNotebookChoice> AskLockedNotebookAsync(string notebookName)
+    public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, ExternalChange change)
     {
         var dialog = new MessageDialog(
-            "Notebook in use",
-            $"“{notebookName}” is open in another instance of DayNote. You can open it read-only or cancel.",
-            new[] { ("Cancel", "cancel", false), ("Open read-only", "readonly", true) });
-        await dialog.ShowDialog(RequireOwner());
-        return dialog.ResultTag == "readonly" ? LockedNotebookChoice.OpenReadOnly : LockedNotebookChoice.Cancel;
-    }
-
-    public async Task<ExternalChangeChoice> AskExternalChangeAsync(string notebookName, ExternalChange change)
-    {
-        var dialog = new MessageDialog(
-            "Notebook changed on disk",
-            $"“{notebookName}” was modified outside DayNote while you have unsaved edits. " +
+            "Binder changed on disk",
+            $"“{binderName}” was modified outside DayNote while you have unsaved edits. " +
             "Reload from disk and lose your edits, or keep your version (the next save overwrites the file)?",
             new[] { ("Keep my version", "keep", false), ("Reload from disk", "reload", true) });
         await dialog.ShowDialog(RequireOwner());

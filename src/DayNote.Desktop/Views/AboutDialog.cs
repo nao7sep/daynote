@@ -34,7 +34,7 @@ public sealed class AboutDialog : DialogBase
                 },
                 new TextBlock
                 {
-                    Text = "A plain-text notes desktop application: notebooks containing notes. Successor to quickdeck.",
+                    Text = "A plain-text notes desktop application: binders containing notes. Successor to quickdeck.",
                     TextWrapping = TextWrapping.Wrap,
                     FontSize = 13,
                     Margin = new Thickness(0, 0, 0, 16),

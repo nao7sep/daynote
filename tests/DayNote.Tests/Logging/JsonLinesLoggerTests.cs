@@ -73,13 +73,13 @@ public sealed class JsonLinesLoggerTests
         using var temp = new TempDir();
         using (var log = JsonLinesLogger.Open(temp.Path, debugEnabled: false))
         {
-            log.Info("Notebook opened", new { path = "/tmp/x.daynote", noteCount = 3 });
+            log.Info("Binder opened", new { path = "/tmp/x.daynote", noteCount = 3 });
         }
 
         var line = Assert.Single(ReadLines(temp.Path));
         Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$", (string?)line["time"]);
         Assert.Equal("info", (string?)line["level"]);
-        Assert.Equal("Notebook opened", (string?)line["message"]);
+        Assert.Equal("Binder opened", (string?)line["message"]);
         Assert.Equal("/tmp/x.daynote", (string?)line["path"]);
         Assert.Equal(3, (int)line["noteCount"]!);
     }
@@ -121,7 +121,7 @@ public sealed class JsonLinesLoggerTests
 
         using (var log = JsonLinesLogger.Open(temp.Path, debugEnabled: false))
         {
-            log.Error("Failed to save notebook", new { path = "/tmp/x" }, captured);
+            log.Error("Failed to save binder", new { path = "/tmp/x" }, captured);
         }
 
         var error = Assert.Single(ReadLines(temp.Path))["error"]!;

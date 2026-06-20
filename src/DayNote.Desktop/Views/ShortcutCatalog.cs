@@ -8,7 +8,7 @@ namespace DayNote.Desktop.Views;
 /// <summary>Semantic section a shortcut belongs to; drives the modal's section order and headers.</summary>
 public enum ShortcutGroup
 {
-    Notebooks,
+    Binders,
     Notes,
     Editor,
     Navigation,
@@ -21,10 +21,10 @@ public enum ShortcutGroup
 /// </summary>
 public enum ShortcutAction
 {
-    NewNotebook,
-    OpenNotebook,
+    NewBinder,
+    OpenBinder,
     SaveNow,
-    CloseNotebook,
+    CloseBinder,
     NewNote,
     FilterNotes,
     CycleTextStyle,
@@ -56,7 +56,7 @@ public static class ShortcutCatalog
     /// <summary>Section order for the modal; only non-empty groups render.</summary>
     public static readonly IReadOnlyList<ShortcutGroup> GroupOrder =
     [
-        ShortcutGroup.Notebooks,
+        ShortcutGroup.Binders,
         ShortcutGroup.Notes,
         ShortcutGroup.Editor,
         ShortcutGroup.Navigation,
@@ -65,7 +65,7 @@ public static class ShortcutCatalog
 
     public static string GroupHeader(ShortcutGroup group) => group switch
     {
-        ShortcutGroup.Notebooks => "Notebooks",
+        ShortcutGroup.Binders => "Binders",
         ShortcutGroup.Notes => "Notes",
         ShortcutGroup.Editor => "Editor",
         ShortcutGroup.Navigation => "Navigation",
@@ -86,11 +86,11 @@ public static class ShortcutCatalog
         var cmd = CommandModifier(top);
         return new List<ShortcutItem>
         {
-            // Notebooks
-            Command(ShortcutGroup.Notebooks, "New notebook", cmd, shift: false, Key.N, "N", ShortcutAction.NewNotebook),
-            Command(ShortcutGroup.Notebooks, "Open notebook", cmd, shift: false, Key.O, "O", ShortcutAction.OpenNotebook),
-            Command(ShortcutGroup.Notebooks, "Save now", cmd, shift: false, Key.S, "S", ShortcutAction.SaveNow),
-            Command(ShortcutGroup.Notebooks, "Close notebook", cmd, shift: false, Key.W, "W", ShortcutAction.CloseNotebook),
+            // Binders
+            Command(ShortcutGroup.Binders, "New binder", cmd, shift: false, Key.N, "N", ShortcutAction.NewBinder),
+            Command(ShortcutGroup.Binders, "Open binder", cmd, shift: false, Key.O, "O", ShortcutAction.OpenBinder),
+            Command(ShortcutGroup.Binders, "Save now", cmd, shift: false, Key.S, "S", ShortcutAction.SaveNow),
+            Command(ShortcutGroup.Binders, "Close binder", cmd, shift: false, Key.W, "W", ShortcutAction.CloseBinder),
 
             // Notes
             Command(ShortcutGroup.Notes, "New note", cmd, shift: true, Key.N, "N", ShortcutAction.NewNote),
@@ -99,7 +99,7 @@ public static class ShortcutCatalog
             // Editor
             Command(ShortcutGroup.Editor, "Cycle text style", cmd, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),
 
-            // Navigation — owned by the lists; selecting a row switches notebook/note.
+            // Navigation — owned by the lists; selecting a row switches binder/note.
             Display(ShortcutGroup.Navigation, "Move the selection up or down a list", "Up / Down"),
 
             // App

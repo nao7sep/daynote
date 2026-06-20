@@ -1,7 +1,7 @@
 namespace DayNote.Core.Identity;
 
 /// <summary>
-/// Generates note and notebook identifiers: nanoids using the default URL-safe alphabet at
+/// Generates note and binder identifiers: nanoids using the default URL-safe alphabet at
 /// twenty-one characters. Identifiers double as attachment directory names and are compared
 /// case-insensitively for Windows compatibility, so a freshly generated id is checked
 /// case-insensitively against existing ids and regenerated on the (effectively impossible) collision.

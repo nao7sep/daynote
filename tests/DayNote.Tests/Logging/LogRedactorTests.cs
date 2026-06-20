@@ -89,7 +89,7 @@ public sealed class LogRedactorTests
         var root = new JsonObject
         {
             ["message"] = "user supplied token=abc in the form",
-            ["path"] = "/Users/x/.daynote/notebook.daynote",
+            ["path"] = "/Users/x/.daynote/binder.daynote",
             ["nested"] = new JsonObject { ["a"] = 1, ["b"] = true, ["c"] = (string?)null },
         };
         var before = root.ToJsonString();

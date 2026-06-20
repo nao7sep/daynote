@@ -7,7 +7,7 @@ using Xunit;
 namespace DayNote.Tests.Storage;
 
 /// <summary>
-/// Every notebook, config, and state write goes through the atomic writer, so its guarantees matter:
+/// Every binder, config, and state write goes through the atomic writer, so its guarantees matter:
 /// the target ends up with exactly the supplied content (UTF-8, no BOM), an existing file is replaced
 /// in full, and the temp file used for the write-then-rename is never left behind.
 /// </summary>
