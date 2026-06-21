@@ -261,9 +261,15 @@ public partial class MainWindow : Window
         base.OnOpened(e);
         if (DataContext is MainWindowViewModel vm)
         {
+            vm.NoteCreated += OnNoteCreated;
             _ = vm.InitializeAsync();
         }
     }
+
+    // A freshly created note should be ready to type into: move focus to the title (Enter then jumps to
+    // the body, per Title_Submitted). Posted so the editor pane is realized for the new selection first.
+    private void OnNoteCreated(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(() => TitleBox.Focus(), DispatcherPriority.Background);
 
     protected override async void OnClosing(WindowClosingEventArgs e)
     {

@@ -209,6 +209,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         await CloseCurrentAsync(clearSelection: false);
     }
 
+    /// <summary>
+    /// Raised after <see cref="NewNote"/> creates and selects a note, so the view can move keyboard
+    /// focus into the title for immediate typing — a view concern the view model can't reach directly.
+    /// </summary>
+    public event EventHandler? NoteCreated;
+
     // ----- Commands ------------------------------------------------------------------------------
 
     [RelayCommand]
@@ -320,6 +326,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         SelectedNote = Notes.FirstOrDefault(n => n.Note.Id == note.Id);
         MarkDirty(note.Id);
         _log.Info("Created note", new { noteId = note.Id });
+        NoteCreated?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
@@ -1154,10 +1161,37 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     partial void OnSelectedNoteChanged(NoteListItemViewModel? value)
     {
+        // Leaving a note flushes its edits to disk — the same guarantee close and binder-switch already
+        // give — so a completed edit you navigated away from is never lost to a crash; only active typing
+        // sits in the debounce window. The flush is a no-op unless dirty, so browsing costs nothing.
+        FlushPendingSave();
+
         Editor.Load(value?.Note);
         LoadAttachments(value?.Note);
         _state.CurrentNoteId = value?.Note.Id;
         UpdateBinderStatus();
+    }
+
+    /// <summary>
+    /// Persists pending edits immediately at a navigation boundary, mirroring the autosave Tick: stop the
+    /// debounce, save, then reschedule only if the save couldn't complete (e.g. an external-change
+    /// conflict is open). A no-op unless something is dirty. The save runs synchronously in practice
+    /// (<see cref="SaveCurrentAsync"/> has no awaits) and the model already holds the write-through edits,
+    /// so firing it without awaiting is safe.
+    /// </summary>
+    private void FlushPendingSave()
+    {
+        if (!_dirty)
+        {
+            return;
+        }
+
+        _autosaveTimer.Stop();
+        _ = SaveCurrentAsync();
+        if (_dirty)
+        {
+            _autosaveTimer.Start();
+        }
     }
 
     partial void OnSelectedBinderChanged(BinderListItemViewModel? value)
