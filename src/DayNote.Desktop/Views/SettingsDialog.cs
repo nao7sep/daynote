@@ -47,7 +47,10 @@ public sealed class SettingsDialog : DialogBase
         styleActions.Children.Add(Utility("Add", AddStyle));
 
         var styleHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        styleHeader.Children.Add(Label("Text styles"));
+        var styleLabel = Label("Text styles");
+        styleLabel.VerticalAlignment = VerticalAlignment.Bottom; // sit on the baseline of the taller Add button
+        styleLabel.Margin = new Thickness(0, 0, 0, 4);
+        styleHeader.Children.Add(styleLabel);
         Grid.SetColumn(styleActions, 1);
         styleHeader.Children.Add(styleActions);
 
@@ -136,16 +139,20 @@ public sealed class SettingsDialog : DialogBase
         var bold = new CheckBox { Content = "Bold", IsChecked = style.Bold };
         var italic = new CheckBox { Content = "Italic", IsChecked = style.Italic };
 
-        // The default control sits bottom-right: a "Set as default" button that becomes plain "Default"
-        // text once this preset is the chosen one.
+        // The default control sits bottom-right: a "Set as default" button that becomes a colored
+        // "Default" pill once this preset is the chosen one (a pill reads better than plain text here).
         var setDefault = Utility("Set as default", () => MakeDefault(style));
-        var defaultLabel = new TextBlock
+        var defaultLabel = new Border
         {
-            Text = "Default",
-            FontWeight = FontWeight.SemiBold,
-            Foreground = Brush("TextSecondaryBrush"),
-            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = "Default",
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = Brush("AccentForegroundBrush"),
+            },
         };
+        defaultLabel.Classes.Add("pill");
         var remove = Utility("Remove", () => RemoveStyle(style));
 
         var decorations = new StackPanel
@@ -294,19 +301,13 @@ public sealed class SettingsDialog : DialogBase
         UpdateDefaultIndicators();
     }
 
-    /// <summary>Reflects the current default across every card: highlight, the default/Set-as-default
-    /// control, and which cards may be removed (never the default, never the last remaining one).</summary>
+    /// <summary>Reflects the current default across every card: the default pill / Set-as-default
+    /// button, and which cards may be removed (never the default, never the last remaining one).</summary>
     private void UpdateDefaultIndicators()
     {
         foreach (var (style, editor) in _styleEditors)
         {
             var isDefault = ReferenceEquals(style, _defaultStyle);
-            editor.Card.Classes.Remove("selected");
-            if (isDefault)
-            {
-                editor.Card.Classes.Add("selected");
-            }
-
             editor.SetDefault.IsVisible = !isDefault;
             editor.DefaultLabel.IsVisible = isDefault;
             editor.Remove.IsEnabled = !isDefault && _config.TextStyles.Count > 1;
@@ -422,6 +423,6 @@ public sealed class SettingsDialog : DialogBase
         NumericUpDown LineSpacing,
         NumericUpDown Padding,
         Button SetDefault,
-        TextBlock DefaultLabel,
+        Border DefaultLabel,
         Button Remove);
 }

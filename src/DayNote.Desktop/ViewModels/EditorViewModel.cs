@@ -37,6 +37,14 @@ public sealed partial class EditorViewModel : ViewModelBase
     [ObservableProperty]
     private NoteStatus _status = NoteStatus.Draft;
 
+    /// <summary>
+    /// Whether the title and body may be edited. Only a <see cref="NoteStatus.Draft"/> note is editable;
+    /// checked / published / expired notes are immutable until moved back to draft (the status picker
+    /// itself stays enabled so that move is always possible).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isEditable = true;
+
     [ObservableProperty]
     private string _title = string.Empty;
 
@@ -126,6 +134,9 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     partial void OnStatusChanged(NoteStatus value)
     {
+        // Reflect editability even while loading (so opening a non-draft note locks it immediately).
+        IsEditable = value == NoteStatus.Draft;
+
         if (_suppress || _note is null)
         {
             return;

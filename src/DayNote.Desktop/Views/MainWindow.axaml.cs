@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using DayNote.Desktop.ViewModels;
@@ -19,7 +20,76 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+
+        // Files dropped on the attachments pane are added like the Add button, with a hover highlight.
+        AttachPane.AddHandler(DragDrop.DragOverEvent, OnAttachDragOver);
+        AttachPane.AddHandler(DragDrop.DragLeaveEvent, OnAttachDragLeave);
+        AttachPane.AddHandler(DragDrop.DropEvent, OnAttachDrop);
     }
+
+    private void OnAttachDragOver(object? sender, DragEventArgs e)
+    {
+        var accept = DataContext is MainWindowViewModel { Editor.HasNote: true } && e.DataTransfer.Contains(DataFormat.File);
+        e.DragEffects = accept ? DragDropEffects.Copy : DragDropEffects.None;
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.IsAttachmentDropActive = accept;
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnAttachDragLeave(object? sender, DragEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.IsAttachmentDropActive = false;
+        }
+    }
+
+    private void OnAttachDrop(object? sender, DragEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        vm.IsAttachmentDropActive = false;
+        var paths = e.DataTransfer.TryGetFiles()?
+            .OfType<IStorageFile>()
+            .Select(f => f.TryGetLocalPath())
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Select(p => p!)
+            .ToList();
+        if (paths is { Count: > 0 })
+        {
+            vm.AddDroppedFiles(paths);
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnLoaded(object? sender, RoutedEventArgs e)
+    {
+        // Derive the window minimum from the live pane-Grid columns plus the fixed chrome (see
+        // WindowMetrics) rather than a hand-typed constant, so the window can never be shrunk small
+        // enough to hide a pane, the toolbar, or the status bar — and so adding, removing, or
+        // resizing a column moves the minimum with it. Reading the column MinWidths from the live
+        // grid (not a copy) is what keeps the window minimum from drifting away from the columns.
+        // Only the four content columns carry a MinWidth; the splitter columns are Auto with none,
+        // so a 0 MinWidth contributes nothing and is harmless to include.
+        MinWidth = WindowMetrics.MinWidthFor(PaneGrid.ColumnDefinitions.Select(c => c.MinWidth));
+
+        // The tallest pane's content minimum (the editor's, the largest of the four) drives the
+        // height; read it live so the XAML stays the single source of truth.
+        MinHeight = WindowMetrics.MinHeightFor(EditorPaneContentMinHeight());
+    }
+
+    // The editor pane's content root carries the tallest pane MinHeight in MainWindow.axaml; read
+    // it back so WindowMetrics derives the window height from the same value the layout enforces.
+    private double EditorPaneContentMinHeight() =>
+        EditorPane.Child is Control content ? content.MinHeight : 0;
 
     protected override void OnDataContextChanged(EventArgs e)
     {
@@ -29,11 +99,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Window size and position are not remembered (see AppState); only the side-pane widths are.
-        PaneGrid.ColumnDefinitions[0].Width = new GridLength(vm.RecentPaneWidth);
-        PaneGrid.ColumnDefinitions[2].Width = new GridLength(vm.NotesPaneWidth);
-        PaneGrid.ColumnDefinitions[6].Width = new GridLength(vm.AttachmentsPaneWidth);
+        // Window size and position are not remembered (see AppState); only the pane proportions are.
+        // Each saved width is restored as its column's star WEIGHT, so the four content columns keep
+        // their proportions across launches while still auto-shrinking with the window. Flooring the
+        // weight at the column's own MinWidth keeps a stale state.json (e.g. a width saved before a
+        // MinWidth was raised) from starting a pane below its declared minimum — the same minimum the
+        // GridSplitters and the derived window minimum honour.
+        PaneGrid.ColumnDefinitions[0].Width = RestoredPaneWidth(0, vm.RecentPaneWidth);
+        PaneGrid.ColumnDefinitions[2].Width = RestoredPaneWidth(2, vm.NotesPaneWidth);
+        PaneGrid.ColumnDefinitions[4].Width = RestoredPaneWidth(4, vm.EditorPaneWidth);
+        PaneGrid.ColumnDefinitions[6].Width = RestoredPaneWidth(6, vm.AttachmentsPaneWidth);
     }
+
+    private GridLength RestoredPaneWidth(int column, double savedWidth) =>
+        new(Math.Max(savedWidth, PaneGrid.ColumnDefinitions[column].MinWidth), GridUnitType.Star);
 
     protected override void OnOpened(EventArgs e)
     {
@@ -70,6 +149,7 @@ public partial class MainWindow : Window
     {
         vm.RecentPaneWidth = RecentPane.Bounds.Width;
         vm.NotesPaneWidth = NotesPane.Bounds.Width;
+        vm.EditorPaneWidth = EditorPane.Bounds.Width;
         vm.AttachmentsPaneWidth = AttachPane.Bounds.Width;
     }
 

@@ -7,7 +7,7 @@ using DayNote.Core.Time;
 
 namespace DayNote.Desktop.ViewModels;
 
-/// <summary>A row in the notes pane: a note's title, lifecycle status, and an at-a-glance modified time.</summary>
+/// <summary>A row in the notes pane: a note's title, lifecycle status, and its creation time.</summary>
 public sealed partial class NoteListItemViewModel : ObservableObject
 {
     // A label cap well above any pane width; CharacterEllipsis does the visual fit (per text-cleanup-conventions).
@@ -36,11 +36,13 @@ public sealed partial class NoteListItemViewModel : ObservableObject
     [ObservableProperty]
     private IBrush _statusBrush = Brushes.Gray;
 
-    /// <summary>Re-reads the title, status, and modified time from the underlying note.</summary>
+    /// <summary>Re-reads the title, status, and creation time from the underlying note.</summary>
     public void Refresh()
     {
         Title = DisplayLabel();
-        Subtitle = DayNoteTime.ToDisplay(Note.Modified, _displayTimeZone);
+        // Show the creation time consistently (not modified) so the list order (newest-created first)
+        // and the displayed date agree, and a row does not jump its label as it is edited.
+        Subtitle = DayNoteTime.ToDisplay(Note.Created, _displayTimeZone);
         StatusLabel = StatusText(Note.Status);
         StatusBrush = StatusColor(Note.Status);
     }

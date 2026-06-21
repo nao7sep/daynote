@@ -50,6 +50,7 @@
             <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}"/>
             <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}"/>
             <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}"/>
+            <SolidColorBrush x:Key="AccentForegroundBrush" Color="{StaticResource AccentForeground}"/>
             <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}"/>
             <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource Warning}"/>
             <SolidColorBrush x:Key="ListBackgroundBrush" Color="{StaticResource ListBackground}"/>
@@ -161,6 +162,8 @@
             <Setter Property="Background" Value="{StaticResource Utility}"/>
         </Style>
 
+        <!-- Text-style preset cards are uniform; the default one is marked by its "Default" pill,
+             not a whole-card highlight (that read as a selection). -->
         <Style Selector="Border.stylePreset">
             <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
@@ -168,9 +171,21 @@
             <Setter Property="CornerRadius" Value="7"/>
             <Setter Property="Padding" Value="12"/>
         </Style>
-        <Style Selector="Border.stylePreset.selected">
-            <Setter Property="Background" Value="{StaticResource ListSelectionBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+
+        <!-- A small colored pill (e.g. the "Default" text-style marker); its text is set by the caller. -->
+        <Style Selector="Border.pill">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="9,2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- A muted, neutral badge (e.g. the editor's "Read-only" hint). -->
+        <Style Selector="Border.badge">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
         <!-- Subtle resting border on text inputs; the theme's accent focus indicator still shows on focus. -->
@@ -179,6 +194,21 @@
         </Style>
         <Style Selector="ComboBox, NumericUpDown">
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        </Style>
+
+        <!-- A read-only text field (a non-draft note's title/body) is shown recessed, so it visibly
+             reads as not-editable. :is(TextBox) also covers the ComposingTextBox title field. -->
+        <Style Selector=":is(TextBox)[IsReadOnly=True] /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
+        </Style>
+
+        <!-- Slim, rounded scroll bars per the window-chrome-conventions (matches the fleet, e.g. scriptdock):
+             a transparent track and a rounded-pill thumb instead of the thick square OS/Fluent default. -->
+        <Style Selector="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="ScrollBar /template/ Thumb">
+            <Setter Property="CornerRadius" Value="5"/>
         </Style>
     </Application.Styles>
 </Application>

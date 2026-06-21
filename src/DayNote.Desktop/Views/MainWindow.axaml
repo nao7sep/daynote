@@ -6,9 +6,14 @@
         x:DataType="vm:MainWindowViewModel"
         Title="DayNote"
         Width="1200" Height="800"
-        MinWidth="900" MinHeight="520"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource AppBackgroundBrush}">
+        Background="{StaticResource AppBackgroundBrush}"
+        RequestedThemeVariant="Dark"><!-- DayNote is dark; forcing the window's theme variant makes
+        its ActualThemeVariant Dark so Avalonia's macOS backend paints a dark native title bar
+        instead of inheriting the OS appearance. CAVEAT: the native title-bar color cannot be
+        verified in this headless build — it must be VISUALLY VERIFIED on a light-mode Mac. If it
+        still renders light there, the follow-up (not done here, as it needs native interop) is to
+        force NSApplication.appearance = darkAqua at startup. -->
 
     <!-- Accelerators are driven from ShortcutCatalog in code-behind so the command key resolves to
          Cmd on macOS and Ctrl on Windows (a static XAML gesture cannot do that). -->
@@ -32,9 +37,13 @@
     </Window.Styles>
 
     <Panel>
-    <DockPanel>
+    <!-- Three reserved tracks (toolbar / panes / status bar) so the fixed chrome bars each own an
+         auto-sized row and the star-sized pane row can never grow past its track and overlap the
+         status bar (a DockPanel fill child can — see the window-chrome conventions). The window's
+         minimum height (set in code-behind from WindowMetrics) reserves all three. -->
+    <Grid RowDefinitions="Auto,*,Auto">
         <!-- Toolbar -->
-        <Border DockPanel.Dock="Top" Background="{StaticResource SurfaceBrush}"
+        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,8" VerticalAlignment="Center">
@@ -61,28 +70,51 @@
         </Border>
 
         <!-- Status bar -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource SurfaceBrush}"
+        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
-            <!-- App-wide state only (per-entry info lives in the editor header). The transient
-                 "Saved" message clears itself shortly after a save, like quickdeck. -->
-            <TextBlock Text="{Binding SaveStateText}" Margin="12,5" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            <!-- Save state (transient "Saved" auto-clears, like quickdeck) on the left; the open note's
+                 metadata on the right. This is a single-document app whose editor pane is narrow between
+                 the side panes, so the status bar's spare width is the natural home for the metadata. -->
+            <Grid ColumnDefinitions="Auto,*" Margin="12,5">
+                <TextBlock Text="{Binding SaveStateText}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" Margin="16,0,0,0"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            IsVisible="{Binding Editor.HasNote}">
+                    <TextBlock Text="{Binding Editor.CreatedText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.WordsText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.CharsText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.XCountText}" FontSize="12"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Classes.over="{Binding !Editor.IsWithinXLimit}"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Four panes -->
-        <Grid x:Name="PaneGrid" Margin="4">
+        <Grid x:Name="PaneGrid" Grid.Row="1" Margin="4">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" MinWidth="150"/>
+                <!-- All four content columns are star-sized (the number is the default proportion),
+                     so they auto-shrink with the window down to their MinWidth rather than staying a
+                     fixed width and pushing a pane off the right edge. The derived window minimum
+                     sums these MinWidths, so at the minimum every pane sits at exactly its MinWidth
+                     and none is clipped; GridSplitters resize by redistributing the star weights,
+                     which persist across launches (see AppState / OnDataContextChanged). -->
+                <ColumnDefinition Width="220*" MinWidth="150"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="260" MinWidth="170"/>
+                <ColumnDefinition Width="260*" MinWidth="170"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*" MinWidth="320"/>
+                <ColumnDefinition Width="430*" MinWidth="320"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="260" MinWidth="170"/>
+                <ColumnDefinition Width="260*" MinWidth="170"/>
             </Grid.ColumnDefinitions>
 
             <!-- Recent binders -->
             <Border x:Name="RecentPane" Grid.Column="0" Classes="pane">
-                <DockPanel>
+                <!-- Real content minimum (a side pane needs header + filter + a few rows). The
+                     window minimum derives the editor pane's taller minimum (300); the side panes
+                     get 200 so they are never crushed below a usable height. -->
+                <DockPanel MinHeight="200">
                     <Border DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Binders" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -110,7 +142,8 @@
                                                          FontWeight="SemiBold" Padding="2,0" MinHeight="0"
                                                          LostFocus="BinderTitle_LostFocus" KeyDown="BinderTitle_KeyDown"/>
                                             </Panel>
-                                            <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                            <!-- Truncate the START of the path so the file name (the useful end) stays visible. -->
+                                            <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="PrefixCharacterEllipsis"
                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                         </StackPanel>
                                         <!-- Remove from the list (revealed on hover/selection). If it's the open
@@ -132,7 +165,7 @@
 
             <!-- Notes -->
             <Border x:Name="NotesPane" Grid.Column="2" Classes="pane">
-                <DockPanel>
+                <DockPanel MinHeight="200">
                     <Border DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Notes" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -145,11 +178,13 @@
                         <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="vm:NoteListItemViewModel">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <StackPanel Spacing="2">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                        <!-- A status-colored stripe makes each row read by lifecycle state at a glance. -->
+                                        <Border Width="3" CornerRadius="1.5" VerticalAlignment="Stretch"
+                                                Background="{Binding StatusBrush}"/>
+                                        <StackPanel Grid.Column="1" Spacing="2">
                                             <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <!-- Lifecycle status, colored per state, so list items read differently by state. -->
                                                 <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold"
                                                            Foreground="{Binding StatusBrush}"/>
                                                 <TextBlock Text="{Binding Subtitle}" FontSize="11"
@@ -157,7 +192,7 @@
                                             </StackPanel>
                                         </StackPanel>
                                         <!-- Per-row delete, revealed on hover/selection (replaces the Delete button). -->
-                                        <Button Grid.Column="1" Classes="rowAction" Click="DeleteNoteRow_Click" ToolTip.Tip="Delete note">
+                                        <Button Grid.Column="2" Classes="rowAction" Click="DeleteNoteRow_Click" ToolTip.Tip="Delete note">
                                             <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
                                         </Button>
@@ -172,40 +207,42 @@
             <GridSplitter Grid.Column="3" Width="6" Background="Transparent" ResizeDirection="Columns"/>
 
             <!-- Editor -->
-            <Border Grid.Column="4" Classes="pane">
-                <Panel>
+            <Border x:Name="EditorPane" Grid.Column="4" Classes="pane">
+                <!-- The editor is the tallest pane: it needs room for the header (title + status +
+                     the metadata wrap) plus a usable body. Its 300 is the content minimum that
+                     WindowMetrics folds into the window's minimum height (the tallest pane wins). -->
+                <Panel MinHeight="300">
                     <TextBlock Text="Select a note, or create one." HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{StaticResource TextSecondaryBrush}" IsVisible="{Binding !Editor.HasNote}"/>
                     <DockPanel IsVisible="{Binding Editor.HasNote}">
-                        <!-- Editor header: the title field and per-entry metadata, separated from the body
-                             by a borderline (consistent with the other panes). The wide editor pane gives
-                             the metadata room, so it no longer crowds a cramped footer. -->
-                        <Border DockPanel.Dock="Top" Classes="paneHeader">
-                            <StackPanel Spacing="8">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <ctl:ComposingTextBox x:Name="TitleBox"
-                                                          Text="{Binding Editor.Title}" PlaceholderText="Title…"
-                                                          FontSize="18" FontWeight="SemiBold" AcceptsReturn="False"
-                                                          Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
-                                    <!-- Lifecycle status picker: draft / checked / published / expired. -->
-                                    <ComboBox Grid.Column="1" Margin="8,0,0,0" MinWidth="130" VerticalAlignment="Center"
-                                              ItemsSource="{Binding Editor.StatusOptions}"
-                                              SelectedItem="{Binding Editor.Status}"
-                                              ToolTip.Tip="Lifecycle status"/>
-                                </Grid>
-                                <WrapPanel>
-                                    <TextBlock Text="{Binding Editor.CreatedText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock Text="{Binding Editor.WordsText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock Text="{Binding Editor.CharsText}" FontSize="11" Margin="0,0,16,2" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock Text="{Binding Editor.XCountText}" FontSize="11" Margin="0,0,16,2"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                               Classes.over="{Binding !Editor.IsWithinXLimit}"/>
-                                </WrapPanel>
-                            </StackPanel>
-                        </Border>
-                        <TextBox x:Name="BodyBox" Margin="10"
+                        <!-- Header: title + lifecycle status in one row, then the body directly below (no
+                             borderline — the metadata that used to sit here now lives in the status bar).
+                             A non-draft note's title and body are read-only until moved back to draft. -->
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="10,10,10,6">
+                            <ctl:ComposingTextBox x:Name="TitleBox"
+                                                  Text="{Binding Editor.Title}" PlaceholderText="Title…"
+                                                  FontSize="18" FontWeight="SemiBold" AcceptsReturn="False"
+                                                  IsReadOnly="{Binding !Editor.IsEditable}"
+                                                  Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
+                            <!-- Shown when the note is not Draft: the title/body are read-only until it is. -->
+                            <Border Grid.Column="1" Classes="badge" Margin="8,0,0,0" IsVisible="{Binding !Editor.IsEditable}"
+                                    ToolTip.Tip="This note is read-only — set its status to Draft to edit.">
+                                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                    <Path Width="11" Height="12" Stretch="Uniform" Fill="Transparent"
+                                          Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.3"
+                                          Data="M2,6 h8 v6 h-8 z M3.5,6 V4 a2.5,2.5 0 0 1 5,0 V6"/>
+                                    <TextBlock Text="Read-only" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+                            <ComboBox Grid.Column="2" Margin="8,0,0,0" MinWidth="130" VerticalAlignment="Center"
+                                      ItemsSource="{Binding Editor.StatusOptions}"
+                                      SelectedItem="{Binding Editor.Status}"
+                                      ToolTip.Tip="Lifecycle status"/>
+                        </Grid>
+                        <TextBox x:Name="BodyBox" Margin="10,0,10,10"
                                  Text="{Binding Editor.Body}"
+                                 IsReadOnly="{Binding !Editor.IsEditable}"
                                  AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
                                  FontFamily="{Binding EditorFontFamily}" FontSize="{Binding EditorFontSize}"
                                  LineHeight="{Binding EditorLineHeight}" Padding="{Binding EditorPadding}"
@@ -219,8 +256,8 @@
             <GridSplitter Grid.Column="5" Width="6" Background="Transparent" ResizeDirection="Columns"/>
 
             <!-- Attachments -->
-            <Border x:Name="AttachPane" Grid.Column="6" Classes="pane">
-                <DockPanel>
+            <Border x:Name="AttachPane" Grid.Column="6" Classes="pane" DragDrop.AllowDrop="True">
+                <DockPanel MinHeight="200">
                     <Border DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Attachments" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -229,46 +266,49 @@
                         </Grid>
                     </Border>
                     <Panel Margin="10">
+                        <!-- A bordered list like the binders/notes lists; rows have no inner border. -->
+                        <ListBox ItemsSource="{Binding Attachments}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:AttachmentItemViewModel">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" DoubleTapped="Attachment_DoubleTapped">
+                                        <Border Width="44" Height="44" CornerRadius="4" ClipToBounds="True"
+                                                Background="{StaticResource AppBackgroundBrush}">
+                                            <Panel>
+                                                <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" IsVisible="{Binding HasThumbnail}"/>
+                                                <!-- Generic document (folded corner) for non-images and failed previews. -->
+                                                <Path Width="22" Height="28" Stretch="Uniform"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5" Fill="Transparent"
+                                                      Data="M2,1 H18 L26,9 V33 H2 Z M18,1 V9 H26" IsVisible="{Binding ShowFilePlaceholder}"/>
+                                            </Panel>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding DetailsText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <!-- Same hover-✕ remove affordance as the other lists. -->
+                                        <Button Grid.Column="2" Classes="rowAction" Click="RemoveAttachment_Click" ToolTip.Tip="Remove attachment">
+                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                         <TextBlock Text="No attachments yet." HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Foreground="{StaticResource TextSecondaryBrush}" IsVisible="{Binding ShowAttachmentsEmptyHint}"/>
-                        <ScrollViewer>
-                        <ItemsControl ItemsSource="{Binding Attachments}" HorizontalAlignment="Stretch">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="vm:AttachmentItemViewModel">
-                                    <Border Margin="0,0,0,6" Padding="7" CornerRadius="6"
-                                            Background="{StaticResource ListBackgroundBrush}"
-                                            DoubleTapped="Attachment_DoubleTapped">
-                                        <Grid ColumnDefinitions="52,*,Auto" ColumnSpacing="9">
-                                            <Border Width="52" Height="52" CornerRadius="4" ClipToBounds="True"
-                                                    Background="{StaticResource AppBackgroundBrush}">
-                                                <Panel>
-                                                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"
-                                                           IsVisible="{Binding HasThumbnail}"/>
-                                                    <!-- Generic document with a folded corner for non-images and failed previews. -->
-                                                    <Path Width="28" Height="34" Stretch="Uniform"
-                                                          HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                          Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
-                                                          Fill="Transparent"
-                                                          Data="M2,1 H18 L26,9 V33 H2 Z M18,1 V9 H26"
-                                                          IsVisible="{Binding ShowFilePlaceholder}"/>
-                                                </Panel>
-                                            </Border>
-                                            <TextBlock Grid.Column="1" Text="{Binding FileName}"
-                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                            <Button Grid.Column="2" Content="Remove" Classes="destructive"
-                                                    FontSize="10" Padding="7,3" VerticalAlignment="Center"
-                                                    Click="RemoveAttachment_Click"/>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        </ScrollViewer>
+                        <!-- Drag-and-drop hover affordance, shown while files are dragged over the pane. -->
+                        <Border IsVisible="{Binding IsAttachmentDropActive}" IsHitTestVisible="False"
+                                Background="{StaticResource SurfaceBrush}" Opacity="0.92"
+                                BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="6">
+                            <TextBlock Text="Drop files to attach" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        </Border>
                     </Panel>
                 </DockPanel>
             </Border>
         </Grid>
-    </DockPanel>
+    </Grid>
 
     <!-- Toast overlay: top-right, below the toolbar; auto-dismissing cards from the Toasts collection. -->
     <ItemsControl ItemsSource="{Binding Toasts}"

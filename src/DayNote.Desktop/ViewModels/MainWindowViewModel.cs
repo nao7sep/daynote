@@ -129,6 +129,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _showAttachmentsEmptyHint;
 
+    /// <summary>True while files are being dragged over the attachments pane (drives the drop highlight).</summary>
+    [ObservableProperty]
+    private bool _isAttachmentDropActive;
+
     [ObservableProperty]
     private string _binderTitle = "DayNote";
 
@@ -154,6 +158,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private double _notesPaneWidth = 260;
+
+    [ObservableProperty]
+    private double _editorPaneWidth = 430;
 
     [ObservableProperty]
     private double _attachmentsPaneWidth = 260;
@@ -375,8 +382,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var note = SelectedNote.Note;
         var files = await _dialogs.PickAttachmentsAsync();
+        AddAttachmentFiles(files);
+    }
+
+    /// <summary>Adds files dropped onto the attachments pane (same path as the Add button).</summary>
+    public void AddDroppedFiles(IReadOnlyList<string> files) => AddAttachmentFiles(files);
+
+    private void AddAttachmentFiles(IReadOnlyList<string> files)
+    {
+        if (!IsReady || _current is null || SelectedNote is null)
+        {
+            return;
+        }
+
+        var note = SelectedNote.Note;
         if (files.Count == 0 || !IsLiveNote(note))
         {
             return;
@@ -1204,6 +1224,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         RecentPaneWidth = _state.RecentPaneWidth;
         NotesPaneWidth = _state.NotesPaneWidth;
+        EditorPaneWidth = _state.EditorPaneWidth;
         AttachmentsPaneWidth = _state.AttachmentsPaneWidth;
     }
 
@@ -1216,6 +1237,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         _state.RecentPaneWidth = RecentPaneWidth;
         _state.NotesPaneWidth = NotesPaneWidth;
+        _state.EditorPaneWidth = EditorPaneWidth;
         _state.AttachmentsPaneWidth = AttachmentsPaneWidth;
         _state.CurrentNoteId = SelectedNote?.Note.Id;
 
