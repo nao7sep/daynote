@@ -1,4 +1,3 @@
-using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -79,8 +78,5 @@ public sealed class AboutDialog : DialogBase
         return button;
     }
 
-    private static IBrush Secondary =>
-        Application.Current!.Resources.TryGetResource("TextSecondaryBrush", null, out var value) && value is IBrush brush
-            ? brush
-            : Brushes.Gray;
+    private static IBrush Secondary => PaletteBrush.Resolve("TextSecondaryBrush", Brushes.Gray);
 }

@@ -134,9 +134,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _isAttachmentDropActive;
 
     [ObservableProperty]
-    private string _binderTitle = "DayNote";
-
-    [ObservableProperty]
     private string _notesFilter = string.Empty;
 
     [ObservableProperty]
@@ -581,14 +578,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         _config = working;
-        try
+        if (TrySaveConfig())
         {
-            _configStore.Save(_config);
             _log.Info("Settings saved", ConfigSummary(_config));
         }
-        catch (Exception ex)
+        else
         {
-            _log.Error("Failed to save settings", error: ex);
             ShowToast(ToastKind.Error, "Could not save settings.");
         }
 
@@ -633,14 +628,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _log.Info("Cycled text style", new { style = next.Name });
         if (IsReady)
         {
-            try
-            {
-                _configStore.Save(_config);
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Failed to save text-style preference", new { style = next.Name }, ex);
-            }
+            TrySaveConfig();
         }
 
         ShowToast(ToastKind.Info, "Text style: " + next.Name);
@@ -732,7 +720,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         DisposeAttachments();
         Attachments.Clear();
         SelectedNote = null;
-        BinderTitle = "DayNote";
         SetSaveState(SaveState.Saved);
 
         if (clearSelection)
@@ -833,7 +820,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     return;
 
                 case ExternalChange.Modified:
-                    var choice = await _dialogs.AskExternalChangeAsync(BinderTitle, change);
+                    var choice = await _dialogs.AskExternalChangeAsync(TitleFor(_current.Path));
                     if (choice == ExternalChangeChoice.ReloadFromDisk)
                     {
                         _log.Info("External change: reloading from disk, discarding local edits", new { path = _current.Path });
@@ -891,8 +878,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _dirtyNoteIds.Clear();
 
         HasBinder = true;
-        BinderTitle = TitleFor(loaded.Path);
-
         BuildNotes(loaded.Binder, selectNoteId);
         SetSaveState(SaveState.Saved);
     }
@@ -981,11 +966,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         entry.Title = newTitle;
         item.Title = newTitle;
-        if (_current is not null && PathKey.Equal(_current.Path, item.Path))
-        {
-            BinderTitle = newTitle;
-        }
-
         PersistState();
         _log.Info("Renamed binder", new { path = item.Path });
     }
@@ -1211,6 +1191,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     // ----- Configuration / state -----------------------------------------------------------------
 
+    /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
+    private bool TrySaveConfig()
+    {
+        try
+        {
+            _configStore.Save(_config);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to save configuration", error: ex);
+            return false;
+        }
+    }
+
     private void LoadConfigAndState()
     {
         try
@@ -1239,8 +1234,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// <summary>Applies the selected text-style preset (or the first available) to the editor properties.</summary>
     private void ApplyTextStyle()
     {
-        var style = _config.TextStyles.FirstOrDefault(s => string.Equals(s.Name, _config.SelectedTextStyle, StringComparison.OrdinalIgnoreCase))
-            ?? _config.TextStyles.FirstOrDefault();
+        var style = _config.ResolveSelectedStyle();
         if (style is null)
         {
             return;

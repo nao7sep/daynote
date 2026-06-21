@@ -1,5 +1,4 @@
 using DayNote.Core.Configuration;
-using DayNote.Core.Storage;
 
 namespace DayNote.Desktop.Services;
 
@@ -34,7 +33,7 @@ public interface IDialogService
     Task<bool> ShowSettingsAsync(AppConfig config);
 
     /// <summary>Asks how to handle an external modification detected against unsaved edits.</summary>
-    Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, ExternalChange change);
+    Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName);
 
     /// <summary>Opens a file with the operating system's default handler.</summary>
     Task OpenPathExternallyAsync(string path);

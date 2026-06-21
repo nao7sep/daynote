@@ -23,7 +23,7 @@ DayNote is the successor to *quickdeck*, porting its proven mechanisms and gener
 - **DayNote.Core** — framework-independent: domain model, TOML reader/writer, body cleanup, character counting, identifier generation, and config/state. No UI deps.
 - **DayNote.Desktop** — the Avalonia application and its view models (MVVM via CommunityToolkit), depending on Core.
 
-Side effects (file and database I/O) live at the edges; dependencies point inward.
+Side effects (file I/O) live at the edges; dependencies point inward.
 
 ## Build & run
 

@@ -57,7 +57,7 @@ public sealed class SettingsDialog : DialogBase
         // The presets live in a bordered, padded list container; the cards are its rows.
         var styleList = new Border
         {
-            BorderBrush = Brush("BorderBrush"),
+            BorderBrush = PaletteBrush.Resolve("BorderBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(8),
@@ -86,10 +86,7 @@ public sealed class SettingsDialog : DialogBase
         var buttons = SetButtons([("Cancel", "cancel", false), ("Save", "ok", true)]);
         _saveButton = buttons["ok"];
 
-        var resolvedDefault = _config.TextStyles
-            .FirstOrDefault(s => string.Equals(s.Name, _config.SelectedTextStyle, StringComparison.OrdinalIgnoreCase))
-            ?? _config.TextStyles.FirstOrDefault();
-        RebuildStyleCards(resolvedDefault);
+        RebuildStyleCards(_config.ResolveSelectedStyle());
 
         // Snapshot the baseline AFTER the load canonicalizes SelectedTextStyle to the resolved preset's
         // name; otherwise opening the dialog and changing nothing could leave Save enabled (phantom dirt).
@@ -149,7 +146,7 @@ public sealed class SettingsDialog : DialogBase
                 Text = "Default",
                 FontSize = 11,
                 FontWeight = FontWeight.SemiBold,
-                Foreground = Brush("AccentForegroundBrush"),
+                Foreground = PaletteBrush.Resolve("AccentForegroundBrush"),
             },
         };
         defaultLabel.Classes.Add("pill");
@@ -408,12 +405,6 @@ public sealed class SettingsDialog : DialogBase
     private static TextBlock Label(string text) => new() { Text = text, FontWeight = FontWeight.SemiBold };
 
     private static string DisplayName(string name) => string.IsNullOrWhiteSpace(name) ? "Unnamed style" : name;
-
-    // Pulls a palette brush from app resources so the dialog tracks the shared theme tokens.
-    private static IBrush Brush(string key) =>
-        Application.Current!.Resources.TryGetResource(key, null, out var value) && value is IBrush brush
-            ? brush
-            : Brushes.Transparent;
 
     private sealed record StyleEditorControls(
         TextBox Name,

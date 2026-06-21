@@ -1,4 +1,3 @@
-using Avalonia;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
@@ -66,9 +65,7 @@ public sealed partial class NoteListItemViewModel : ObservableObject
             _ => "StatusDraftBrush",
         };
 
-        return Application.Current?.Resources.TryGetResource(key, null, out var value) == true && value is IBrush brush
-            ? brush
-            : Brushes.Gray;
+        return PaletteBrush.Resolve(key, Brushes.Gray);
     }
 
     /// <summary>

@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using DayNote.Core.Configuration;
-using DayNote.Core.Storage;
 using DayNote.Desktop.Views;
 
 namespace DayNote.Desktop.Services;
@@ -97,7 +96,7 @@ public sealed class DialogService : IDialogService
         return dialog.Applied;
     }
 
-    public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, ExternalChange change)
+    public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
     {
         var dialog = new MessageDialog(
             "Binder changed on disk",

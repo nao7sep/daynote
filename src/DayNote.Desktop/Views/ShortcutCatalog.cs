@@ -1,7 +1,6 @@
-using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.VisualTree;
+using Avalonia.VisualTree; // GetPlatformSettings extension on TopLevel
 
 namespace DayNote.Desktop.Views;
 

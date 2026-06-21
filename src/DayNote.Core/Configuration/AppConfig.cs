@@ -21,6 +21,14 @@ public sealed class AppConfig
     // Display.
     public string DisplayTimeZone { get; set; } = "Asia/Tokyo";
 
+    /// <summary>
+    /// The active text-style preset: the one whose name matches <see cref="SelectedTextStyle"/>
+    /// (case-insensitively), falling back to the first preset, or null when there are none.
+    /// </summary>
+    public EditorTextStyle? ResolveSelectedStyle() =>
+        TextStyles.FirstOrDefault(s => string.Equals(s.Name, SelectedTextStyle, StringComparison.OrdinalIgnoreCase))
+        ?? TextStyles.FirstOrDefault();
+
     /// <summary>Returns a deep copy, used to give the settings dialog an editable working copy.</summary>
     public AppConfig Copy() => new()
     {
