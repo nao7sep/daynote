@@ -389,6 +389,46 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// <summary>Adds files dropped onto the attachments pane (same path as the Add button).</summary>
     public void AddDroppedFiles(IReadOnlyList<string> files) => AddAttachmentFiles(files);
 
+    /// <summary>
+    /// Live reorder step during a drag: moves <paramref name="item"/> to <paramref name="newIndex"/> in
+    /// the visible list only (no persistence). The order is committed once on release via
+    /// <see cref="CommitAttachmentOrder"/>.
+    /// </summary>
+    public void MoveAttachment(AttachmentItemViewModel item, int newIndex)
+    {
+        var oldIndex = Attachments.IndexOf(item);
+        if (oldIndex < 0 || newIndex < 0 || newIndex >= Attachments.Count || newIndex == oldIndex)
+        {
+            return;
+        }
+
+        Attachments.Move(oldIndex, newIndex);
+    }
+
+    /// <summary>Persists the current attachment order to the note (called when a reorder drag ends).</summary>
+    public void CommitAttachmentOrder()
+    {
+        if (!IsReady || _current is null || SelectedNote is null)
+        {
+            return;
+        }
+
+        var note = SelectedNote.Note;
+        if (!IsLiveNote(note) || note.Attachments.SequenceEqual(Attachments.Select(a => a.FileName)))
+        {
+            return;
+        }
+
+        note.Attachments.Clear();
+        foreach (var attachment in Attachments)
+        {
+            note.Attachments.Add(attachment.FileName);
+        }
+
+        MarkDirty(note.Id);
+        _log.Info("Reordered attachments", new { noteId = note.Id });
+    }
+
     private void AddAttachmentFiles(IReadOnlyList<string> files)
     {
         if (!IsReady || _current is null || SelectedNote is null)

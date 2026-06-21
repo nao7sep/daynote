@@ -266,8 +266,9 @@
                         </Grid>
                     </Border>
                     <Panel Margin="10">
-                        <!-- A bordered list like the binders/notes lists; rows have no inner border. -->
-                        <ListBox ItemsSource="{Binding Attachments}">
+                        <!-- A bordered list like the binders/notes lists; rows have no inner border.
+                             Rows can be dragged to reorder (wired in code-behind). -->
+                        <ListBox x:Name="AttachList" ItemsSource="{Binding Attachments}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="vm:AttachmentItemViewModel">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" DoubleTapped="Attachment_DoubleTapped">
