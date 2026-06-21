@@ -62,16 +62,20 @@ public sealed class DialogService : IDialogService
             .ToList();
     }
 
-    public async Task<bool> ConfirmAsync(string title, string message)
+    public async Task<bool> ConfirmAsync(string title, string message, string confirmLabel, bool destructive = false)
     {
-        var dialog = new MessageDialog(title, message, new[] { ("No", "no", false), ("Yes", "yes", true) });
+        var dialog = new MessageDialog(title, message, new[]
+        {
+            new DialogButton("Cancel", "cancel"),
+            new DialogButton(confirmLabel, "confirm", destructive ? DialogButtonKind.Destructive : DialogButtonKind.Primary),
+        });
         await dialog.ShowDialog(RequireOwner());
-        return dialog.ResultTag == "yes";
+        return dialog.ResultTag == "confirm";
     }
 
     public async Task ShowErrorAsync(string title, string message)
     {
-        var dialog = new MessageDialog(title, message, new[] { ("OK", "ok", true) });
+        var dialog = new MessageDialog(title, message, new[] { new DialogButton("OK", "ok", DialogButtonKind.Primary) });
         await dialog.ShowDialog(RequireOwner());
     }
 
@@ -102,7 +106,11 @@ public sealed class DialogService : IDialogService
             "Binder changed on disk",
             $"“{binderName}” was modified outside DayNote while you have unsaved edits. " +
             "Reload from disk and lose your edits, or keep your version (the next save overwrites the file)?",
-            new[] { ("Keep my version", "keep", false), ("Reload from disk", "reload", true) });
+            new[]
+            {
+                new DialogButton("Keep my version", "keep"),
+                new DialogButton("Reload from disk", "reload", DialogButtonKind.Primary),
+            });
         await dialog.ShowDialog(RequireOwner());
         return dialog.ResultTag == "reload" ? ExternalChangeChoice.ReloadFromDisk : ExternalChangeChoice.KeepMine;
     }

@@ -83,7 +83,7 @@ public sealed class SettingsDialog : DialogBase
         panel.Children.Add(_timeZone);
 
         SetContent(panel);
-        var buttons = SetButtons([("Cancel", "cancel", false), ("Save", "ok", true)]);
+        var buttons = SetButtons([new DialogButton("Cancel", "cancel"), new DialogButton("Save", "ok", DialogButtonKind.Primary)]);
         _saveButton = buttons["ok"];
 
         RebuildStyleCards(_config.ResolveSelectedStyle());

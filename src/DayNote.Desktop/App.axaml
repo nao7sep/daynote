@@ -56,6 +56,7 @@
             <SolidColorBrush x:Key="ListBackgroundBrush" Color="{StaticResource ListBackground}"/>
             <SolidColorBrush x:Key="ListSelectionBrush" Color="{StaticResource ListSelection}"/>
             <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="{StaticResource ListSelectionHover}"/>
+            <SolidColorBrush x:Key="PositiveBrush" Color="{StaticResource Positive}"/>
             <SolidColorBrush x:Key="StatusDraftBrush" Color="{StaticResource TextSecondary}"/>
             <SolidColorBrush x:Key="StatusCheckedBrush" Color="{StaticResource Warning}"/>
             <SolidColorBrush x:Key="StatusPublishedBrush" Color="{StaticResource Positive}"/>
@@ -148,6 +149,9 @@
             <Setter Property="Padding" Value="5"/>
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
+            <!-- Pointer-only affordance: a row's ✕ is not a keyboard tab stop (so Tab never lands on a
+                 hidden, opacity-0 icon). The keyboard path is Delete on the selected row. -->
+            <Setter Property="IsTabStop" Value="False"/>
         </Style>
         <Style Selector="ListBoxItem:pointerover Button.rowAction">
             <Setter Property="Opacity" Value="1"/>

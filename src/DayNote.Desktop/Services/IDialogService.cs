@@ -17,8 +17,11 @@ public interface IDialogService
     /// <summary>Native open picker for attachment files. Returns the chosen paths (possibly empty).</summary>
     Task<IReadOnlyList<string>> PickAttachmentsAsync();
 
-    /// <summary>A custom yes/no confirmation. Returns true if confirmed.</summary>
-    Task<bool> ConfirmAsync(string title, string message);
+    /// <summary>
+    /// A custom confirmation with a specific confirm label (e.g. "Delete"), danger-styled when
+    /// <paramref name="destructive"/>. Returns true if confirmed. A destructive prompt focuses Cancel.
+    /// </summary>
+    Task<bool> ConfirmAsync(string title, string message, string confirmLabel, bool destructive = false);
 
     /// <summary>A custom error dialog.</summary>
     Task ShowErrorAsync(string title, string message);

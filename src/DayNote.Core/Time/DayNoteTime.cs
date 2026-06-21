@@ -62,6 +62,33 @@ public static class DayNoteTime
     }
 
     /// <summary>
+    /// Renders a UTC timestamp for the status bar, relative to <paramref name="now"/>, in the given
+    /// time zone: time only (<c>HH:mm</c>) when it falls on the same calendar day, abbreviated month
+    /// and day (<c>MMM d</c>) when within the same year, otherwise the full date (<c>yyyy-MM-dd</c>).
+    /// Both the same-day/same-year comparison and the formatting run in the resolved zone with the
+    /// invariant culture, so the result is identical regardless of the host's system locale (no locale
+    /// month names, AM/PM, or digit grouping leak in). Falls back to UTC if the zone is unknown.
+    /// </summary>
+    public static string ToSmartDisplay(DateTimeOffset value, string timeZoneId, DateTimeOffset now)
+    {
+        var zone = ResolveTimeZone(timeZoneId);
+        var local = TimeZoneInfo.ConvertTime(value.ToUniversalTime(), zone);
+        var localNow = TimeZoneInfo.ConvertTime(now.ToUniversalTime(), zone);
+
+        if (local.Date == localNow.Date)
+        {
+            return local.ToString("HH:mm", CultureInfo.InvariantCulture);
+        }
+
+        if (local.Year == localNow.Year)
+        {
+            return local.ToString("MMM d", CultureInfo.InvariantCulture);
+        }
+
+        return local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
     /// Attempts to resolve an IANA/Windows time-zone id to a system time zone. Returns false for
     /// unknown or malformed ids (with <paramref name="zone"/> set to UTC) instead of throwing, so
     /// callers can both validate user input and fall back to UTC from a single code path.

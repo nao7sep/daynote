@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using DayNote.Core.Time;
 using Xunit;
 
@@ -43,5 +44,69 @@ public sealed class DayNoteTimeTests
         Assert.Equal(
             DayNoteTime.ToDisplay(instant, "UTC"),
             DayNoteTime.ToDisplay(instant, "Totally/Bogus"));
+    }
+
+    private static readonly DateTimeOffset SmartNow = new(2026, 6, 21, 10, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void ToSmartDisplay_shows_time_only_for_the_same_day()
+    {
+        var value = new DateTimeOffset(2026, 6, 21, 14, 30, 0, TimeSpan.Zero);
+
+        Assert.Equal("14:30", DayNoteTime.ToSmartDisplay(value, "UTC", SmartNow));
+    }
+
+    [Fact]
+    public void ToSmartDisplay_shows_month_and_day_within_the_same_year()
+    {
+        var value = new DateTimeOffset(2026, 6, 18, 9, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal("Jun 18", DayNoteTime.ToSmartDisplay(value, "UTC", SmartNow));
+    }
+
+    [Fact]
+    public void ToSmartDisplay_shows_the_full_date_for_an_earlier_year()
+    {
+        var value = new DateTimeOffset(2024, 12, 1, 9, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal("2024-12-01", DayNoteTime.ToSmartDisplay(value, "UTC", SmartNow));
+    }
+
+    [Fact]
+    public void ToSmartDisplay_resolves_the_same_day_in_the_display_zone_not_utc()
+    {
+        // 16:00Z is already the next calendar day in Tokyo (UTC+9) — the same Tokyo day as 17:00Z "now" —
+        // so it renders as the Tokyo wall-clock time, not the UTC day or time.
+        var now = new DateTimeOffset(2026, 6, 21, 17, 0, 0, TimeSpan.Zero);
+        var value = new DateTimeOffset(2026, 6, 21, 16, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal("01:00", DayNoteTime.ToSmartDisplay(value, "Asia/Tokyo", now));
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("ar-SA")]
+    [InlineData("ja-JP")]
+    [InlineData("fr-FR")]
+    public void ToSmartDisplay_is_identical_regardless_of_system_locale(string culture)
+    {
+        // The format must not leak the ambient culture: no localized/Hijri month names, no AM/PM, no
+        // non-Latin digits. Under any culture the output stays the invariant English/24-hour form.
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+
+            Assert.Equal(
+                "Jun 18",
+                DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 18, 9, 0, 0, TimeSpan.Zero), "UTC", SmartNow));
+            Assert.Equal(
+                "14:30",
+                DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 21, 14, 30, 0, TimeSpan.Zero), "UTC", SmartNow));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 }

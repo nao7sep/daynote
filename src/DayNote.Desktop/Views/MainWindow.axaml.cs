@@ -312,6 +312,19 @@ public partial class MainWindow : Window
         }
     }
 
+    // Keyboard path to delete the selected note (the row ✕ is pointer-only). Delete, plus Back — the
+    // physical delete key on a Mac keyboard. Scoped to the notes list, so Backspace in the editor body
+    // still edits text rather than deleting the note.
+    private void NotesList_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if ((e.Key == Key.Delete || e.Key == Key.Back)
+            && DataContext is MainWindowViewModel { SelectedNote: { } note } vm)
+        {
+            vm.DeleteNoteCommand.Execute(note);
+            e.Handled = true;
+        }
+    }
+
     // The inline "✕" removes a binder from the list (closing it first if it's the open one).
     private void RemoveBinderRow_Click(object? sender, RoutedEventArgs e)
     {

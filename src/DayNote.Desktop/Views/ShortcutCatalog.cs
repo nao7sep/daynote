@@ -57,8 +57,8 @@ public static class ShortcutCatalog
     [
         ShortcutGroup.Binders,
         ShortcutGroup.Notes,
-        ShortcutGroup.Editor,
         ShortcutGroup.Navigation,
+        ShortcutGroup.Editor,
         ShortcutGroup.App,
     ];
 
@@ -85,23 +85,25 @@ public static class ShortcutCatalog
         var cmd = CommandModifier(top);
         return new List<ShortcutItem>
         {
-            // Binders
+            // Binders — file lifecycle: create, open, persist, close.
             Command(ShortcutGroup.Binders, "New binder", cmd, shift: false, Key.N, "N", ShortcutAction.NewBinder),
             Command(ShortcutGroup.Binders, "Open binder", cmd, shift: false, Key.O, "O", ShortcutAction.OpenBinder),
             Command(ShortcutGroup.Binders, "Save now", cmd, shift: false, Key.S, "S", ShortcutAction.SaveNow),
             Command(ShortcutGroup.Binders, "Close binder", cmd, shift: false, Key.W, "W", ShortcutAction.CloseBinder),
 
-            // Notes
+            // Notes — create, delete, find. (Delete is list-scoped, handled by the notes list itself,
+            // so it is documented here as a display row rather than a global accelerator.)
             Command(ShortcutGroup.Notes, "New note", cmd, shift: true, Key.N, "N", ShortcutAction.NewNote),
+            Display(ShortcutGroup.Notes, "Delete the selected note", "Delete"),
             Command(ShortcutGroup.Notes, "Filter notes", cmd, shift: false, Key.F, "F", ShortcutAction.FilterNotes),
 
-            // Editor
-            Command(ShortcutGroup.Editor, "Cycle text style", cmd, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),
-
-            // Navigation — owned by the lists; selecting a row switches binder/note.
+            // Navigation — move within the binders and notes lists (selecting a row opens it).
             Display(ShortcutGroup.Navigation, "Move the selection up or down a list", "Up / Down"),
 
-            // App
+            // Editor — the open note.
+            Command(ShortcutGroup.Editor, "Cycle text style", cmd, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),
+
+            // App — settings and this help.
             Command(ShortcutGroup.App, "Settings", cmd, shift: false, Key.OemComma, "Comma", ShortcutAction.OpenSettings),
             Command(ShortcutGroup.App, "Keyboard shortcuts", cmd, shift: false, Key.OemQuestion, "Slash", ShortcutAction.ShowShortcuts),
         };

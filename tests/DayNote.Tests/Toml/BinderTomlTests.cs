@@ -119,6 +119,71 @@ public sealed class BinderTomlTests
     }
 
     [Fact]
+    public void Body_with_triple_double_quotes_round_trips_in_the_literal_form()
+    {
+        // A body with """ but no ''' stays in the literal-string ('''…''') form — """ needs no escaping
+        // there — so it must not trigger the basic-string fallback, and must return byte-for-byte.
+        var binder = OneNote(body: "fence:\n\"\"\" still text \"\"\"\nend");
+
+        var text = BinderTomlWriter.Write(binder);
+        Assert.Contains("body = '''", text);
+        Assert.Equal("fence:\n\"\"\" still text \"\"\"\nend", BinderTomlReader.Read(text).Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_both_delimiters_round_trips_via_the_basic_string_fallback()
+    {
+        // ''' forces the basic-string fallback; the embedded """ must then be escaped so it cannot close
+        // the basic multiline string early. Both delimiters survive.
+        var binder = OneNote(body: "a ''' and \"\"\" together");
+
+        var text = BinderTomlWriter.Write(binder);
+        Assert.Contains("body = \"\"\"", text);
+        Assert.Equal("a ''' and \"\"\" together", BinderTomlReader.Read(text).Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_crlf_and_lone_cr_normalize_to_lf_through_the_round_trip()
+    {
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(OneNote(body: "a\r\nb\rc")));
+
+        Assert.Equal("a\nb\nc", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_interior_blank_lines_survive_while_outer_ones_are_dropped()
+    {
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(OneNote(body: "\npara one\n\npara two\n\n")));
+
+        Assert.Equal("para one\n\npara two", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Attachment_names_with_special_characters_round_trip()
+    {
+        var binder = OneNote();
+        var note = binder.Notes[0];
+        note.Attachments.Add("my photo (1).png");
+        note.Attachments.Add("日本語 メモ.pdf");
+        note.Attachments.Add("a & b.png");
+        note.Attachments.Add("quote \" here.png");
+
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+
+        Assert.Equal(
+            new[] { "my photo (1).png", "日本語 メモ.pdf", "a & b.png", "quote \" here.png" },
+            restored.Notes[0].Attachments);
+    }
+
+    [Fact]
+    public void Empty_title_round_trips_as_empty()
+    {
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(OneNote(title: string.Empty)));
+
+        Assert.Equal(string.Empty, restored.Notes[0].Title);
+    }
+
+    [Fact]
     public void Reader_tolerates_missing_keys_and_falls_back_for_bad_timestamps()
     {
         const string text =

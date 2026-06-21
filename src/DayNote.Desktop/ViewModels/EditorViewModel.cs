@@ -1,3 +1,4 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
 using DayNote.Core.Text;
@@ -61,10 +62,10 @@ public sealed partial class EditorViewModel : ViewModelBase
     private string _wordsText = "0 words";
 
     [ObservableProperty]
-    private string _charsText = "0 characters";
+    private string _charsText = "0 chars";
 
     [ObservableProperty]
-    private string _xCountText = "X: 0/280";
+    private string _xCountText = "X 0/280";
 
     [ObservableProperty]
     private bool _isWithinXLimit = true;
@@ -117,8 +118,9 @@ public sealed partial class EditorViewModel : ViewModelBase
             return;
         }
 
-        CreatedText = "Created " + DayNoteTime.ToDisplay(_note.Created, _displayTimeZone);
-        ModifiedText = "Modified " + DayNoteTime.ToDisplay(_note.Modified, _displayTimeZone);
+        var now = DateTimeOffset.UtcNow;
+        CreatedText = "Created " + DayNoteTime.ToSmartDisplay(_note.Created, _displayTimeZone, now);
+        ModifiedText = "Modified " + DayNoteTime.ToSmartDisplay(_note.Modified, _displayTimeZone, now);
     }
 
     partial void OnTitleChanged(string value)
@@ -161,9 +163,10 @@ public sealed partial class EditorViewModel : ViewModelBase
     private void UpdateCounts()
     {
         var counts = CharacterCount.Count(Body ?? string.Empty);
-        WordsText = counts.Words == 1 ? "1 word" : $"{counts.Words} words";
-        CharsText = counts.Chars == 1 ? "1 character" : $"{counts.Chars} characters";
-        XCountText = $"X: {counts.XWeightedChars}/{counts.XLimit}";
+        var ci = CultureInfo.InvariantCulture;
+        WordsText = $"{counts.Words.ToString("N0", ci)} {(counts.Words == 1 ? "word" : "words")}";
+        CharsText = $"{counts.Chars.ToString("N0", ci)} {(counts.Chars == 1 ? "char" : "chars")}";
+        XCountText = $"X {counts.XWeightedChars.ToString("N0", ci)}/{counts.XLimit.ToString("N0", ci)}";
         IsWithinXLimit = counts.XWithinLimit;
     }
 }

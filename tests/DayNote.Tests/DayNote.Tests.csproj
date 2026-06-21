@@ -1,22 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- xUnit v3 test projects are executables (their own in-process runner). -->
+    <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <IsPublishable>false</IsPublishable>
     <!-- The Desktop host is a WinExe; referencing it for its assembly warns about the
-         output-type mismatch. The test host is a console app and only consumes the
-         produced assembly, never launches Avalonia. -->
+         output-type mismatch. The test host only consumes the produced assembly. -->
     <NoWarn>$(NoWarn);NU1702</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
-    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
+    <!-- Official xUnit headless integration ([AvaloniaFact]); depends on xunit.v3. -->
+    <PackageReference Include="Avalonia.Headless.XUnit" Version="12.0.4" />
   </ItemGroup>
 
   <ItemGroup>

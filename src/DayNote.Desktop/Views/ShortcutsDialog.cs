@@ -40,7 +40,7 @@ public sealed class ShortcutsDialog : DialogBase
         }
 
         SetContent(sections);
-        var buttons = SetButtons([("Close", "ok", true)]);
+        var buttons = SetButtons([new DialogButton("Close", "ok", DialogButtonKind.Primary)]);
         SetInitialFocus(buttons["ok"]);
     }
 

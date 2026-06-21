@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -35,7 +36,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private readonly DispatcherTimer _autosaveTimer;
     private readonly DispatcherTimer _externalTimer;
-    private readonly DispatcherTimer _savedFadeTimer;
 
     private readonly List<NoteListItemViewModel> _allNotes = new();
     private readonly List<BinderListItemViewModel> _allBinders = new();
@@ -68,18 +68,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         Editor = new EditorViewModel(_config.DisplayTimeZone);
         Editor.Edited += OnEditorEdited;
-
-        // The "Saved" status is transient: it shows briefly after a save, then clears itself (quickdeck
-        // style). Non-idle states ("Saving…", "Unsaved changes", "Save failed") persist until they change.
-        _savedFadeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _savedFadeTimer.Tick += (_, _) =>
-        {
-            _savedFadeTimer.Stop();
-            if (_saveState == SaveState.Saved)
-            {
-                SaveStateText = string.Empty;
-            }
-        };
 
         _autosaveTimer = new DispatcherTimer();
         _autosaveTimer.Tick += async (_, _) =>
@@ -122,6 +110,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _saveStateText = "Saved";
+
+    /// <summary>Color of the save-state dot, mapped from the current <see cref="SaveState"/>.</summary>
+    [ObservableProperty]
+    private IBrush _saveStateBrush = Brushes.Transparent;
+
+    /// <summary>Status-bar text when a binder is open but no note is selected: the binder's note count.</summary>
+    [ObservableProperty]
+    private string _binderStatusText = string.Empty;
 
     [ObservableProperty]
     private bool _hasBinder;
@@ -338,7 +334,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         var note = target.Note;
         var label = string.IsNullOrWhiteSpace(note.Title) ? "untitled" : note.Title;
-        if (!await _dialogs.ConfirmAsync("Delete note", $"Delete “{label}”? Its attachment files are left on disk."))
+        if (!await _dialogs.ConfirmAsync("Delete note", $"Delete “{label}”? Its attachment files are left on disk.", "Delete", destructive: true))
         {
             return;
         }
@@ -513,7 +509,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var note = SelectedNote.Note;
-        if (!await _dialogs.ConfirmAsync("Remove attachment", $"Remove “{item.FileName}”? The file will be deleted."))
+        if (!await _dialogs.ConfirmAsync("Remove attachment", $"Remove “{item.FileName}”? The file will be deleted.", "Remove", destructive: true))
         {
             return;
         }
@@ -720,6 +716,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         DisposeAttachments();
         Attachments.Clear();
         SelectedNote = null;
+        UpdateBinderStatus();
         SetSaveState(SaveState.Saved);
 
         if (clearSelection)
@@ -879,6 +876,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         HasBinder = true;
         BuildNotes(loaded.Binder, selectNoteId);
+        UpdateBinderStatus();
         SetSaveState(SaveState.Saved);
     }
 
@@ -1159,6 +1157,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Editor.Load(value?.Note);
         LoadAttachments(value?.Note);
         _state.CurrentNoteId = value?.Note.Id;
+        UpdateBinderStatus();
     }
 
     partial void OnSelectedBinderChanged(BinderListItemViewModel? value)
@@ -1288,7 +1287,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void UpdateSaveStateText()
     {
-        _savedFadeTimer.Stop();
         SaveStateText = _saveState switch
         {
             SaveState.Saved => "Saved",
@@ -1298,11 +1296,35 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _ => string.Empty,
         };
 
-        // Only the idle "Saved" message fades; the others stay until the state changes.
-        if (_saveState == SaveState.Saved)
+        // The dot tracks the state by color: green saved, accent saving, amber unsaved, red failed.
+        SaveStateBrush = PaletteBrush.Resolve(_saveState switch
         {
-            _savedFadeTimer.Start();
+            SaveState.Saving => "AccentBrush",
+            SaveState.Unsaved => "WarningBrush",
+            SaveState.Error => "DangerBrush",
+            _ => "PositiveBrush",
+        });
+    }
+
+    /// <summary>
+    /// The status bar's right side shows per-note metadata when a note is open; when a binder is open
+    /// but nothing is selected, it shows the binder's note count instead, so the bar is never blank.
+    /// </summary>
+    private void UpdateBinderStatus()
+    {
+        if (_current is null || SelectedNote is not null)
+        {
+            BinderStatusText = string.Empty;
+            return;
         }
+
+        var count = _current.Binder.Notes.Count;
+        BinderStatusText = count switch
+        {
+            0 => "No notes",
+            1 => "1 note",
+            _ => $"{count.ToString("N0", CultureInfo.InvariantCulture)} notes",
+        };
     }
 
     // ----- Helpers -------------------------------------------------------------------------------

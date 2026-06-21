@@ -55,7 +55,7 @@ public sealed class AboutDialog : DialogBase
         };
 
         SetContent(panel);
-        var buttons = SetButtons([("Close", "ok", true)]);
+        var buttons = SetButtons([new DialogButton("Close", "ok", DialogButtonKind.Primary)]);
         SetInitialFocus(buttons["ok"]);
     }
 

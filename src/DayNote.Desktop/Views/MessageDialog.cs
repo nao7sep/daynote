@@ -9,7 +9,7 @@ public sealed class MessageDialog : DialogBase
     public MessageDialog(
         string title,
         string message,
-        IReadOnlyList<(string Label, string Tag, bool IsDefault)> buttons,
+        IReadOnlyList<DialogButton> buttons,
         double width = 440)
     {
         Title = title;
@@ -24,12 +24,16 @@ public sealed class MessageDialog : DialogBase
         });
 
         var created = SetButtons(buttons);
-        foreach (var button in buttons)
+
+        // Focus the safest action: when a destructive button is present, the cancel/secondary one, so a
+        // stray Space/Enter never lands on the dangerous action; otherwise the primary.
+        var focusTag = buttons.Any(b => b.Kind == DialogButtonKind.Destructive)
+            ? buttons.FirstOrDefault(b => b.Kind == DialogButtonKind.Secondary)?.Tag
+            : buttons.FirstOrDefault(b => b.Kind == DialogButtonKind.Primary)?.Tag;
+        focusTag ??= buttons.Count > 0 ? buttons[0].Tag : null;
+        if (focusTag is not null && created.TryGetValue(focusTag, out var focus))
         {
-            if (button.IsDefault && created.TryGetValue(button.Tag, out var control))
-            {
-                SetInitialFocus(control);
-            }
+            SetInitialFocus(focus);
         }
     }
 }
