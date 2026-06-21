@@ -192,7 +192,7 @@ public sealed class SettingsDialog : DialogBase
         card.Classes.Add("stylePreset");
 
         _styleEditors[style] = new StyleEditorControls(
-            card, name, fontFamily, fontSize, lineSpacing, padding, setDefault, defaultLabel, remove);
+            name, fontFamily, fontSize, lineSpacing, padding, setDefault, defaultLabel, remove);
 
         name.TextChanged += (_, _) =>
         {
@@ -416,7 +416,6 @@ public sealed class SettingsDialog : DialogBase
             : Brushes.Transparent;
 
     private sealed record StyleEditorControls(
-        Border Card,
         TextBox Name,
         TextBox FontFamily,
         NumericUpDown FontSize,

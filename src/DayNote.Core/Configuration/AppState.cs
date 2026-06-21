@@ -13,7 +13,7 @@ public sealed class AppState
     // across launches. On restore each becomes its column's star weight, floored by the column's
     // MinWidth (see MainWindow.OnDataContextChanged), so a stale width can never reopen a pane below
     // its usable minimum — and the window's own derived minimum keeps every pane visible.
-    public double RecentPaneWidth { get; set; } = 220;
+    public double BindersPaneWidth { get; set; } = 220;
     public double NotesPaneWidth { get; set; } = 260;
     public double EditorPaneWidth { get; set; } = 430;
     public double AttachmentsPaneWidth { get; set; } = 260;

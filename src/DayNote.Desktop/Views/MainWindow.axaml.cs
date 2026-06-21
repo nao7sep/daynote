@@ -249,7 +249,7 @@ public partial class MainWindow : Window
         // weight at the column's own MinWidth keeps a stale state.json (e.g. a width saved before a
         // MinWidth was raised) from starting a pane below its declared minimum — the same minimum the
         // GridSplitters and the derived window minimum honour.
-        PaneGrid.ColumnDefinitions[0].Width = RestoredPaneWidth(0, vm.RecentPaneWidth);
+        PaneGrid.ColumnDefinitions[0].Width = RestoredPaneWidth(0, vm.BindersPaneWidth);
         PaneGrid.ColumnDefinitions[2].Width = RestoredPaneWidth(2, vm.NotesPaneWidth);
         PaneGrid.ColumnDefinitions[4].Width = RestoredPaneWidth(4, vm.EditorPaneWidth);
         PaneGrid.ColumnDefinitions[6].Width = RestoredPaneWidth(6, vm.AttachmentsPaneWidth);
@@ -291,7 +291,7 @@ public partial class MainWindow : Window
 
     private void CapturePaneWidths(MainWindowViewModel vm)
     {
-        vm.RecentPaneWidth = RecentPane.Bounds.Width;
+        vm.BindersPaneWidth = BindersPane.Bounds.Width;
         vm.NotesPaneWidth = NotesPane.Bounds.Width;
         vm.EditorPaneWidth = EditorPane.Bounds.Width;
         vm.AttachmentsPaneWidth = AttachPane.Bounds.Width;
@@ -317,7 +317,7 @@ public partial class MainWindow : Window
     // The inline "✕" removes a binder from the list (closing it first if it's the open one).
     private void RemoveBinderRow_Click(object? sender, RoutedEventArgs e)
     {
-        if (sender is Control { DataContext: RecentBinderItemViewModel item } && DataContext is MainWindowViewModel vm)
+        if (sender is Control { DataContext: BinderListItemViewModel item } && DataContext is MainWindowViewModel vm)
         {
             vm.RemoveBinderCommand.Execute(item);
         }
@@ -327,7 +327,7 @@ public partial class MainWindow : Window
     // (and opened) the binder; this just enters edit mode and focuses the field.
     private void BinderRow_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is not Control { DataContext: RecentBinderItemViewModel item } || item.IsEditing)
+        if (sender is not Control { DataContext: BinderListItemViewModel item } || item.IsEditing)
         {
             return;
         }
@@ -355,7 +355,7 @@ public partial class MainWindow : Window
     // clears IsEditing, so this becomes a no-op for those paths.)
     private void BinderTitle_LostFocus(object? sender, RoutedEventArgs e)
     {
-        if (sender is Control { DataContext: RecentBinderItemViewModel item } && DataContext is MainWindowViewModel vm)
+        if (sender is Control { DataContext: BinderListItemViewModel item } && DataContext is MainWindowViewModel vm)
         {
             vm.ApplyBinderRename(item, item.EditText);
         }
@@ -363,7 +363,7 @@ public partial class MainWindow : Window
 
     private void BinderTitle_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (sender is not Control { DataContext: RecentBinderItemViewModel item } || DataContext is not MainWindowViewModel vm)
+        if (sender is not Control { DataContext: BinderListItemViewModel item } || DataContext is not MainWindowViewModel vm)
         {
             return;
         }

@@ -109,8 +109,8 @@
                 <ColumnDefinition Width="260*" MinWidth="170"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Recent binders -->
-            <Border x:Name="RecentPane" Grid.Column="0" Classes="pane">
+            <!-- Binders -->
+            <Border x:Name="BindersPane" Grid.Column="0" Classes="pane">
                 <!-- Real content minimum (a side pane needs header + filter + a few rows). The
                      window minimum derives the editor pane's taller minimum (300); the side panes
                      get 200 so they are never crushed below a usable height. -->
@@ -125,12 +125,12 @@
                         </Grid>
                     </Border>
                     <DockPanel Margin="10">
-                        <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding RecentFilter}" Margin="0,0,0,8"/>
+                        <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
                         <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
-                        <ListBox x:Name="RecentList" ItemsSource="{Binding RecentBinders}"
-                                 SelectedItem="{Binding SelectedRecent}">
+                        <ListBox ItemsSource="{Binding Binders}"
+                                 SelectedItem="{Binding SelectedBinder}">
                             <ListBox.ItemTemplate>
-                                <DataTemplate DataType="vm:RecentBinderItemViewModel">
+                                <DataTemplate DataType="vm:BinderListItemViewModel">
                                     <!-- Primary label is the binder title (capitalized, human-friendly); the path
                                          below shows the lowercase file. Double-tap the row to rename the title. -->
                                     <Grid ColumnDefinitions="*,Auto" Background="Transparent" DoubleTapped="BinderRow_DoubleTapped">
@@ -219,7 +219,7 @@
                              borderline — the metadata that used to sit here now lives in the status bar).
                              A non-draft note's title and body are read-only until moved back to draft. -->
                         <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="10,10,10,6">
-                            <ctl:ComposingTextBox x:Name="TitleBox"
+                            <ctl:ComposingTextBox
                                                   Text="{Binding Editor.Title}" PlaceholderText="Title…"
                                                   FontSize="18" FontWeight="SemiBold" AcceptsReturn="False"
                                                   IsReadOnly="{Binding !Editor.IsEditable}"

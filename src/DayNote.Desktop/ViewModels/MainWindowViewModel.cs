@@ -27,7 +27,7 @@ namespace DayNote.Desktop.ViewModels;
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
     private readonly AppPaths _paths;
-    private readonly BinderStore _binders = new();
+    private readonly BinderStore _binderStore = new();
     private readonly JsonStore<AppConfig> _configStore;
     private readonly JsonStore<AppState> _stateStore;
     private readonly IDialogService _dialogs;
@@ -38,7 +38,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly DispatcherTimer _savedFadeTimer;
 
     private readonly List<NoteListItemViewModel> _allNotes = new();
-    private readonly List<RecentBinderItemViewModel> _allRecents = new();
+    private readonly List<BinderListItemViewModel> _allBinders = new();
     private readonly HashSet<string> _dirtyNoteIds = new();
 
     private AppConfig _config = new();
@@ -101,7 +101,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             ApplyConfig();
             RestorePaneWidths();
-            RebuildRecents();
+            RebuildBinders();
             IsReady = true;
         }
 
@@ -111,7 +111,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public EditorViewModel Editor { get; }
 
     public ObservableCollection<NoteListItemViewModel> Notes { get; } = new();
-    public ObservableCollection<RecentBinderItemViewModel> RecentBinders { get; } = new();
+    public ObservableCollection<BinderListItemViewModel> Binders { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
 
     /// <summary>Active toast notifications, rendered as a top-right overlay; each auto-dismisses.</summary>
@@ -137,24 +137,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private string _binderTitle = "DayNote";
 
     [ObservableProperty]
-    private string _binderPath = string.Empty;
-
-    [ObservableProperty]
     private string _notesFilter = string.Empty;
 
     [ObservableProperty]
-    private string _recentFilter = string.Empty;
+    private string _bindersFilter = string.Empty;
 
     [ObservableProperty]
     private NoteListItemViewModel? _selectedNote;
 
     // The highlighted binder row. Selecting a row opens that binder (single click or arrow key) via
-    // OnSelectedRecentChanged — no double-click — so the highlight and the open binder stay in sync.
+    // OnSelectedBinderChanged — no double-click — so the highlight and the open binder stay in sync.
     [ObservableProperty]
-    private RecentBinderItemViewModel? _selectedRecent;
+    private BinderListItemViewModel? _selectedBinder;
 
     [ObservableProperty]
-    private double _recentPaneWidth = 220;
+    private double _bindersPaneWidth = 220;
 
     [ObservableProperty]
     private double _notesPaneWidth = 260;
@@ -254,12 +251,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task OpenRecent(RecentBinderItemViewModel item)
+    private async Task OpenKnownBinder(BinderListItemViewModel item)
     {
         if (!File.Exists(item.Path))
         {
             item.IsMissing = true;
-            _log.Warn("Recent binder is missing", new { path = item.Path });
+            _log.Warn("Known binder is missing from disk", new { path = item.Path });
             ShowToast(ToastKind.Warning, "That binder is no longer at " + item.Path);
             return;
         }
@@ -289,7 +286,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// flushed) first; otherwise the open binder is untouched. This also clears a stale/missing entry.
     /// </summary>
     [RelayCommand]
-    private async Task RemoveBinder(RecentBinderItemViewModel item)
+    private async Task RemoveBinder(BinderListItemViewModel item)
     {
         if (!IsReady)
         {
@@ -680,12 +677,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     Created = DateTimeOffset.UtcNow,
                     Modified = DateTimeOffset.UtcNow,
                 };
-                var saved = _binders.Save(path, binder);
+                var saved = _binderStore.Save(path, binder);
                 loaded = new LoadedBinder(binder, saved.Path, saved.ContentHash);
             }
             else
             {
-                loaded = _binders.Load(path);
+                loaded = _binderStore.Load(path);
             }
         }
         catch (Exception ex)
@@ -696,7 +693,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         AdoptLoaded(loaded, selectNoteId);
-        BinderPath = loaded.Path;
 
         AddBinder(loaded.Path);
         _state.CurrentBinderPath = loaded.Path;
@@ -737,7 +733,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Attachments.Clear();
         SelectedNote = null;
         BinderTitle = "DayNote";
-        BinderPath = string.Empty;
         SetSaveState(SaveState.Saved);
 
         if (clearSelection)
@@ -785,7 +780,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 binder.Modified = now;
             }
 
-            var saved = _binders.Save(_current.Path, binder);
+            var saved = _binderStore.Save(_current.Path, binder);
             _baselineHash = saved.ContentHash;
             _externalChangeAcknowledged = false;
             _dirty = false;
@@ -819,7 +814,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _externalCheckInProgress = true;
         try
         {
-            var change = _binders.CheckExternalChange(_current.Path, _baselineHash);
+            var change = _binderStore.CheckExternalChange(_current.Path, _baselineHash);
             switch (change)
             {
                 case ExternalChange.None:
@@ -850,7 +845,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                         // next save overwrites it, and so any *further* external change is still
                         // detected rather than silently suppressed.
                         _log.Info("External change: keeping local edits", new { path = _current.Path });
-                        _baselineHash = _binders.ComputeHash(_current.Path);
+                        _baselineHash = _binderStore.ComputeHash(_current.Path);
                     }
 
                     return;
@@ -877,7 +872,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         try
         {
-            AdoptLoaded(_binders.Load(_current.Path), SelectedNote?.Note.Id);
+            AdoptLoaded(_binderStore.Load(_current.Path), SelectedNote?.Note.Id);
         }
         catch (Exception ex)
         {
@@ -934,19 +929,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>Rebuilds the master binders list from state, then applies the current filter.</summary>
-    private void RebuildRecents()
+    private void RebuildBinders()
     {
-        _allRecents.Clear();
+        _allBinders.Clear();
         foreach (var entry in _state.Binders)
         {
-            _allRecents.Add(new RecentBinderItemViewModel(entry.Path)
+            _allBinders.Add(new BinderListItemViewModel(entry.Path)
             {
                 IsMissing = !File.Exists(entry.Path),
                 Title = TitleFor(entry.Path),
             });
         }
 
-        ApplyRecentFilter();
+        ApplyBinderFilter();
     }
 
     /// <summary>
@@ -964,7 +959,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// in the .daynote file), so this just updates that state entry and persists. A blank or unchanged
     /// title is ignored. Called by the view on blur / Enter.
     /// </summary>
-    public void ApplyBinderRename(RecentBinderItemViewModel item, string rawTitle)
+    public void ApplyBinderRename(BinderListItemViewModel item, string rawTitle)
     {
         if (!item.IsEditing)
         {
@@ -996,25 +991,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Re-applies the recents filter without rebuilding the master list, so typing in the filter does
+    /// Re-applies the binder filter without rebuilding the master list, so typing in the filter does
     /// not churn the rows (and the open binder's highlight survives keystroke to keystroke).
     /// </summary>
-    private void ApplyRecentFilter()
+    private void ApplyBinderFilter()
     {
         // Flag the open binder so its row shows the inline close affordance; keep it visible even when
         // the filter would exclude it, so filtering never hides the binder you are working in.
-        foreach (var recent in _allRecents)
+        foreach (var binder in _allBinders)
         {
-            recent.IsCurrent = _current is not null && PathKey.Equal(recent.Path, _current.Path);
+            binder.IsCurrent = _current is not null && PathKey.Equal(binder.Path, _current.Path);
         }
 
         // Match the displayed title and the file name, so the filter lines up with what the row shows.
-        FilterInto(_allRecents, RecentBinders, RecentFilter, r => r.Title + " " + r.Name, r => r.IsCurrent);
+        FilterInto(_allBinders, Binders, BindersFilter, r => r.Title + " " + r.Name, r => r.IsCurrent);
 
-        // Keep the open binder highlighted across rebuilds (open, filter, recents reorder).
-        SelectedRecent = _current is null
+        // Keep the open binder highlighted across rebuilds (open, filter, prune).
+        SelectedBinder = _current is null
             ? null
-            : RecentBinders.FirstOrDefault(r => PathKey.Equal(r.Path, _current.Path));
+            : Binders.FirstOrDefault(r => PathKey.Equal(r.Path, _current.Path));
     }
 
     /// <summary>
@@ -1081,12 +1076,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             // Already known: don't churn the list (which is this ListBox's ItemsSource); just refresh
             // which row is marked current.
-            ApplyRecentFilter();
+            ApplyBinderFilter();
             return;
         }
 
         _state.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
-        RebuildRecents();
+        RebuildBinders();
     }
 
     // Removes a binder from the known list and persists. Caller closes it first if it is the open one.
@@ -1094,7 +1089,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         _state.Binders.RemoveAll(b => PathKey.Equal(b.Path, path));
         PersistState();
-        RebuildRecents();
+        RebuildBinders();
         _log.Info("Forgot binder", new { path });
     }
 
@@ -1177,7 +1172,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     partial void OnNotesFilterChanged(string value) => RebuildNotes();
 
-    partial void OnRecentFilterChanged(string value) => ApplyRecentFilter();
+    partial void OnBindersFilterChanged(string value) => ApplyBinderFilter();
 
     partial void OnSelectedNoteChanged(NoteListItemViewModel? value)
     {
@@ -1186,7 +1181,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _state.CurrentNoteId = value?.Note.Id;
     }
 
-    partial void OnSelectedRecentChanged(RecentBinderItemViewModel? value)
+    partial void OnSelectedBinderChanged(BinderListItemViewModel? value)
     {
         // Selecting a binder opens it (single click or arrow key) — no double-click. Skip when
         // nothing is selected or it is already open.
@@ -1207,9 +1202,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 return;
             }
 
-            if (OpenRecentCommand.CanExecute(target))
+            if (OpenKnownBinderCommand.CanExecute(target))
             {
-                OpenRecentCommand.Execute(target);
+                OpenKnownBinderCommand.Execute(target);
             }
         });
     }
@@ -1262,7 +1257,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void RestorePaneWidths()
     {
-        RecentPaneWidth = _state.RecentPaneWidth;
+        BindersPaneWidth = _state.BindersPaneWidth;
         NotesPaneWidth = _state.NotesPaneWidth;
         EditorPaneWidth = _state.EditorPaneWidth;
         AttachmentsPaneWidth = _state.AttachmentsPaneWidth;
@@ -1275,7 +1270,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        _state.RecentPaneWidth = RecentPaneWidth;
+        _state.BindersPaneWidth = BindersPaneWidth;
         _state.NotesPaneWidth = NotesPaneWidth;
         _state.EditorPaneWidth = EditorPaneWidth;
         _state.AttachmentsPaneWidth = AttachmentsPaneWidth;
