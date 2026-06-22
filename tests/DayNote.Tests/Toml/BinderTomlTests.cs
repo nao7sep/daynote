@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using DayNote.Core.Models;
 using DayNote.Core.Toml;
@@ -353,6 +354,637 @@ public sealed class BinderTomlTests
     public void Reader_throws_a_format_exception_on_invalid_toml()
     {
         Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read("this is = = not [[[ valid"));
+    }
+
+    // --- Edge cases: try to break the format ---
+
+    // Body delimiter attacks
+
+    [Fact]
+    public void Body_that_is_exactly_triple_single_quotes()
+    {
+        var binder = OneNote(body: "'''");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("'''", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_ending_with_triple_single_quotes()
+    {
+        var binder = OneNote(body: "text ends here'''");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("text ends here'''", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_starting_with_triple_single_quotes()
+    {
+        var binder = OneNote(body: "'''leading delimiter");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("'''leading delimiter", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_four_consecutive_single_quotes()
+    {
+        var binder = OneNote(body: "a''''b");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("a''''b", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_ending_with_newline_then_triple_single_quotes()
+    {
+        var binder = OneNote(body: "text\n'''");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("text\n'''", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_triple_double_quotes_at_end_of_line()
+    {
+        var binder = OneNote(body: "line\"\"\"\n");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("line\"\"\"", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_that_is_both_delimiters_interleaved()
+    {
+        var binder = OneNote(body: "'''\"\"\"'''\"\"\"");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("'''\"\"\"'''\"\"\"", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_many_consecutive_single_quotes()
+    {
+        var quotes = new string('\'', 20);
+        var binder = OneNote(body: $"before{quotes}after");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal($"before{quotes}after", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_many_consecutive_double_quotes()
+    {
+        var quotes = new string('"', 20);
+        var binder = OneNote(body: $"before{quotes}after");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal($"before{quotes}after", restored.Notes[0].Body);
+    }
+
+    // Body whitespace / control character edge cases
+
+    [Fact]
+    public void Body_of_only_whitespace_normalizes_to_empty()
+    {
+        var binder = OneNote(body: "   \t  \n  \n  ");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal(string.Empty, restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_of_only_newlines_normalizes_to_empty()
+    {
+        var binder = OneNote(body: "\n\n\n\n");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal(string.Empty, restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_control_characters_stripped_on_round_trip()
+    {
+        var body = "before"
+            + new string(new[] { '\0', (char)1, (char)2, (char)7, (char)0x0B, (char)0x0E, (char)0x0F, (char)0x7F })
+            + "after";
+        var binder = OneNote(body: body);
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("beforeafter", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_preserves_tabs()
+    {
+        var binder = OneNote(body: "\tindented\n\t\tdouble");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("\tindented\n\t\tdouble", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_mixed_line_endings_all_become_lf()
+    {
+        var binder = OneNote(body: "cr\ronly\r\ncrlf\nand lf");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("cr\nonly\ncrlf\nand lf", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_trailing_whitespace_on_lines_is_trimmed()
+    {
+        var binder = OneNote(body: "line one   \nline two\t\t\nline three");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("line one\nline two\nline three", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_backslash_at_end()
+    {
+        var binder = OneNote(body: "ends with backslash\\");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("ends with backslash\\", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_with_all_escape_sequences()
+    {
+        var binder = OneNote(body: "tab\there\nnewline\nquote\"end\\slash");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("tab\there\nnewline\nquote\"end\\slash", restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Body_single_character()
+    {
+        var binder = OneNote(body: "x");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("x", restored.Notes[0].Body);
+    }
+
+    // Title edge cases
+
+    [Fact]
+    public void Title_with_control_characters_survives_round_trip()
+    {
+        // Unlike bodies (which go through BodyCleanup), titles only get SingleLine normalization,
+        // so control characters that survive TOML escaping are preserved through the round trip.
+        var title = "hello" + new string(new[] { '\0', (char)1 }) + "world";
+        var binder = OneNote(title: title);
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal(title, restored.Notes[0].Title);
+    }
+
+    [Fact]
+    public void Title_of_only_whitespace_normalizes_to_empty()
+    {
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(OneNote(title: "   \t  ")));
+        Assert.Equal(string.Empty, restored.Notes[0].Title);
+    }
+
+    [Fact]
+    public void Title_with_quotes_round_trips()
+    {
+        var binder = OneNote(title: "He said \"hello\" and 'goodbye'");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("He said \"hello\" and 'goodbye'", restored.Notes[0].Title);
+    }
+
+    [Fact]
+    public void Title_with_backslashes_round_trips()
+    {
+        var binder = OneNote(title: "C:\\Users\\test\\file.txt");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("C:\\Users\\test\\file.txt", restored.Notes[0].Title);
+    }
+
+    [Fact]
+    public void Title_with_unicode_escapes_round_trips()
+    {
+        var binder = OneNote(title: "emoji 😀🎉 and CJK 漢字");
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("emoji 😀🎉 and CJK 漢字", restored.Notes[0].Title);
+    }
+
+    // Structural edge cases
+
+    [Fact]
+    public void Empty_string_reads_as_empty_binder()
+    {
+        var binder = BinderTomlReader.Read("");
+        Assert.Equal(string.Empty, binder.Id);
+        Assert.Empty(binder.Notes);
+    }
+
+    [Fact]
+    public void Whitespace_only_input_reads_as_empty_binder()
+    {
+        var binder = BinderTomlReader.Read("   \n\n  ");
+        Assert.Equal(string.Empty, binder.Id);
+        Assert.Empty(binder.Notes);
+    }
+
+    [Fact]
+    public void Binder_with_no_notes_round_trips()
+    {
+        var binder = new Binder
+        {
+            Id = "nb1",
+            Created = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero),
+            Modified = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero),
+        };
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal("nb1", restored.Id);
+        Assert.Empty(restored.Notes);
+    }
+
+    [Fact]
+    public void Binder_with_many_notes_round_trips()
+    {
+        var binder = new Binder
+        {
+            Id = "nb1",
+            Created = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            Modified = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+        };
+        for (var i = 0; i < 100; i++)
+        {
+            binder.Notes.Add(new Note
+            {
+                Id = $"n{i:D4}",
+                Title = $"Note #{i}",
+                Created = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+                Modified = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+                Body = $"Body of note {i}",
+            });
+        }
+
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal(100, restored.Notes.Count);
+        Assert.Equal("n0099", restored.Notes[99].Id);
+        Assert.Equal("Note #99", restored.Notes[99].Title);
+    }
+
+    [Fact]
+    public void Missing_binder_id_reads_as_empty()
+    {
+        const string text = "created = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-01T00:00:00.000Z\"\n";
+        var binder = BinderTomlReader.Read(text);
+        Assert.Equal(string.Empty, binder.Id);
+    }
+
+    [Fact]
+    public void Reader_ignores_unknown_keys()
+    {
+        const string text =
+            "id = \"nb1\"\n" +
+            "unknown_key = \"should be ignored\"\n" +
+            "created = \"2026-01-01T00:00:00.000Z\"\n" +
+            "modified = \"2026-01-01T00:00:00.000Z\"\n" +
+            "\n" +
+            "[[note]]\n" +
+            "id = \"n1\"\n" +
+            "extra_field = 42\n" +
+            "body = ''\n";
+
+        var binder = BinderTomlReader.Read(text);
+        Assert.Equal("nb1", binder.Id);
+        Assert.Single(binder.Notes);
+    }
+
+    [Fact]
+    public void Reader_tolerates_keys_in_non_canonical_order()
+    {
+        const string text =
+            "modified = \"2026-01-01T00:00:00.000Z\"\n" +
+            "id = \"nb1\"\n" +
+            "created = \"2026-01-01T00:00:00.000Z\"\n" +
+            "\n" +
+            "[[note]]\n" +
+            "body = 'hello'\n" +
+            "title = \"Reversed\"\n" +
+            "status = \"ready\"\n" +
+            "id = \"n1\"\n";
+
+        var binder = BinderTomlReader.Read(text);
+        Assert.Equal("nb1", binder.Id);
+        Assert.Equal("Reversed", binder.Notes[0].Title);
+        Assert.Equal("hello", binder.Notes[0].Body);
+        Assert.Equal(NoteStatus.Ready, binder.Notes[0].Status);
+    }
+
+    // Hostile ID edge cases
+
+    [Fact]
+    public void Note_id_with_forward_slash_is_regenerated()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"a/b\"\nbody = ''\n";
+        var note = BinderTomlReader.Read(text).Notes[0];
+        Assert.NotEqual("a/b", note.Id);
+        Assert.Equal(note.Id, Path.GetFileName(note.Id));
+    }
+
+    [Fact]
+    public void Note_with_empty_id_gets_a_generated_one()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"\"\nbody = ''\n";
+        var note = BinderTomlReader.Read(text).Notes[0];
+        Assert.False(string.IsNullOrEmpty(note.Id));
+    }
+
+    [Fact]
+    public void Note_with_missing_id_gets_a_generated_one()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nbody = ''\n";
+        var note = BinderTomlReader.Read(text).Notes[0];
+        Assert.False(string.IsNullOrEmpty(note.Id));
+    }
+
+    [Fact]
+    public void Multiple_notes_with_hostile_ids_all_get_unique_regenerated_ids()
+    {
+        const string text =
+            "id = \"nb1\"\n\n" +
+            "[[note]]\nid = \"..\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"..\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"\"\nbody = ''\n\n" +
+            "[[note]]\nid = \".\"\nbody = ''\n";
+
+        var ids = BinderTomlReader.Read(text).Notes.Select(n => n.Id).ToList();
+        Assert.Equal(4, ids.Count);
+        Assert.Equal(ids.Count, ids.Distinct().Count());
+        Assert.All(ids, id =>
+        {
+            Assert.False(string.IsNullOrEmpty(id));
+            Assert.NotEqual(".", id);
+            Assert.NotEqual("..", id);
+        });
+    }
+
+    // Hostile attachment edge cases
+
+    [Fact]
+    public void Attachment_with_forward_slash_in_name_is_dropped()
+    {
+        const string text =
+            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            "attachments = [\"ok.png\", \"sub/dir.png\", \"other/path/file.txt\"]\n" +
+            "body = ''\n";
+
+        var attachments = BinderTomlReader.Read(text).Notes[0].Attachments;
+        Assert.Equal(new[] { "ok.png" }, attachments);
+    }
+
+    [Fact]
+    public void Attachment_deeply_nested_traversal_is_dropped()
+    {
+        const string text =
+            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            "attachments = [\"../../../etc/passwd\", \"a.png\"]\n" +
+            "body = ''\n";
+
+        var attachments = BinderTomlReader.Read(text).Notes[0].Attachments;
+        Assert.Equal(new[] { "a.png" }, attachments);
+    }
+
+    [Fact]
+    public void All_attachments_hostile_leaves_empty_list()
+    {
+        const string text =
+            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            "attachments = [\"..\", \".\", \"../x\", \"a/b\", \"\", \"/root\"]\n" +
+            "body = ''\n";
+
+        Assert.Empty(BinderTomlReader.Read(text).Notes[0].Attachments);
+    }
+
+    [Fact]
+    public void Missing_attachments_key_reads_as_empty_list()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
+        Assert.Empty(BinderTomlReader.Read(text).Notes[0].Attachments);
+    }
+
+    // Timestamp edge cases
+
+    [Fact]
+    public void Malformed_binder_timestamps_fall_back_to_recent_time()
+    {
+        const string text =
+            "id = \"nb1\"\n" +
+            "created = \"not-a-date\"\n" +
+            "modified = \"also bad\"\n";
+
+        var binder = BinderTomlReader.Read(text);
+        Assert.True(binder.Created.Year >= 2026);
+        Assert.True(binder.Modified.Year >= 2026);
+    }
+
+    [Fact]
+    public void Malformed_note_timestamps_fall_back_to_recent_time()
+    {
+        const string text =
+            "id = \"nb1\"\n\n" +
+            "[[note]]\nid = \"n1\"\n" +
+            "created = \"garbage\"\nmodified = \"also garbage\"\n" +
+            "body = ''\n";
+
+        var note = BinderTomlReader.Read(text).Notes[0];
+        Assert.True(note.Created.Year >= 2026);
+        Assert.True(note.Modified.Year >= 2026);
+    }
+
+    [Fact]
+    public void Malformed_lifecycle_timestamps_read_as_null()
+    {
+        const string text =
+            "id = \"nb1\"\n\n" +
+            "[[note]]\nid = \"n1\"\nstatus = \"published\"\n" +
+            "ready_at = \"bad\"\npublished_at = \"nope\"\nexpired_at = \"\"\n" +
+            "body = ''\n";
+
+        var note = BinderTomlReader.Read(text).Notes[0];
+        Assert.Null(note.ReadyAt);
+        Assert.Null(note.PublishedAt);
+        Assert.Null(note.ExpiredAt);
+    }
+
+    [Fact]
+    public void Timestamp_with_timezone_offset_instead_of_Z_round_trips()
+    {
+        const string text =
+            "id = \"nb1\"\n" +
+            "created = \"2026-06-11T09:00:00.000+09:00\"\n" +
+            "modified = \"2026-06-11T00:00:00.000Z\"\n" +
+            "\n[[note]]\nid = \"n1\"\nbody = ''\n";
+
+        var binder = BinderTomlReader.Read(text);
+        Assert.Equal(new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero), binder.Created);
+    }
+
+    [Fact]
+    public void Timestamp_without_milliseconds_is_accepted()
+    {
+        const string text =
+            "id = \"nb1\"\n" +
+            "created = \"2026-06-11T00:00:00Z\"\n" +
+            "modified = \"2026-06-11T00:00:00Z\"\n" +
+            "\n[[note]]\nid = \"n1\"\nbody = ''\n";
+
+        var binder = BinderTomlReader.Read(text);
+        Assert.Equal(2026, binder.Created.Year);
+    }
+
+    [Fact]
+    public void All_lifecycle_timestamps_set_round_trip()
+    {
+        var binder = OneNote();
+        var note = binder.Notes[0];
+        note.Status = NoteStatus.Expired;
+        note.ReadyAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        note.PublishedAt = new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero);
+        note.ExpiredAt = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
+
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder)).Notes[0];
+        Assert.Equal(note.ReadyAt, restored.ReadyAt);
+        Assert.Equal(note.PublishedAt, restored.PublishedAt);
+        Assert.Equal(note.ExpiredAt, restored.ExpiredAt);
+    }
+
+    // Large / stress inputs
+
+    [Fact]
+    public void Large_body_round_trips()
+    {
+        var body = string.Join("\n", Enumerable.Range(0, 1000).Select(i => $"Line {i}: {new string('x', 100)}"));
+        var binder = OneNote(body: body);
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal(body, restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Long_single_line_body_round_trips()
+    {
+        var body = new string('a', 100_000);
+        var binder = OneNote(body: body);
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal(body, restored.Notes[0].Body);
+    }
+
+    [Fact]
+    public void Long_title_round_trips()
+    {
+        var title = new string('Z', 10_000);
+        var binder = OneNote(title: title);
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal(title, restored.Notes[0].Title);
+    }
+
+    [Fact]
+    public void Many_attachments_round_trip()
+    {
+        var binder = OneNote();
+        for (var i = 0; i < 200; i++)
+            binder.Notes[0].Attachments.Add($"file_{i:D4}.png");
+
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder));
+        Assert.Equal(200, restored.Notes[0].Attachments.Count);
+        Assert.Equal("file_0199.png", restored.Notes[0].Attachments[199]);
+    }
+
+    // Idempotency: write → read → write produces identical output
+
+    [Fact]
+    public void Write_read_write_is_idempotent()
+    {
+        var binder = SampleBinder();
+        var first = BinderTomlWriter.Write(binder);
+        var second = BinderTomlWriter.Write(BinderTomlReader.Read(first));
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void Write_read_write_is_idempotent_with_complex_body()
+    {
+        var binder = OneNote(body: "tab\there\nquote\"s\nslash\\\nempty:\n\nend");
+        var first = BinderTomlWriter.Write(binder);
+        var second = BinderTomlWriter.Write(BinderTomlReader.Read(first));
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void Write_read_write_is_idempotent_with_literal_fallback_body()
+    {
+        var binder = OneNote(body: "a ''' triggers the fallback path");
+        var first = BinderTomlWriter.Write(binder);
+        var second = BinderTomlWriter.Write(BinderTomlReader.Read(first));
+        Assert.Equal(first, second);
+    }
+
+    // Mixed / realistic scenarios
+
+    [Fact]
+    public void Note_with_every_field_populated_round_trips()
+    {
+        var binder = new Binder
+        {
+            Id = "binder1",
+            Created = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            Modified = new DateTimeOffset(2026, 6, 15, 12, 30, 0, TimeSpan.Zero),
+        };
+        var note = new Note
+        {
+            Id = "fullNote",
+            Title = "Every field populated: \"quotes\" and 'apostrophes' \\ backslash",
+            Created = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
+            Modified = new DateTimeOffset(2026, 6, 15, 12, 30, 0, TimeSpan.Zero),
+            Status = NoteStatus.Expired,
+            ReadyAt = new DateTimeOffset(2026, 3, 2, 0, 0, 0, TimeSpan.Zero),
+            PublishedAt = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
+            ExpiredAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
+            Body = "Line 1\n\tindented\n\n\"\"\" triple doubles\n''' triple singles\n\\backslash at end\\",
+        };
+        note.Attachments.Add("photo (1).jpg");
+        note.Attachments.Add("日本語.pdf");
+        binder.Notes.Add(note);
+
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder)).Notes[0];
+        Assert.Equal(note.Id, restored.Id);
+        Assert.Equal(note.Title, restored.Title);
+        Assert.Equal(note.Created, restored.Created);
+        Assert.Equal(note.Modified, restored.Modified);
+        Assert.Equal(note.Status, restored.Status);
+        Assert.Equal(note.ReadyAt, restored.ReadyAt);
+        Assert.Equal(note.PublishedAt, restored.PublishedAt);
+        Assert.Equal(note.ExpiredAt, restored.ExpiredAt);
+        Assert.Equal(note.Body, restored.Body);
+        Assert.Equal(note.Attachments, restored.Attachments);
+    }
+
+    [Fact]
+    public void Mix_of_valid_and_hostile_notes_reads_correctly()
+    {
+        const string text =
+            "id = \"nb1\"\n" +
+            "created = \"2026-01-01T00:00:00.000Z\"\n" +
+            "modified = \"2026-01-01T00:00:00.000Z\"\n" +
+            "\n" +
+            "[[note]]\n" +
+            "id = \"good\"\ntitle = \"Valid\"\nbody = 'hello'\n" +
+            "\n" +
+            "[[note]]\n" +
+            "id = \"../bad\"\ntitle = \"Hostile id\"\n" +
+            "attachments = [\"../escape\", \"ok.png\"]\n" +
+            "body = 'world'\n";
+
+        var binder = BinderTomlReader.Read(text);
+        Assert.Equal(2, binder.Notes.Count);
+        Assert.Equal("good", binder.Notes[0].Id);
+        Assert.Equal("Valid", binder.Notes[0].Title);
+        Assert.NotEqual("../bad", binder.Notes[1].Id);
+        Assert.Equal("Hostile id", binder.Notes[1].Title);
+        Assert.Equal(new[] { "ok.png" }, binder.Notes[1].Attachments);
+    }
+
+    [Fact]
+    public void Hand_edited_file_with_inline_tables_throws_or_reads_gracefully()
+    {
+        // Someone might try to hand-edit and use an inline note instead of [[note]].
+        // This should either throw or produce zero notes (no notes matched [[note]]).
+        const string text = "id = \"nb1\"\nnote = [{id = \"n1\", body = \"hi\"}]\n";
+
+        // Tomlyn may parse this as a different structure; we just need it not to crash.
+        var binder = BinderTomlReader.Read(text);
+        Assert.Equal("nb1", binder.Id);
     }
 
     private static void AssertInOrder(string text, params string[] tokens)

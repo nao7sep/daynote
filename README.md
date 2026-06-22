@@ -1,8 +1,8 @@
 # DayNote
 
-DayNote is a macOS-first (also Windows) desktop app for keeping many plain-text notes organized into **binders** — a binder is a `.daynote` file (its attachments live in a folder beside it, so move the two together), a note is a single dated text entry with optional file attachments. It is persistence-first: everything you write is meant to be kept, written atomically with the live files as the source of truth. It suits anyone who wants a fast, local, file-owned home for a lot of small notes; a daily-journal workflow is the intended direction, though today the model is the flat two-level one (binders contain notes, no date grouping yet). DayNote succeeds *quickdeck*, generalizing its flat panes into binders-of-notes.
+DayNote is a macOS-first (also Windows) desktop app for plain-text notes organized into **binders**. A binder is a `.daynote` file; its attachments live in a folder beside it, so the two move together. A note is a single dated text entry with optional file attachments.
 
-**Status:** early development (0.x). Data formats and features may change without notice; no backward-compatibility guarantees before 1.0.
+Everything is persistence-first: writes are atomic, the live files are the source of truth, and nothing you write is silently discarded. DayNote suits anyone who wants a fast, local, file-owned home for a lot of small notes — a daily-journal workflow is the intended direction, though today the model is a flat two-level one (binders contain notes, no date grouping yet). Succeeds *quickdeck*, generalizing its flat panes into binders-of-notes.
 
 ## Requirements
 
@@ -13,7 +13,7 @@ DayNote is a macOS-first (also Windows) desktop app for keeping many plain-text 
 
 - **Binders of plain-text notes** — many notes per `.daynote` file, each with a title and body.
 - **Attachments** — associate files with a note; add by drag-and-drop, reorder in place.
-- **Lifecycle status** — draft → checked → published → expired; non-draft notes lock read-only until set back to draft.
+- **Lifecycle status** — draft → ready → published → expired; published and expired notes are locked until moved back to draft or ready.
 - **Character counting** — live word/character counts plus an X/Twitter-weighted count against the 280 limit.
 - **Autosave** — debounced save as you type; flushes on close and quit.
 - **Dark "Twilight" theme**, keyboard-driven throughout.

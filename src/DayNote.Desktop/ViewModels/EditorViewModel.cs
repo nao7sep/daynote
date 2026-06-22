@@ -59,6 +59,15 @@ public sealed partial class EditorViewModel : ViewModelBase
     private string _modifiedText = string.Empty;
 
     [ObservableProperty]
+    private string _readyAtText = string.Empty;
+
+    [ObservableProperty]
+    private string _publishedAtText = string.Empty;
+
+    [ObservableProperty]
+    private string _expiredAtText = string.Empty;
+
+    [ObservableProperty]
     private string _wordsText = "0 words";
 
     [ObservableProperty]
@@ -108,19 +117,25 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Re-reads the created/modified metadata after a save updates the note's timestamps.</summary>
+    /// <summary>Re-reads the created/modified/lifecycle metadata after a save or status change.</summary>
     public void RefreshMetadata()
     {
         if (_note is null)
         {
             CreatedText = string.Empty;
             ModifiedText = string.Empty;
+            ReadyAtText = string.Empty;
+            PublishedAtText = string.Empty;
+            ExpiredAtText = string.Empty;
             return;
         }
 
         var now = DateTimeOffset.UtcNow;
         CreatedText = "Created " + DayNoteTime.ToSmartDisplay(_note.Created, _displayTimeZone, now);
         ModifiedText = "Modified " + DayNoteTime.ToSmartDisplay(_note.Modified, _displayTimeZone, now);
+        ReadyAtText = _note.ReadyAt is { } r ? "Ready " + DayNoteTime.ToSmartDisplay(r, _displayTimeZone, now) : string.Empty;
+        PublishedAtText = _note.PublishedAt is { } p ? "Published " + DayNoteTime.ToSmartDisplay(p, _displayTimeZone, now) : string.Empty;
+        ExpiredAtText = _note.ExpiredAt is { } x ? "Expired " + DayNoteTime.ToSmartDisplay(x, _displayTimeZone, now) : string.Empty;
     }
 
     partial void OnTitleChanged(string value)
@@ -144,6 +159,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
 
         NoteLifecycle.ApplyTransition(_note, value, DateTimeOffset.UtcNow);
+        RefreshMetadata();
         Edited?.Invoke(this, EventArgs.Empty);
     }
 

@@ -104,6 +104,18 @@
                     <TextBlock Text="{Binding Editor.CreatedText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
                     <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
                     <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ReadyAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Editor.ReadyAtText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ReadyAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.PublishedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Editor.PublishedAtText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.PublishedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ExpiredAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Editor.ExpiredAtText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ExpiredAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
 
                 <TextBlock Grid.Column="1" Text="{Binding BinderStatusText}" FontSize="12"
@@ -241,16 +253,16 @@
                     <DockPanel IsVisible="{Binding Editor.HasNote}">
                         <!-- Header: title + lifecycle status in one row, then the body directly below (no
                              borderline — the metadata that used to sit here now lives in the status bar).
-                             A non-draft note's title and body are read-only until moved back to draft. -->
+                             Published and expired notes are read-only until moved to draft or ready. -->
                         <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="10,10,10,6">
                             <ctl:ComposingTextBox x:Name="TitleBox"
                                                   Text="{Binding Editor.Title}" PlaceholderText="Title…"
                                                   FontSize="18" FontWeight="SemiBold" AcceptsReturn="False"
                                                   IsReadOnly="{Binding !Editor.IsEditable}"
                                                   Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
-                            <!-- Shown when the note is not Draft: the title/body are read-only until it is. -->
+                            <!-- Shown when the note is locked (published or expired). -->
                             <Border Grid.Column="1" Classes="badge" Margin="8,0,0,0" IsVisible="{Binding !Editor.IsEditable}"
-                                    ToolTip.Tip="This note is read-only — set its status to Draft to edit.">
+                                    ToolTip.Tip="This note is read-only — set its status to Draft or Ready to edit.">
                                 <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                                     <Path Width="11" Height="12" Stretch="Uniform" Fill="Transparent"
                                           Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.3"
