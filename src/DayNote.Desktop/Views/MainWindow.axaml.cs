@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using DayNote.Desktop.Controls;
 using DayNote.Desktop.ViewModels;
 
 namespace DayNote.Desktop.Views;
@@ -481,6 +482,14 @@ public partial class MainWindow : Window
 
     private bool TryHandleShortcut(KeyEventArgs e)
     {
+        // A command accelerator is a chord the IME passes straight through, so while a field is
+        // mid-composition the chord belongs to the pending candidate: stand down and let the user
+        // finish, rather than firing on text the candidate is not yet part of (text-input-ime).
+        if (ComposingTextBox.IsFocusedElementComposing(this))
+        {
+            return false;
+        }
+
         foreach (var item in Shortcuts)
         {
             if (item.Gesture is { } gesture && item.Action is { } action && gesture.Matches(e))

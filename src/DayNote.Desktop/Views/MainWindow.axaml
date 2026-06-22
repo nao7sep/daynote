@@ -159,7 +159,7 @@
                         </Grid>
                     </Border>
                     <DockPanel Margin="10">
-                        <TextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
+                        <ctl:ComposingTextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
                         <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
                         <ListBox ItemsSource="{Binding Binders}"
                                  SelectedItem="{Binding SelectedBinder}">
@@ -209,7 +209,7 @@
                         </Grid>
                     </Border>
                     <DockPanel Margin="10">
-                        <TextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
+                        <ctl:ComposingTextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
                         <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
                                  KeyDown="NotesList_KeyDown">
                             <ListBox.ItemTemplate>
@@ -276,7 +276,7 @@
                                       SelectedItem="{Binding Editor.Status}"
                                       ToolTip.Tip="Lifecycle status"/>
                         </Grid>
-                        <TextBox x:Name="BodyBox" Margin="10,0,10,10"
+                        <ctl:ComposingTextBox x:Name="BodyBox" Margin="10,0,10,10"
                                  Text="{Binding Editor.Body}"
                                  IsReadOnly="{Binding !Editor.IsEditable}"
                                  AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
