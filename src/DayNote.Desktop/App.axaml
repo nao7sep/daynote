@@ -41,7 +41,7 @@
             <Color x:Key="ListBackground">#121015</Color>
             <Color x:Key="ListSelection">#3B2F51</Color>
             <Color x:Key="ListSelectionHover">#493A61</Color>
-            <!-- Note lifecycle status accents: draft (muted) → checked (amber) → published (green); expired (red). -->
+            <!-- Note lifecycle status accents: draft (muted) → ready (amber) → published (green); expired (red). -->
             <Color x:Key="Positive">#5FB98B</Color>
 
             <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackground}"/>
@@ -58,7 +58,7 @@
             <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="{StaticResource ListSelectionHover}"/>
             <SolidColorBrush x:Key="PositiveBrush" Color="{StaticResource Positive}"/>
             <SolidColorBrush x:Key="StatusDraftBrush" Color="{StaticResource TextSecondary}"/>
-            <SolidColorBrush x:Key="StatusCheckedBrush" Color="{StaticResource Warning}"/>
+            <SolidColorBrush x:Key="StatusReadyBrush" Color="{StaticResource Warning}"/>
             <SolidColorBrush x:Key="StatusPublishedBrush" Color="{StaticResource Positive}"/>
             <SolidColorBrush x:Key="StatusExpiredBrush" Color="{StaticResource Danger}"/>
         </ResourceDictionary>
@@ -200,7 +200,7 @@
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         </Style>
 
-        <!-- A read-only text field (a non-draft note's title/body) is shown recessed, so it visibly
+        <!-- A read-only text field (a locked note's title/body) is shown recessed, so it visibly
              reads as not-editable. :is(TextBox) also covers the ComposingTextBox title field. -->
         <Style Selector=":is(TextBox)[IsReadOnly=True] /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>

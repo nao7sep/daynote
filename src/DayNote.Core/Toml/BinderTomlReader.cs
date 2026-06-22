@@ -3,6 +3,7 @@ using DayNote.Core.Models;
 using DayNote.Core.Text;
 using DayNote.Core.Time;
 using Tomlyn;
+using Tomlyn.Serialization;
 
 namespace DayNote.Core.Toml;
 
@@ -73,6 +74,9 @@ public static class BinderTomlReader
             Created = ParseTimestamp(document.Created, fallback),
             Modified = ParseTimestamp(document.Modified, fallback),
             Status = NoteStatuses.Parse(document.Status),
+            ReadyAt = ParseOptionalTimestamp(document.ReadyAt),
+            PublishedAt = ParseOptionalTimestamp(document.PublishedAt),
+            ExpiredAt = ParseOptionalTimestamp(document.ExpiredAt),
             Body = BodyCleanup.Normalize(document.Body ?? string.Empty),
         };
 
@@ -120,6 +124,9 @@ public static class BinderTomlReader
     private static DateTimeOffset ParseTimestamp(string? text, DateTimeOffset fallback) =>
         !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : fallback;
 
+    private static DateTimeOffset? ParseOptionalTimestamp(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : null;
+
     // Internal DTOs mirroring the on-disk shape. Timestamps are read as strings because the format
     // stores them as quoted ISO-8601 values rather than TOML-native datetimes.
     private sealed class BinderDocument
@@ -137,6 +144,12 @@ public static class BinderTomlReader
         public string? Created { get; set; }
         public string? Modified { get; set; }
         public string? Status { get; set; }
+        [TomlPropertyName("ready_at")]
+        public string? ReadyAt { get; set; }
+        [TomlPropertyName("published_at")]
+        public string? PublishedAt { get; set; }
+        [TomlPropertyName("expired_at")]
+        public string? ExpiredAt { get; set; }
         public List<string>? Attachments { get; set; }
         public string? Body { get; set; }
     }

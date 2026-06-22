@@ -48,18 +48,17 @@ public sealed partial class NoteListItemViewModel : ObservableObject
 
     private static string StatusText(NoteStatus status) => status switch
     {
-        NoteStatus.Checked => "Checked",
+        NoteStatus.Ready => "Ready",
         NoteStatus.Published => "Published",
         NoteStatus.Expired => "Expired",
         _ => "Draft",
     };
 
-    // Pulls the status' accent brush from the app palette (so the list dot tracks the theme).
     private static IBrush StatusColor(NoteStatus status)
     {
         var key = status switch
         {
-            NoteStatus.Checked => "StatusCheckedBrush",
+            NoteStatus.Ready => "StatusReadyBrush",
             NoteStatus.Published => "StatusPublishedBrush",
             NoteStatus.Expired => "StatusExpiredBrush",
             _ => "StatusDraftBrush",

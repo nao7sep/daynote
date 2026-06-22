@@ -47,7 +47,7 @@ public sealed class NoteListItemViewModelTests
 
     [Theory]
     [InlineData(NoteStatus.Draft, "Draft")]
-    [InlineData(NoteStatus.Checked, "Checked")]
+    [InlineData(NoteStatus.Ready, "Ready")]
     [InlineData(NoteStatus.Published, "Published")]
     [InlineData(NoteStatus.Expired, "Expired")]
     public void StatusLabel_matches_the_lifecycle_state(NoteStatus status, string label)

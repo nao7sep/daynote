@@ -31,12 +31,12 @@ public sealed class EditorViewModelTests
         var raised = false;
         editor.Edited += (_, _) => raised = true;
 
-        editor.Load(NewNote(title: "Hello", body: "world", status: NoteStatus.Checked));
+        editor.Load(NewNote(title: "Hello", body: "world", status: NoteStatus.Ready));
 
         Assert.True(editor.HasNote);
         Assert.Equal("Hello", editor.Title);
         Assert.Equal("world", editor.Body);
-        Assert.Equal(NoteStatus.Checked, editor.Status);
+        Assert.Equal(NoteStatus.Ready, editor.Status);
         Assert.False(raised);
     }
 
@@ -84,10 +84,10 @@ public sealed class EditorViewModelTests
 
     [Theory]
     [InlineData(NoteStatus.Draft, true)]
-    [InlineData(NoteStatus.Checked, false)]
+    [InlineData(NoteStatus.Ready, true)]
     [InlineData(NoteStatus.Published, false)]
     [InlineData(NoteStatus.Expired, false)]
-    public void Only_a_draft_note_is_editable(NoteStatus status, bool editable)
+    public void Draft_and_ready_notes_are_editable(NoteStatus status, bool editable)
     {
         var editor = NewEditor();
 

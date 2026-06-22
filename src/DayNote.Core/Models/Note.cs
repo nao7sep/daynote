@@ -12,8 +12,17 @@ public sealed class Note
     public DateTimeOffset Created { get; set; }
     public DateTimeOffset Modified { get; set; }
 
-    /// <summary>Lifecycle state (draft / checked / published / expired). New notes start as draft.</summary>
+    /// <summary>Lifecycle state (draft / ready / published / expired). New notes start as draft.</summary>
     public NoteStatus Status { get; set; } = NoteStatus.Draft;
+
+    /// <summary>Set when the note first reaches ready; cleared only on return to draft.</summary>
+    public DateTimeOffset? ReadyAt { get; set; }
+
+    /// <summary>Set on first publish; cleared only on return to draft.</summary>
+    public DateTimeOffset? PublishedAt { get; set; }
+
+    /// <summary>Set when the note first reaches expired; cleared only on return to draft.</summary>
+    public DateTimeOffset? ExpiredAt { get; set; }
 
     /// <summary>Bare attachment filenames, in the order written to the file.</summary>
     public List<string> Attachments { get; } = new();

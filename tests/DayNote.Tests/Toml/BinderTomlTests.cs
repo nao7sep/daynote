@@ -33,6 +33,9 @@ public sealed class BinderTomlTests
             Assert.Equal(expected.Created, actual.Created);
             Assert.Equal(expected.Modified, actual.Modified);
             Assert.Equal(expected.Status, actual.Status);
+            Assert.Equal(expected.ReadyAt, actual.ReadyAt);
+            Assert.Equal(expected.PublishedAt, actual.PublishedAt);
+            Assert.Equal(expected.ExpiredAt, actual.ExpiredAt);
             Assert.Equal(expected.Attachments, actual.Attachments);
             Assert.Equal(expected.Body, actual.Body);
         }
@@ -55,7 +58,7 @@ public sealed class BinderTomlTests
         // The binder has no title line (its title is local app state, not stored in the file).
         Assert.DoesNotContain("title =", text[..noteStart]);
         AssertInOrder(text[..noteStart], "id =", "created =", "modified =");
-        AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "status =", "attachments =", "body =");
+        AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "status =", "ready_at =", "attachments =", "body =");
     }
 
     [Fact]
@@ -275,7 +278,7 @@ public sealed class BinderTomlTests
 
     [Theory]
     [InlineData(NoteStatus.Draft, "draft")]
-    [InlineData(NoteStatus.Checked, "checked")]
+    [InlineData(NoteStatus.Ready, "ready")]
     [InlineData(NoteStatus.Published, "published")]
     [InlineData(NoteStatus.Expired, "expired")]
     public void Status_round_trips_with_a_lowercase_token(NoteStatus status, string token)
@@ -305,6 +308,45 @@ public sealed class BinderTomlTests
         const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"Published\"\nbody = ''\n";
 
         Assert.Equal(NoteStatus.Published, BinderTomlReader.Read(text).Notes[0].Status);
+    }
+
+    [Fact]
+    public void Reader_accepts_legacy_checked_token_as_ready()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"checked\"\nbody = ''\n";
+
+        Assert.Equal(NoteStatus.Ready, BinderTomlReader.Read(text).Notes[0].Status);
+    }
+
+    [Fact]
+    public void Lifecycle_timestamps_round_trip()
+    {
+        var binder = OneNote();
+        var note = binder.Notes[0];
+        note.Status = NoteStatus.Published;
+        note.ReadyAt = new DateTimeOffset(2026, 6, 10, 12, 0, 0, 0, TimeSpan.Zero);
+        note.PublishedAt = new DateTimeOffset(2026, 6, 10, 13, 0, 0, 0, TimeSpan.Zero);
+
+        var text = BinderTomlWriter.Write(binder);
+        Assert.Contains("ready_at =", text);
+        Assert.Contains("published_at =", text);
+        Assert.DoesNotContain("expired_at =", text);
+
+        var restored = BinderTomlReader.Read(text).Notes[0];
+        Assert.Equal(note.ReadyAt, restored.ReadyAt);
+        Assert.Equal(note.PublishedAt, restored.PublishedAt);
+        Assert.Null(restored.ExpiredAt);
+    }
+
+    [Fact]
+    public void Absent_lifecycle_timestamps_read_as_null()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"draft\"\nbody = ''\n";
+
+        var note = BinderTomlReader.Read(text).Notes[0];
+        Assert.Null(note.ReadyAt);
+        Assert.Null(note.PublishedAt);
+        Assert.Null(note.ExpiredAt);
     }
 
     [Fact]
@@ -339,7 +381,8 @@ public sealed class BinderTomlTests
             Title = "First note",
             Created = new DateTimeOffset(2026, 6, 3, 14, 30, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 3, 14, 30, 0, 0, TimeSpan.Zero),
-            Status = NoteStatus.Checked,
+            Status = NoteStatus.Ready,
+            ReadyAt = new DateTimeOffset(2026, 6, 3, 15, 0, 0, 0, TimeSpan.Zero),
             Body = "firstline\n\tsecondline\nthirdline",
         };
         first.Attachments.Add("diagram.png");
@@ -353,6 +396,8 @@ public sealed class BinderTomlTests
             Created = new DateTimeOffset(2026, 6, 3, 14, 40, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 3, 14, 41, 0, 0, TimeSpan.Zero),
             Status = NoteStatus.Published,
+            ReadyAt = new DateTimeOffset(2026, 6, 3, 14, 45, 0, 0, TimeSpan.Zero),
+            PublishedAt = new DateTimeOffset(2026, 6, 3, 14, 50, 0, 0, TimeSpan.Zero),
             Body = "copies clean, indentation preserved exactly",
         };
         binder.Notes.Add(second);

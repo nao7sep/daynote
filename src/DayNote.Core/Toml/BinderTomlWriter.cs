@@ -43,6 +43,9 @@ public static class BinderTomlWriter
             AppendTimestamp(builder, "created", note.Created);
             AppendTimestamp(builder, "modified", note.Modified);
             AppendBasic(builder, "status", note.Status.ToToken());
+            AppendOptionalTimestamp(builder, "ready_at", note.ReadyAt);
+            AppendOptionalTimestamp(builder, "published_at", note.PublishedAt);
+            AppendOptionalTimestamp(builder, "expired_at", note.ExpiredAt);
             AppendAttachments(builder, note.Attachments);
             AppendBody(builder, note.Body);
         }
@@ -58,6 +61,14 @@ public static class BinderTomlWriter
     private static void AppendTimestamp(StringBuilder builder, string key, DateTimeOffset value)
     {
         builder.Append(key).Append(" = \"").Append(DayNoteTime.ToIso(value)).Append("\"\n");
+    }
+
+    private static void AppendOptionalTimestamp(StringBuilder builder, string key, DateTimeOffset? value)
+    {
+        if (value is { } v)
+        {
+            AppendTimestamp(builder, key, v);
+        }
     }
 
     private static void AppendAttachments(StringBuilder builder, IReadOnlyList<string> attachments)
