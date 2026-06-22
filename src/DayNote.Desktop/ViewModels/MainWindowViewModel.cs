@@ -50,7 +50,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _dirty;
     private bool _externalChangeAcknowledged;
     private bool _externalCheckInProgress;
-    private bool _savingInProgress;
     private SaveState _saveState = SaveState.Saved;
 
     public MainWindowViewModel(AppPaths paths, IDialogService dialogs, IAppLogger log)
@@ -150,9 +149,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private double _notesPaneWidth = 260;
 
     [ObservableProperty]
-    private double _editorPaneWidth = 430;
-
-    [ObservableProperty]
     private double _attachmentsPaneWidth = 260;
 
     [ObservableProperty]
@@ -197,16 +193,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>Flushes pending work on shutdown. Pane widths are captured first by the view.</summary>
-    public async Task ShutdownAsync()
+    /// <summary>
+    /// Flushes and closes the open binder on quit. Returns false when the final flush failed — the
+    /// binder stays open (autosave still retrying) so the caller can keep the window open rather than
+    /// let unsaved edits vanish on quit.
+    /// </summary>
+    public async Task<bool> ShutdownAsync()
     {
-        _externalTimer.Stop();
-        _autosaveTimer.Stop();
         _log.Info("Application shutting down", new { path = _current?.Path });
 
         // Persist state (including the current note id) while the binder is still open;
         // CloseCurrentAsync clears the selection, which would otherwise null out CurrentNoteId.
         PersistState();
-        await CloseCurrentAsync(clearSelection: false);
+        if (!await CloseCurrentAsync(clearSelection: false))
+        {
+            return false;
+        }
+
+        _externalTimer.Stop();
+        _autosaveTimer.Stop();
+        return true;
     }
 
     /// <summary>
@@ -276,8 +282,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var path = _current.Path;
-        await CloseCurrentAsync(clearSelection: true);
-        ForgetBinder(path);
+        if (await CloseCurrentAsync(clearSelection: true))
+        {
+            ForgetBinder(path);
+        }
     }
 
     /// <summary>
@@ -294,7 +302,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         if (_current is not null && PathKey.Equal(_current.Path, item.Path))
         {
-            await CloseCurrentAsync(clearSelection: true);
+            if (!await CloseCurrentAsync(clearSelection: true))
+            {
+                // The open binder's edits couldn't be flushed; keep it rather than forget it.
+                return;
+            }
         }
 
         ForgetBinder(item.Path);
@@ -655,7 +667,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _log.Info("Opening binder", new { path, isNew });
         var stopwatch = Stopwatch.StartNew();
 
-        await CloseCurrentAsync(clearSelection: false);
+        if (!await CloseCurrentAsync(clearSelection: false))
+        {
+            // The current binder's edits couldn't be flushed; keep it open rather than switch away.
+            return;
+        }
 
         LoadedBinder loaded;
         try
@@ -698,19 +714,27 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         });
     }
 
-    private async Task CloseCurrentAsync(bool clearSelection)
+    /// <summary>
+    /// Flushes pending edits and tears down the open binder. Returns false (and leaves the binder open,
+    /// dirty, with the autosave still retrying) when the flush failed — so a save error never costs the
+    /// user their edits. Callers abort whatever they were doing (forget / switch / quit) on false.
+    /// </summary>
+    private async Task<bool> CloseCurrentAsync(bool clearSelection)
     {
         if (_current is null)
         {
-            return;
+            return true;
         }
 
         _log.Info("Closing binder", new { path = _current.Path });
         _autosaveTimer.Stop();
-        if (_dirty)
+        if (_dirty && !await SaveCurrentAsync())
         {
-            // Flush any pending edits before closing.
-            await SaveCurrentAsync();
+            // The flush failed (a full disk, a volume that disconnected, a file briefly locked). Keep the
+            // binder open with its unsaved edits and resume the autosave so it retries; the error state
+            // stays visible. Discarding here is the one thing we must never do.
+            _autosaveTimer.Start();
+            return false;
         }
 
         _current = null;
@@ -732,23 +756,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _state.CurrentNoteId = null;
             PersistState();
         }
+
+        return true;
     }
 
-    private async Task SaveCurrentAsync()
+    /// <summary>
+    /// Flushes pending edits to disk. Returns true when there is nothing to save or the save succeeds,
+    /// and false when a save was attempted and failed — or is deferred because an external-change
+    /// conflict is being resolved. Callers that tear down or quit rely on this to avoid discarding edits
+    /// that never reached disk.
+    /// </summary>
+    private async Task<bool> SaveCurrentAsync()
     {
-        if (!IsReady || _current is null || _externalCheckInProgress)
+        if (_externalCheckInProgress)
         {
-            // Do not save while an external-change conflict is being resolved; the autosave Tick
-            // reschedules so the edits are not lost.
-            return;
+            // A conflict is being resolved; don't save now. Edits stay dirty and the autosave retries.
+            return false;
         }
 
-        if (!_dirty)
+        if (!IsReady || _current is null || !_dirty)
         {
-            return;
+            return true;
         }
 
-        _savingInProgress = true;
         var stopwatch = Stopwatch.StartNew();
         try
         {
@@ -766,10 +796,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 }
             }
 
-            if (_dirty)
-            {
-                binder.Modified = now;
-            }
+            binder.Modified = now;
 
             var saved = _binderStore.Save(_current.Path, binder);
             _baselineHash = saved.ContentHash;
@@ -781,23 +808,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             RefreshSelectedListItem();
             SetSaveState(SaveState.Saved);
             _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
+            return true;
         }
         catch (Exception ex)
         {
             _log.Error("Failed to save binder", new { path = _current?.Path }, ex);
             SetSaveState(SaveState.Error);
             ShowToast(ToastKind.Error, "Save failed: " + ex.Message);
-        }
-        finally
-        {
-            _savingInProgress = false;
+            return false;
         }
     }
 
     private async Task CheckExternalChangeAsync()
     {
         if (!IsReady || _current is null || _externalChangeAcknowledged
-            || _externalCheckInProgress || _savingInProgress)
+            || _externalCheckInProgress)
         {
             return;
         }
@@ -1161,37 +1186,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     partial void OnSelectedNoteChanged(NoteListItemViewModel? value)
     {
-        // Leaving a note flushes its edits to disk — the same guarantee close and binder-switch already
-        // give — so a completed edit you navigated away from is never lost to a crash; only active typing
-        // sits in the debounce window. The flush is a no-op unless dirty, so browsing costs nothing.
-        FlushPendingSave();
-
         Editor.Load(value?.Note);
         LoadAttachments(value?.Note);
         _state.CurrentNoteId = value?.Note.Id;
         UpdateBinderStatus();
-    }
-
-    /// <summary>
-    /// Persists pending edits immediately at a navigation boundary, mirroring the autosave Tick: stop the
-    /// debounce, save, then reschedule only if the save couldn't complete (e.g. an external-change
-    /// conflict is open). A no-op unless something is dirty. The save runs synchronously in practice
-    /// (<see cref="SaveCurrentAsync"/> has no awaits) and the model already holds the write-through edits,
-    /// so firing it without awaiting is safe.
-    /// </summary>
-    private void FlushPendingSave()
-    {
-        if (!_dirty)
-        {
-            return;
-        }
-
-        _autosaveTimer.Stop();
-        _ = SaveCurrentAsync();
-        if (_dirty)
-        {
-            _autosaveTimer.Start();
-        }
     }
 
     partial void OnSelectedBinderChanged(BinderListItemViewModel? value)
@@ -1286,7 +1284,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         BindersPaneWidth = _state.BindersPaneWidth;
         NotesPaneWidth = _state.NotesPaneWidth;
-        EditorPaneWidth = _state.EditorPaneWidth;
         AttachmentsPaneWidth = _state.AttachmentsPaneWidth;
     }
 
@@ -1299,7 +1296,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         _state.BindersPaneWidth = BindersPaneWidth;
         _state.NotesPaneWidth = NotesPaneWidth;
-        _state.EditorPaneWidth = EditorPaneWidth;
         _state.AttachmentsPaneWidth = AttachmentsPaneWidth;
         _state.CurrentNoteId = SelectedNote?.Note.Id;
 

@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using DayNote.Core.Configuration;
+using DayNote.Desktop.Logging;
 using DayNote.Desktop.Views;
 
 namespace DayNote.Desktop.Services;
@@ -15,6 +16,10 @@ public sealed class DialogService : IDialogService
     {
         Patterns = new[] { "*.daynote" },
     };
+
+    private readonly IAppLogger _log;
+
+    public DialogService(IAppLogger log) => _log = log;
 
     public Window? Owner { get; set; }
 
@@ -81,7 +86,7 @@ public sealed class DialogService : IDialogService
 
     public async Task ShowAboutAsync()
     {
-        var dialog = new AboutDialog();
+        var dialog = new AboutDialog(_log);
         await dialog.ShowDialog(RequireOwner());
     }
 
@@ -109,7 +114,10 @@ public sealed class DialogService : IDialogService
             new[]
             {
                 new DialogButton("Keep my version", "keep"),
-                new DialogButton("Reload from disk", "reload", DialogButtonKind.Primary),
+                // Reloading discards the user's unsaved local edits, so it is the destructive choice:
+                // mark it Destructive both for its styling and so initial focus lands on the safe
+                // "Keep my version" instead of the edit-losing button.
+                new DialogButton("Reload from disk", "reload", DialogButtonKind.Destructive),
             });
         await dialog.ShowDialog(RequireOwner());
         return dialog.ResultTag == "reload" ? ExternalChangeChoice.ReloadFromDisk : ExternalChangeChoice.KeepMine;

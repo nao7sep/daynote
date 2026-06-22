@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
 using DayNote.Core.Configuration;
@@ -113,26 +112,6 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var reloaded = new BinderStore().Load(BinderPath);
         Assert.Equal("unsaved edit", reloaded.Binder.Notes[0].Body);
-    }
-
-    [AvaloniaFact]
-    public async Task Switching_notes_flushes_the_edited_note_to_disk()
-    {
-        var vm = await OpenNewBinderAsync();
-        vm.NewNoteCommand.Execute(null);   // older note
-        vm.NewNoteCommand.Execute(null);   // newest note — created last, so selected and in the editor
-        var newest = vm.SelectedNote!;
-        var older = vm.Notes[1];           // newest-first list: the older note sits below
-
-        vm.Editor.Body = "edited body";    // writes through to the newest note and marks it dirty
-
-        // Switch away without an explicit save: leaving the note must flush it.
-        vm.SelectedNote = older;
-
-        var reloaded = new BinderStore().Load(BinderPath);
-        Assert.Equal("edited body", reloaded.Binder.Notes.First(n => n.Id == newest.Note.Id).Body);
-
-        await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]

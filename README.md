@@ -1,57 +1,36 @@
 # DayNote
 
-A cross-platform desktop application, with macOS as the primary target, for managing many plain-text notes organized into **binders**. DayNote is persistence-first: everything written is intended to be kept, so the live data files are the source of truth. A daily-journal workflow is the intended direction; what is implemented today is the flat two-level model below (binders contain notes, with no date-based grouping yet).
+DayNote is a macOS-first (also Windows) desktop app for keeping many plain-text notes organized into **binders** — a binder is a `.daynote` file (its attachments live in a folder beside it, so move the two together), a note is a single dated text entry with optional file attachments. It is persistence-first: everything you write is meant to be kept, written atomically with the live files as the source of truth. It suits anyone who wants a fast, local, file-owned home for a lot of small notes; a daily-journal workflow is the intended direction, though today the model is the flat two-level one (binders contain notes, no date grouping yet). DayNote succeeds *quickdeck*, generalizing its flat panes into binders-of-notes.
 
-DayNote is the successor to *quickdeck*, porting its proven mechanisms and generalizing quickdeck's flat panes into a two-level model of **binders** containing **notes**.
+**Status:** early development (0.x). Data formats and features may change without notice; no backward-compatibility guarantees before 1.0.
 
-> **Status:** early development (0.1.0). DayNote is a work in progress; the data formats, APIs, and feature set may change without notice while the version stays in the 0.x range. No backward-compatibility guarantees are made before 1.0.
+## Requirements
 
-## Domain model
+- **.NET 10** runtime.
+- **macOS** (primary) or **Windows**.
 
-- **Binder** — one `.daynote` file (TOML); an ordered collection of notes plus metadata.
-- **Note** — a single text entry: identity, title, timestamps, attachment references, body.
-- **Attachment** — a file associated with a note, stored beside the binder.
+## Features
 
-## Persistence stores
+- **Binders of plain-text notes** — many notes per `.daynote` file, each with a title and body.
+- **Attachments** — associate files with a note; add by drag-and-drop, reorder in place.
+- **Lifecycle status** — draft → checked → published → expired; non-draft notes lock read-only until set back to draft.
+- **Character counting** — live word/character counts plus an X/Twitter-weighted count against the 280 limit.
+- **Autosave** — debounced save as you type; flushes on close and quit.
+- **Dark "Twilight" theme**, keyboard-driven throughout.
 
-1. Binder data files (`.daynote`, TOML) — human-owned and portable.
-2. Application configuration and UI state (JSON under `~/.daynote/`).
-3. Logs (`~/.daynote/logs/`) — one JSON Lines file per launch, named with the UTC start stamp and nothing else (`yyyymmdd-hhmmss-utc.log`) and kept indefinitely; logs are never pruned or rotated.
+## Getting started
 
-## Architecture
+Run from source — the fastest way to try it:
 
-- **DayNote.Core** — framework-independent: domain model, TOML reader/writer, body cleanup, character counting, identifier generation, and config/state. No UI deps.
-- **DayNote.Desktop** — the Avalonia application and its view models (MVVM via CommunityToolkit), depending on Core.
+- **macOS:** `scripts/run-dev.command`
+- **Windows:** `scripts/run-dev.ps1`
 
-Side effects (file I/O) live at the edges; dependencies point inward.
-
-## Build & run
-
-```sh
-dotnet build
-dotnet run --project src/DayNote.Desktop
-dotnet test          # unit tests under tests/DayNote.Tests (storage, identity, TOML, time, text, logging)
-```
-
-Verbose `debug`-level logging is for developers: it is on automatically in a `Debug` build, and can be enabled for a `Release` build by setting `DAYNOTE_DEBUG=1`. It is off by default on end-user machines so logs never flood a user's disk.
-
-### Distribution
-
-Each launcher is a `scripts/<name>.command` (macOS) / `scripts/<name>.ps1` (Windows) pair.
-
-- **macOS** (primary):
-  - `run-dev` — runs the app from source with `dotnet run`; fast, for active coding. TCC-gated features (Desktop, Documents, Downloads) need the signed bundle, so use `run-built`/`rebuild` to exercise those.
-  - `run-built` — launches the existing signed `DayNote.app` under `publish/` without rebuilding.
-  - `rebuild` — publishes a self-contained `Release` build, assembles `DayNote.app` under `publish/`, ad-hoc signs it (no Apple Developer identity is used), and launches it. Run after changing source.
-- **Windows**:
-  - `run-dev` — restores and launches the app from source with `dotnet run`, for quick local runs.
-  - `run-built` — launches the existing published executable without rebuilding.
-  - `rebuild` — publishes a self-contained `Release` build (`dotnet publish src/DayNote.Desktop -c Release -r win-x64 --self-contained`) and launches it.
-
-## Contact
-
-Yoshinao Inoguchi — nao7sep@gmail.com
+On macOS, a self-contained ad-hoc-signed bundle (needed to exercise the Desktop/Documents/Downloads file pickers) comes from `scripts/rebuild.command`; the Windows equivalent is `scripts/rebuild.ps1`.
 
 ## License
 
 MIT © 2026 Yoshinao Inoguchi
+
+## Contact
+
+Yoshinao Inoguchi — nao7sep@gmail.com

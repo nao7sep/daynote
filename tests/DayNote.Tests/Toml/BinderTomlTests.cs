@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using DayNote.Core.Models;
 using DayNote.Core.Toml;
 using Xunit;
@@ -243,6 +244,33 @@ public sealed class BinderTomlTests
         var binder = BinderTomlReader.Read(text);
 
         Assert.Equal(new[] { "a.png" }, binder.Notes[0].Attachments);
+    }
+
+    [Fact]
+    public void Reader_regenerates_note_ids_that_are_not_bare_names()
+    {
+        // A note's id becomes its attachment directory segment (<basename>-assets/<id>/), so a
+        // traversal id from a hostile or hand-edited binder must never reach the storage layer. A valid
+        // bare id is preserved; unsafe ids ("..", "a/b", "/x", empty) are replaced with fresh bare ids.
+        const string text =
+            "id = \"nb1\"\n\n" +
+            "[[note]]\nid = \"good1\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"..\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"../escape\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"sub/dir\"\nbody = ''\n";
+
+        var ids = BinderTomlReader.Read(text).Notes.Select(n => n.Id).ToList();
+
+        Assert.Equal("good1", ids[0]);
+        foreach (var id in ids)
+        {
+            Assert.False(string.IsNullOrEmpty(id));
+            Assert.Equal(id, System.IO.Path.GetFileName(id)); // a single bare segment
+            Assert.NotEqual("..", id);
+            Assert.NotEqual(".", id);
+        }
+
+        Assert.Equal(ids.Count, ids.Distinct().Count()); // regenerated ids stay unique within the binder
     }
 
     [Theory]

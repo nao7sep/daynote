@@ -115,19 +115,20 @@
         <!-- Four panes -->
         <Grid x:Name="PaneGrid" Grid.Row="1" Margin="4">
             <Grid.ColumnDefinitions>
-                <!-- All four content columns are star-sized (the number is the default proportion),
-                     so they auto-shrink with the window down to their MinWidth rather than staying a
-                     fixed width and pushing a pane off the right edge. The derived window minimum
+                <!-- The three side panes are pixel-sized; the editor is the sole star column (fill
+                     pane) that absorbs window resize. The code-behind tracks each side pane's "intent"
+                     (the pixel width the user last dragged it to) and re-derives the displayed width
+                     as clamp(min, intent, whatFitsTheCurrentWindow) on every resize, so the side
+                     panes stay fixed and only the editor grows or shrinks. The derived window minimum
                      sums these MinWidths, so at the minimum every pane sits at exactly its MinWidth
-                     and none is clipped; GridSplitters resize by redistributing the star weights,
-                     which persist across launches (see AppState / OnDataContextChanged). -->
-                <ColumnDefinition Width="220*" MinWidth="150"/>
+                     and none is clipped. -->
+                <ColumnDefinition Width="220" MinWidth="150"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="260*" MinWidth="170"/>
+                <ColumnDefinition Width="260" MinWidth="170"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="430*" MinWidth="320"/>
+                <ColumnDefinition Width="*" MinWidth="320"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="260*" MinWidth="170"/>
+                <ColumnDefinition Width="260" MinWidth="170"/>
             </Grid.ColumnDefinitions>
 
             <!-- Binders -->
@@ -159,9 +160,10 @@
                                             <Panel>
                                                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                                            IsVisible="{Binding !IsEditing}"/>
-                                                <TextBox Text="{Binding EditText}" IsVisible="{Binding IsEditing}"
+                                                <ctl:ComposingTextBox Text="{Binding EditText}" IsVisible="{Binding IsEditing}"
                                                          FontWeight="SemiBold" Padding="2,0" MinHeight="0"
-                                                         LostFocus="BinderTitle_LostFocus" KeyDown="BinderTitle_KeyDown"/>
+                                                         Submitted="BinderTitle_Submitted" LostFocus="BinderTitle_LostFocus"
+                                                         KeyDown="BinderTitle_KeyDown"/>
                                             </Panel>
                                             <!-- Truncate the START of the path so the file name (the useful end) stays visible. -->
                                             <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="PrefixCharacterEllipsis"
@@ -182,7 +184,7 @@
                 </DockPanel>
             </Border>
 
-            <GridSplitter Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns"/>
+            <GridSplitter x:Name="BindersSplitter" Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns"/>
 
             <!-- Notes -->
             <Border x:Name="NotesPane" Grid.Column="2" Classes="pane">
@@ -226,7 +228,7 @@
                 </DockPanel>
             </Border>
 
-            <GridSplitter Grid.Column="3" Width="6" Background="Transparent" ResizeDirection="Columns"/>
+            <GridSplitter x:Name="NotesSplitter" Grid.Column="3" Width="6" Background="Transparent" ResizeDirection="Columns"/>
 
             <!-- Editor -->
             <Border x:Name="EditorPane" Grid.Column="4" Classes="pane">
@@ -275,7 +277,7 @@
                 </Panel>
             </Border>
 
-            <GridSplitter Grid.Column="5" Width="6" Background="Transparent" ResizeDirection="Columns"/>
+            <GridSplitter x:Name="AttachmentsSplitter" Grid.Column="5" Width="6" Background="Transparent" ResizeDirection="Columns"/>
 
             <!-- Attachments -->
             <Border x:Name="AttachPane" Grid.Column="6" Classes="pane" DragDrop.AllowDrop="True">

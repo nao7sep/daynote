@@ -89,12 +89,21 @@ public static class DayNoteTime
     }
 
     /// <summary>
-    /// Attempts to resolve an IANA/Windows time-zone id to a system time zone. Returns false for
-    /// unknown or malformed ids (with <paramref name="zone"/> set to UTC) instead of throwing, so
-    /// callers can both validate user input and fall back to UTC from a single code path.
+    /// Attempts to resolve an IANA/Windows time-zone id to a system time zone. Returns false for null,
+    /// blank, unknown, or malformed ids (with <paramref name="zone"/> set to UTC) instead of throwing,
+    /// so callers can both validate user input and fall back to UTC from a single code path.
     /// </summary>
-    public static bool TryResolveTimeZone(string timeZoneId, out TimeZoneInfo zone)
+    public static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo zone)
     {
+        // A null/blank id (e.g. a hand-edited "displayTimeZone": null in config.json) is not a valid
+        // zone and must never reach FindSystemTimeZoneById, which throws ArgumentNullException on null —
+        // treat it the same as an unknown id and fall back to UTC.
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            zone = TimeZoneInfo.Utc;
+            return false;
+        }
+
         try
         {
             zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
@@ -112,7 +121,7 @@ public static class DayNoteTime
         }
     }
 
-    private static TimeZoneInfo ResolveTimeZone(string timeZoneId)
+    private static TimeZoneInfo ResolveTimeZone(string? timeZoneId)
     {
         TryResolveTimeZone(timeZoneId, out var zone);
         return zone;

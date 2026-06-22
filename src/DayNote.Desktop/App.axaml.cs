@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using DayNote.Core.Storage;
 using DayNote.Desktop.Services;
 using DayNote.Desktop.ViewModels;
 using DayNote.Desktop.Views;
@@ -18,8 +17,8 @@ public partial class App : Application
         {
             // The view model owns its stores and gates all startup I/O (directory creation, reading
             // config/state) so a failure becomes an in-app error rather than a pre-UI crash.
-            var dialogs = new DialogService();
-            var viewModel = new MainWindowViewModel(new AppPaths(), dialogs, Program.Log);
+            var dialogs = new DialogService(Program.Log);
+            var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log);
             var window = new MainWindow { DataContext = viewModel };
             dialogs.Owner = window;
 

@@ -1,3 +1,4 @@
+using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Text;
 using DayNote.Core.Time;
@@ -50,20 +51,24 @@ public static class BinderTomlReader
 
         if (document.Note is { } notes)
         {
+            // Track ids already assigned in this binder so a regenerated (unsafe) id can be made unique.
+            var noteIds = new List<string>(notes.Count);
             foreach (var noteDocument in notes)
             {
-                binder.Notes.Add(MapNote(noteDocument, fallback));
+                var note = MapNote(noteDocument, fallback, noteIds);
+                noteIds.Add(note.Id);
+                binder.Notes.Add(note);
             }
         }
 
         return binder;
     }
 
-    private static Note MapNote(NoteDocument document, DateTimeOffset fallback)
+    private static Note MapNote(NoteDocument document, DateTimeOffset fallback, IReadOnlyCollection<string> existingIds)
     {
         var note = new Note
         {
-            Id = document.Id ?? string.Empty,
+            Id = SafeNoteId(document.Id, existingIds),
             Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
             Created = ParseTimestamp(document.Created, fallback),
             Modified = ParseTimestamp(document.Modified, fallback),
@@ -99,6 +104,18 @@ public static class BinderTomlReader
         && name == Path.GetFileName(name)
         && name != "."
         && name != "..";
+
+    /// <summary>
+    /// Returns a note id safe to use as a directory segment. A note's id becomes its attachment
+    /// directory name (<c>&lt;basename&gt;-assets/&lt;note-id&gt;/</c>), so an id carrying a path
+    /// separator or a <c>.</c>/<c>..</c> traversal segment — which the app never writes, but a
+    /// hand-edited or hostile binder could — would resolve attachment writes/deletes <em>outside</em>
+    /// that directory. The app only ever assigns generated bare ids, so any non-bare (or empty) id is
+    /// malformed and is replaced with a fresh id unique within the binder rather than reaching the
+    /// storage layer. This mirrors the attachment-name guard in <see cref="IsBareFileName"/>.
+    /// </summary>
+    private static string SafeNoteId(string? id, IReadOnlyCollection<string> existingIds) =>
+        IsBareFileName(id) ? id! : IdGenerator.NewUnique(existingIds);
 
     private static DateTimeOffset ParseTimestamp(string? text, DateTimeOffset fallback) =>
         !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : fallback;

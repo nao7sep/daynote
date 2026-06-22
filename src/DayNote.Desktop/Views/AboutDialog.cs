@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using DayNote.Desktop.Logging;
 
 namespace DayNote.Desktop.Views;
 
@@ -14,8 +15,11 @@ public sealed class AboutDialog : DialogBase
 {
     private const string GitHubUrl = "https://github.com/nao7sep/daynote";
 
-    public AboutDialog()
+    private readonly IAppLogger _log;
+
+    public AboutDialog(IAppLogger log)
     {
+        _log = log;
         Width = 420;
         Title = "About DayNote";
 
@@ -69,9 +73,11 @@ public sealed class AboutDialog : DialogBase
             {
                 await Launcher.LaunchUriAsync(new Uri(url));
             }
-            catch
+            catch (Exception ex)
             {
-                // Best effort: failing to open a browser must not crash the About dialog.
+                // Best effort: failing to open a browser must not crash the About dialog — but the
+                // boundary failure is logged (warn) rather than silently swallowed.
+                _log.Warn("Failed to open external link", new { url }, ex);
             }
         };
 

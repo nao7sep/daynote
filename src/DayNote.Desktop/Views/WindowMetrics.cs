@@ -1,51 +1,73 @@
 namespace DayNote.Desktop.Views;
 
 /// <summary>
-/// Derives the main window's minimum size from the layout itself, per the window-chrome
-/// conventions: the minimum is the sum of the content panes' real minimums plus the fixed
-/// chrome — never a hand-typed magic constant. The pane Grid's four content columns drive the
-/// minimum width; the toolbar, status bar, and the tallest pane's content minimum drive the
-/// minimum height.
+/// Derives the main window's minimum size and pane-layout sizes from the layout itself, per the
+/// window-chrome conventions: the minimum is the sum of the content panes' real minimums plus the
+/// fixed chrome — never a hand-typed magic constant. The pane Grid's four content columns drive
+/// the minimum width; the toolbar, status bar, and the tallest pane's content minimum drive the
+/// minimum height. The side-pane distribution computes the displayed pixel widths from the user's
+/// drag intents, clamped to the current window — so the side panes stay fixed on resize and only
+/// the fill pane (the editor) absorbs the change.
 /// </summary>
-/// <remarks>
-/// Kept as a pure function over the column minimums (read from the live grid by the caller) and
-/// the pane content minimum, so the window minimum and the columns can never drift apart, and so
-/// the derivation can be tested without a UI thread — mirroring pathhide's WindowMetrics.
-/// </remarks>
 public static class WindowMetrics
 {
-    // The pane Grid carries Margin="4" on all sides, so it loses 4px of horizontal room on each
-    // edge before the columns are laid out.
     private const double GridHorizontalMargin = 4 + 4;
-
-    // Each GridSplitter between the panes is Width="6"; there are three of them (one between each
-    // adjacent pair of the four content panes).
     private const double SplitterWidth = 6;
     private const int SplitterCount = 3;
-
-    // Fixed chrome heights: the toolbar Border (StackPanel Margin="12,8" + a 15px title) and the
-    // status-bar Border (TextBlock Margin="12,5" + ~16px text), measured to match Fluent's natural
-    // sizing of those rows. Mirrors pathhide's ToolbarHeight/StatusBarHeight constants.
     private const double ToolbarHeight = 52;
     private const double StatusBarHeight = 33;
-
-    // The pane Grid's Margin="4" (top+bottom) plus each pane Border's own Margin="4" (top+bottom)
-    // both sit inside the star-sized middle row, so they add to the height the panes need before
-    // their content minimum is even reached.
     private const double PaneVerticalMargin = (4 + 4) + (4 + 4);
 
-    /// <summary>
-    /// The minimum window width: the sum of the content columns' minimum widths plus the three
-    /// splitters plus the pane Grid's outer horizontal margin.
-    /// </summary>
     public static double MinWidthFor(IEnumerable<double> columnMinWidths)
         => columnMinWidths.Sum() + (SplitterWidth * SplitterCount) + GridHorizontalMargin;
 
-    /// <summary>
-    /// The minimum window height: the fixed chrome (toolbar + status bar) plus the tallest pane's
-    /// content minimum and the vertical margins that wrap the panes. The editor pane is the tallest,
-    /// so its content minimum is the one that must fit in the middle row.
-    /// </summary>
     public static double MinHeightFor(double tallestPaneMinHeight)
         => ToolbarHeight + StatusBarHeight + PaneVerticalMargin + tallestPaneMinHeight;
+
+    /// <summary>
+    /// The total pixel budget available for the three side panes (binders, notes, attachments)
+    /// after reserving the editor's minimum, the three splitters, and the grid margin.
+    /// </summary>
+    public static double SidePaneBudget(double windowWidth, double editorMinWidth)
+        => windowWidth - editorMinWidth - (SplitterWidth * SplitterCount) - GridHorizontalMargin;
+
+    /// <summary>
+    /// Distributes the side-pane budget among three adjustable panes. When all intents fit, each
+    /// pane gets its intent and the editor absorbs the rest. When the window is too narrow, the
+    /// panes shrink proportionally relative to their excess above minimum — so each pane reaches
+    /// its minimum at the same rate and the editor never drops below its own minimum.
+    /// </summary>
+    public static double[] DistributeSidePanes(double[] intents, double[] mins, double budget)
+    {
+        var sumMins = mins.Sum();
+        budget = Math.Max(sumMins, budget);
+
+        var clamped = new double[intents.Length];
+        var sumClamped = 0.0;
+        for (var i = 0; i < intents.Length; i++)
+        {
+            clamped[i] = Math.Max(intents[i], mins[i]);
+            sumClamped += clamped[i];
+        }
+
+        if (sumClamped <= budget)
+            return clamped;
+
+        var slack = budget - sumMins;
+        var totalExcess = 0.0;
+        for (var i = 0; i < intents.Length; i++)
+            totalExcess += Math.Max(0, intents[i] - mins[i]);
+
+        if (totalExcess <= 0)
+            return (double[])mins.Clone();
+
+        var displays = new double[intents.Length];
+        for (var i = 0; i < intents.Length; i++)
+        {
+            var excess = Math.Max(0, intents[i] - mins[i]);
+            displays[i] = mins[i] + (excess / totalExcess * slack);
+        }
+
+        return displays;
+    }
 }

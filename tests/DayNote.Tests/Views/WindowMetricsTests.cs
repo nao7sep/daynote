@@ -96,10 +96,86 @@ public sealed class WindowMetricsTests
             .Select(m => double.Parse(m.Groups["min"].Value, CultureInfo.InvariantCulture))
             .ToList();
 
+    // --- Side-pane distribution (the fill/pixel rule) ---
+
+    private static readonly double[] SideMins = [150, 170, 170];
+    private static readonly double[] DefaultIntents = [220, 260, 260];
+
+    [Fact]
+    public void SidePaneBudget_SubtractsEditorMinAndChrome()
+    {
+        Assert.Equal(1200 - 320 - ChromeWidth, WindowMetrics.SidePaneBudget(1200, 320));
+    }
+
+    [Fact]
+    public void DistributeSidePanes_AllIntentsFit_ReturnsIntentsUnchanged()
+    {
+        var budget = 900.0;
+        var result = WindowMetrics.DistributeSidePanes(DefaultIntents, SideMins, budget);
+
+        Assert.Equal(DefaultIntents, result);
+    }
+
+    [Fact]
+    public void DistributeSidePanes_NarrowWindow_ShrinksPanesProportionally()
+    {
+        var budget = SideMins.Sum() + 100;
+        var result = WindowMetrics.DistributeSidePanes(DefaultIntents, SideMins, budget);
+
+        for (var i = 0; i < result.Length; i++)
+            Assert.True(result[i] >= SideMins[i], $"Pane {i} went below its minimum.");
+        Assert.Equal(budget, result.Sum(), precision: 6);
+    }
+
+    [Fact]
+    public void DistributeSidePanes_AtMinimumBudget_AllPanesAtMinimum()
+    {
+        var budget = SideMins.Sum();
+        var result = WindowMetrics.DistributeSidePanes(DefaultIntents, SideMins, budget);
+
+        Assert.Equal(SideMins, result);
+    }
+
+    [Fact]
+    public void DistributeSidePanes_BudgetBelowMinimums_FloorsToMinimums()
+    {
+        var result = WindowMetrics.DistributeSidePanes(DefaultIntents, SideMins, budget: 100);
+
+        Assert.Equal(SideMins, result);
+    }
+
+    [Fact]
+    public void DistributeSidePanes_IntentsBelowMinimums_ClampsUp()
+    {
+        double[] lowIntents = [100, 100, 100];
+        var result = WindowMetrics.DistributeSidePanes(lowIntents, SideMins, budget: 900);
+
+        Assert.Equal(SideMins, result);
+    }
+
+    [Fact]
+    public void DistributeSidePanes_ProportionalShrinkPreservesRatios()
+    {
+        double[] intents = [250, 350, 250];
+        var budget = SideMins.Sum() + 50;
+        var result = WindowMetrics.DistributeSidePanes(intents, SideMins, budget);
+
+        var excess0 = intents[0] - SideMins[0];
+        var excess1 = intents[1] - SideMins[1];
+        var excess2 = intents[2] - SideMins[2];
+        var totalExcess = excess0 + excess1 + excess2;
+
+        var slack0 = result[0] - SideMins[0];
+        var slack1 = result[1] - SideMins[1];
+        var slack2 = result[2] - SideMins[2];
+
+        Assert.Equal(excess0 / totalExcess, slack0 / 50, precision: 6);
+        Assert.Equal(excess1 / totalExcess, slack1 / 50, precision: 6);
+        Assert.Equal(excess2 / totalExcess, slack2 / 50, precision: 6);
+    }
+
     private static string ReadMainWindowAxaml([CallerFilePath] string callerPath = "")
     {
-        // This file: <repo>/tests/DayNote.Tests/Views/WindowMetricsTests.cs
-        // Target:    <repo>/src/DayNote.Desktop/Views/MainWindow.axaml
         var testsViewsDir = Path.GetDirectoryName(callerPath)!;
         var repoRoot = Path.GetFullPath(Path.Combine(testsViewsDir, "..", "..", ".."));
         return File.ReadAllText(Path.Combine(repoRoot, "src", "DayNote.Desktop", "Views", "MainWindow.axaml"));

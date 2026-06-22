@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -15,6 +16,13 @@ public partial class MainWindow : Window
 {
     private bool _shutdownComplete;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
+
+    // The pixel width the user last dragged each side pane to (the "intent"). Only a splitter drag
+    // updates these; a window resize re-derives the displayed width but never overwrites the intent,
+    // so growing the window back restores the pane to the user's chosen size.
+    private double? _bindersWidthIntent;
+    private double? _notesWidthIntent;
+    private double? _attachmentsWidthIntent;
 
     // Attachment reorder is done with manual pointer capture, NOT OS drag-and-drop: initiating a native
     // drag with an in-app-only payload crashes the macOS backend (NSDraggingSession needs a pasteboard
@@ -214,47 +222,67 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
     {
-        // Derive the window minimum from the live pane-Grid columns plus the fixed chrome (see
-        // WindowMetrics) rather than a hand-typed constant, so the window can never be shrunk small
-        // enough to hide a pane, the toolbar, or the status bar — and so adding, removing, or
-        // resizing a column moves the minimum with it. Reading the column MinWidths from the live
-        // grid (not a copy) is what keeps the window minimum from drifting away from the columns.
-        // Only the four content columns carry a MinWidth; the splitter columns are Auto with none,
-        // so a 0 MinWidth contributes nothing and is harmless to include.
-        MinWidth = WindowMetrics.MinWidthFor(PaneGrid.ColumnDefinitions.Select(c => c.MinWidth));
+        if (DataContext is MainWindowViewModel vm)
+        {
+            _bindersWidthIntent = vm.BindersPaneWidth;
+            _notesWidthIntent = vm.NotesPaneWidth;
+            _attachmentsWidthIntent = vm.AttachmentsPaneWidth;
+        }
 
-        // The tallest pane's content minimum (the editor's, the largest of the four) drives the
-        // height; read it live so the XAML stays the single source of truth.
+        MinWidth = WindowMetrics.MinWidthFor(PaneGrid.ColumnDefinitions.Select(c => c.MinWidth));
         MinHeight = WindowMetrics.MinHeightFor(EditorPaneContentMinHeight());
+
+        ClampPanesToWindow();
+
+        PropertyChanged += OnWindowPropertyChanged;
+        BindersSplitter.AddHandler(Thumb.DragCompletedEvent, OnBindersSplitterDragCompleted);
+        NotesSplitter.AddHandler(Thumb.DragCompletedEvent, OnNotesSplitterDragCompleted);
+        AttachmentsSplitter.AddHandler(Thumb.DragCompletedEvent, OnAttachmentsSplitterDragCompleted);
     }
 
-    // The editor pane's content root carries the tallest pane MinHeight in MainWindow.axaml; read
-    // it back so WindowMetrics derives the window height from the same value the layout enforces.
     private double EditorPaneContentMinHeight() =>
         EditorPane.Child is Control content ? content.MinHeight : 0;
 
-    protected override void OnDataContextChanged(EventArgs e)
+    private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
-        base.OnDataContextChanged(e);
-        if (DataContext is not MainWindowViewModel vm)
-        {
-            return;
-        }
-
-        // Window size and position are not remembered (see AppState); only the pane proportions are.
-        // Each saved width is restored as its column's star WEIGHT, so the four content columns keep
-        // their proportions across launches while still auto-shrinking with the window. Flooring the
-        // weight at the column's own MinWidth keeps a stale state.json (e.g. a width saved before a
-        // MinWidth was raised) from starting a pane below its declared minimum — the same minimum the
-        // GridSplitters and the derived window minimum honour.
-        PaneGrid.ColumnDefinitions[0].Width = RestoredPaneWidth(0, vm.BindersPaneWidth);
-        PaneGrid.ColumnDefinitions[2].Width = RestoredPaneWidth(2, vm.NotesPaneWidth);
-        PaneGrid.ColumnDefinitions[4].Width = RestoredPaneWidth(4, vm.EditorPaneWidth);
-        PaneGrid.ColumnDefinitions[6].Width = RestoredPaneWidth(6, vm.AttachmentsPaneWidth);
+        if (e.Property == ClientSizeProperty || e.Property == BoundsProperty)
+            ClampPanesToWindow();
     }
 
-    private GridLength RestoredPaneWidth(int column, double savedWidth) =>
-        new(Math.Max(savedWidth, PaneGrid.ColumnDefinitions[column].MinWidth), GridUnitType.Star);
+    private void ClampPanesToWindow()
+    {
+        if (_bindersWidthIntent is not { } binders
+            || _notesWidthIntent is not { } notes
+            || _attachmentsWidthIntent is not { } attachments)
+            return;
+
+        var cols = PaneGrid.ColumnDefinitions;
+        var budget = WindowMetrics.SidePaneBudget(Width, cols[4].MinWidth);
+        var intents = new[] { binders, notes, attachments };
+        var mins = new[] { cols[0].MinWidth, cols[2].MinWidth, cols[6].MinWidth };
+        var displays = WindowMetrics.DistributeSidePanes(intents, mins, budget);
+
+        cols[0].Width = new GridLength(displays[0], GridUnitType.Pixel);
+        cols[2].Width = new GridLength(displays[1], GridUnitType.Pixel);
+        cols[6].Width = new GridLength(displays[2], GridUnitType.Pixel);
+        cols[4].Width = new GridLength(1, GridUnitType.Star);
+    }
+
+    private void OnBindersSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        _bindersWidthIntent = PaneGrid.ColumnDefinitions[0].ActualWidth;
+        _notesWidthIntent = PaneGrid.ColumnDefinitions[2].ActualWidth;
+    }
+
+    private void OnNotesSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        _notesWidthIntent = PaneGrid.ColumnDefinitions[2].ActualWidth;
+    }
+
+    private void OnAttachmentsSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        _attachmentsWidthIntent = PaneGrid.ColumnDefinitions[6].ActualWidth;
+    }
 
     protected override void OnOpened(EventArgs e)
     {
@@ -277,11 +305,11 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             CapturePaneWidths(vm);
-            try
-            {
-                await vm.ShutdownAsync();
-            }
-            finally
+
+            // Complete the quit only if the final flush succeeded. On failure ShutdownAsync keeps the
+            // binder open with the autosave retrying, so the window stays open rather than discarding
+            // unsaved edits on the way out.
+            if (await vm.ShutdownAsync())
             {
                 _shutdownComplete = true;
                 Close();
@@ -293,12 +321,22 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    // Symmetric with the OnOpened subscription, so the handler never outlives the window.
+    protected override void OnClosed(EventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.NoteCreated -= OnNoteCreated;
+        }
+
+        base.OnClosed(e);
+    }
+
     private void CapturePaneWidths(MainWindowViewModel vm)
     {
-        vm.BindersPaneWidth = BindersPane.Bounds.Width;
-        vm.NotesPaneWidth = NotesPane.Bounds.Width;
-        vm.EditorPaneWidth = EditorPane.Bounds.Width;
-        vm.AttachmentsPaneWidth = AttachPane.Bounds.Width;
+        vm.BindersPaneWidth = _bindersWidthIntent ?? PaneGrid.ColumnDefinitions[0].ActualWidth;
+        vm.NotesPaneWidth = _notesWidthIntent ?? PaneGrid.ColumnDefinitions[2].ActualWidth;
+        vm.AttachmentsPaneWidth = _attachmentsWidthIntent ?? PaneGrid.ColumnDefinitions[6].ActualWidth;
     }
 
     private void RemoveAttachment_Click(object? sender, RoutedEventArgs e)
@@ -378,19 +416,21 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BinderTitle_KeyDown(object? sender, KeyEventArgs e)
+    // Commit the inline binder rename. Submitted is raised by ComposingTextBox only on a genuine Enter —
+    // an Enter consumed by the IME to accept a composition candidate arrives as Key.ImeProcessed and is
+    // ignored — so renaming with an IME no longer commits (and tears the field closed) mid-composition.
+    private void BinderTitle_Submitted(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Control { DataContext: BinderListItemViewModel item } || DataContext is not MainWindowViewModel vm)
-        {
-            return;
-        }
-
-        if (e.Key == Key.Enter)
+        if (sender is Control { DataContext: BinderListItemViewModel item } && DataContext is MainWindowViewModel vm)
         {
             vm.ApplyBinderRename(item, item.EditText);
-            e.Handled = true;
         }
-        else if (e.Key == Key.Escape)
+    }
+
+    // Escape cancels the rename (Enter commits via Submitted above, which is the IME-safe path).
+    private void BinderTitle_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && sender is Control { DataContext: BinderListItemViewModel item })
         {
             item.IsEditing = false; // discard the buffer; Title is untouched
             e.Handled = true;

@@ -109,4 +109,25 @@ public sealed class DayNoteTimeTests
             CultureInfo.CurrentCulture = original;
         }
     }
+
+    [Fact]
+    public void TryResolveTimeZone_falls_back_to_utc_for_null_or_blank()
+    {
+        // A null/blank id (e.g. a hand-edited "displayTimeZone": null) must not reach
+        // FindSystemTimeZoneById, which throws ArgumentNullException on null.
+        Assert.False(DayNoteTime.TryResolveTimeZone(null, out var fromNull));
+        Assert.Equal(TimeZoneInfo.Utc, fromNull);
+
+        Assert.False(DayNoteTime.TryResolveTimeZone("   ", out var fromBlank));
+        Assert.Equal(TimeZoneInfo.Utc, fromBlank);
+    }
+
+    [Fact]
+    public void ToSmartDisplay_does_not_throw_on_a_null_time_zone()
+    {
+        // A null zone falls back to UTC rather than crashing the display path (and, in the real app,
+        // the constructor) — so a corrupt config can't prevent startup.
+        var value = new DateTimeOffset(2024, 12, 1, 9, 30, 0, TimeSpan.Zero);
+        Assert.Equal("2024-12-01", DayNoteTime.ToSmartDisplay(value, null!, SmartNow));
+    }
 }

@@ -8,14 +8,12 @@ namespace DayNote.Core.Configuration;
 /// </summary>
 public sealed class AppState
 {
-    // Pane widths, persisted as the relative weights of the four star-sized content columns (binder,
-    // notes, editor, attachments) so the panes auto-shrink with the window yet keep their proportions
-    // across launches. On restore each becomes its column's star weight, floored by the column's
-    // MinWidth (see MainWindow.OnDataContextChanged), so a stale width can never reopen a pane below
-    // its usable minimum — and the window's own derived minimum keeps every pane visible.
+    // The pixel width the user last dragged each side pane to (the "intent"). The editor pane is the
+    // fill column (star-sized) and is not persisted — it absorbs whatever space remains. On restore
+    // each intent is clamped to [MinWidth, whatFitsTheCurrentWindow] so a stale value can never
+    // reopen a pane below its minimum or push the editor below its own minimum.
     public double BindersPaneWidth { get; set; } = 220;
     public double NotesPaneWidth { get; set; } = 260;
-    public double EditorPaneWidth { get; set; } = 430;
     public double AttachmentsPaneWidth { get; set; } = 260;
 
     // Known binders, each a file path plus its locally-stored display title. Not capped — the user

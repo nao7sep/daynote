@@ -10,6 +10,9 @@ internal static class Program
     /// <summary>The process-wide logger, available to the application once <see cref="Main"/> opens it.</summary>
     internal static IAppLogger Log { get; private set; } = null!;
 
+    /// <summary>The single path resolver, resolved once here and threaded to the rest of the app.</summary>
+    internal static AppPaths Paths { get; private set; } = null!;
+
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
@@ -35,6 +38,7 @@ internal static class Program
         // itself, so it is the first thing up and can record every later failure.
         var logger = JsonLinesLogger.Open(paths.LogsDirectory, DebugEnabled());
         Log = logger;
+        Paths = paths;
         RegisterCrashHooks(logger);
 
         try
