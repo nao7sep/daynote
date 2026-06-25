@@ -80,6 +80,11 @@ cp -R "$PUBLISH_DIR/." "$APP_BUNDLE/Contents/MacOS/"
 # Drop in the Info.plist so TCC has a bundle identity and usage strings.
 cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
 
+# Drop in the app icon. Info.plist's CFBundleIconFile points to "icon" → icon.icns
+# here; macOS reads it for the Dock/Finder tile. publish/ is gitignored, so the
+# committed source is macOS/icon.icns, copied in fresh on every rebuild.
+cp "$REPO_DIR/macOS/icon.icns" "$APP_BUNDLE/Contents/Resources/icon.icns"
+
 log_step "Ad-hoc signing bundle"
 # `--sign -` is the ad-hoc identity. --force overwrites prior signatures (each
 # rebuild produces a new cdhash). --deep recursively re-signs nested bundles
