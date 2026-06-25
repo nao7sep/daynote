@@ -12,6 +12,8 @@
     <string>DayNote.Desktop</string>
     <key>CFBundleIconFile</key>
     <string>icon</string>
+    <key>CFBundleIconName</key>
+    <string>scrapbook-journal-twilight-navy</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleSignature</key>

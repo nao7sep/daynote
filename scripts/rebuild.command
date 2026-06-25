@@ -85,6 +85,14 @@ cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
 # committed source is macOS/icon.icns, copied in fresh on every rebuild.
 cp "$REPO_DIR/macOS/icon.icns" "$APP_BUNDLE/Contents/Resources/icon.icns"
 
+# Drop in the Liquid Glass icon catalog (Tahoe). Info.plist's CFBundleIconName names it,
+# so macOS 26 renders it as the Liquid Glass tile; older macOS falls back to the icon.icns
+# above. macOS/Assets.car is the committed source (staged by the liquid-glass-icon deploy);
+# copied in only if present, so a classic-only build still works.
+if [[ -f "$REPO_DIR/macOS/Assets.car" ]]; then
+  cp "$REPO_DIR/macOS/Assets.car" "$APP_BUNDLE/Contents/Resources/Assets.car"
+fi
+
 log_step "Ad-hoc signing bundle"
 # `--sign -` is the ad-hoc identity. --force overwrites prior signatures (each
 # rebuild produces a new cdhash). --deep recursively re-signs nested bundles
