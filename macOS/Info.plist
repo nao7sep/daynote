@@ -10,6 +10,8 @@
     <string>DayNote</string>
     <key>CFBundleExecutable</key>
     <string>DayNote.Desktop</string>
+    <key>CFBundleIconFile</key>
+    <string>icon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleSignature</key>
