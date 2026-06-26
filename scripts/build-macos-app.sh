@@ -57,8 +57,8 @@ require_command codesign
 cd "$REPO_DIR"
 
 # Remove stale publish output so a file deleted since the last build can't linger
-# and get copied into the bundle (the Contents/MacOS reset below only clears the
-# copy target, not the publish source).
+# and get copied into the bundle (the bundle is recreated from scratch below, but
+# that clears only the copy target, not the publish source).
 log_step "Cleaning previous publish output"
 rm -rf "$PUBLISH_DIR"
 

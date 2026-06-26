@@ -5,6 +5,7 @@
         x:Class="DayNote.Desktop.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="DayNote"
+        Icon="/Assets/icon.png"
         Width="1200" Height="800"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource AppBackgroundBrush}"
