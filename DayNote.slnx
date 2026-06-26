@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/DayNote.Core/DayNote.Core.csproj" />
-    <Project Path="src/DayNote.Desktop/DayNote.Desktop.csproj" />
+    <Project Path="src/DayNote/DayNote.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DayNote.Tests/DayNote.Tests.csproj" />

@@ -73,7 +73,7 @@ jobs:
           ls -la artifacts
 
       # Windows: self-contained Release publish. The project does NOT set
-      # PublishSingleFile, so the output is a FOLDER (DayNote.Desktop.exe plus the
+      # PublishSingleFile, so the output is a FOLDER (DayNote.exe plus the
       # .NET runtime and native DLLs — SkiaSharp/HarfBuzz/etc.); the bare .exe alone
       # would not run. So the whole publish folder is zipped as a portable build
       # (DayNote has no installer toolchain). The .exe icon is embedded via the csproj
@@ -84,7 +84,7 @@ jobs:
         shell: pwsh
         run: |
           $version = (Select-String -Path Directory.Build.props -Pattern '<Version>(.*?)</Version>').Matches[0].Groups[1].Value
-          dotnet publish src/DayNote.Desktop/DayNote.Desktop.csproj `
+          dotnet publish src/DayNote/DayNote.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `

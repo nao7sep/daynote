@@ -4,7 +4,7 @@ using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
-using DayNote.Desktop.Views;
+using DayNote.Views;
 using Xunit;
 
 namespace DayNote.Tests.Views;

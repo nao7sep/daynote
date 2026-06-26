@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using DayNote.Desktop.Views;
+using DayNote.Views;
 using Xunit;
 
 namespace DayNote.Tests.Views;
@@ -178,6 +178,6 @@ public sealed class WindowMetricsTests
     {
         var testsViewsDir = Path.GetDirectoryName(callerPath)!;
         var repoRoot = Path.GetFullPath(Path.Combine(testsViewsDir, "..", "..", ".."));
-        return File.ReadAllText(Path.Combine(repoRoot, "src", "DayNote.Desktop", "Views", "MainWindow.axaml"));
+        return File.ReadAllText(Path.Combine(repoRoot, "src", "DayNote", "Views", "MainWindow.axaml"));
     }
 }

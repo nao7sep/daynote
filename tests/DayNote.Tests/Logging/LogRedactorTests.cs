@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
-using DayNote.Desktop.Logging;
+using DayNote.Logging;
 using Xunit;
 
 namespace DayNote.Tests.Logging;

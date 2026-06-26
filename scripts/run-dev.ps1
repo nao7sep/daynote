@@ -47,7 +47,7 @@ function Invoke-Native {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoDir = Split-Path -Parent $scriptDir
-$projectFile = Join-Path $repoDir "src/DayNote.Desktop/DayNote.Desktop.csproj"
+$projectFile = Join-Path $repoDir "src/DayNote/DayNote.csproj"
 
 try {
     Set-Utf8Console

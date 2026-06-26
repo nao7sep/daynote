@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
 using DayNote.Core.Configuration;
 using DayNote.Core.Storage;
-using DayNote.Desktop.Logging;
-using DayNote.Desktop.Services;
-using DayNote.Desktop.ViewModels;
+using DayNote.Logging;
+using DayNote.Services;
+using DayNote.ViewModels;
 using DayNote.Tests.Storage;
 using Xunit;
 

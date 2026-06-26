@@ -6,7 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using DayNote.Desktop.Controls;
+using DayNote.Controls;
 using Xunit;
 
 namespace DayNote.Tests.Controls;

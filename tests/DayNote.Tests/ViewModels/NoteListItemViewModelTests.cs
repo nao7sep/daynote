@@ -1,6 +1,6 @@
 using System;
 using DayNote.Core.Models;
-using DayNote.Desktop.ViewModels;
+using DayNote.ViewModels;
 using Xunit;
 
 namespace DayNote.Tests.ViewModels;

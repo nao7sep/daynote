@@ -25,7 +25,7 @@ function Write-Step {
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoDir = Split-Path -Parent $scriptDir
-$exePath = Join-Path $repoDir "bin/Release/net10.0/win-x64/publish/DayNote.Desktop.exe"
+$exePath = Join-Path $repoDir "bin/Release/net10.0/win-x64/publish/DayNote.exe"
 
 try {
     Set-Utf8Console

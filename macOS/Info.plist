@@ -9,7 +9,7 @@
     <key>CFBundleDisplayName</key>
     <string>DayNote</string>
     <key>CFBundleExecutable</key>
-    <string>DayNote.Desktop</string>
+    <string>DayNote</string>
     <key>CFBundleIconFile</key>
     <string>icon</string>
     <key>CFBundleIconName</key>

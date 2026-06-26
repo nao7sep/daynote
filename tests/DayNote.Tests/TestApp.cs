@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using DayNote.Desktop;
+using DayNote;
 
 [assembly: AvaloniaTestApplication(typeof(DayNote.Tests.TestAppBuilder))]
 
