@@ -1257,9 +1257,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void ApplyConfig()
     {
+        ApplyUiFont();
         ApplyTextStyle();
         Editor.SetTimeZone(_config.DisplayTimeZone);
         _autosaveTimer.Interval = TimeSpan.FromSeconds(Math.Max(0.25, _config.AutosaveDelaySeconds));
+    }
+
+    /// <summary>
+    /// Applies the configured UI (chrome) font app-wide by overriding the <c>AppFontFamily</c> resource
+    /// the Window style binds via DynamicResource. The editor body keeps its own text-style font.
+    /// </summary>
+    private void ApplyUiFont()
+    {
+        if (Application.Current is { } app)
+        {
+            app.Resources["AppFontFamily"] = UiFont.Resolve(_config.UiFontFamily);
+        }
     }
 
     /// <summary>Applies the selected text-style preset (or the first available) to the editor properties.</summary>
@@ -1362,6 +1375,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// <summary>The key effective configuration, summarized for the log (no secret-bearing fields).</summary>
     private static object ConfigSummary(AppConfig config) => new
     {
+        uiFontFamily = config.UiFontFamily,
         selectedTextStyle = config.SelectedTextStyle,
         textStyleCount = config.TextStyles.Count,
         autosaveDelaySeconds = config.AutosaveDelaySeconds,

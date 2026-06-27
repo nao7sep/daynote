@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# rebuild: build the app in its release configuration and launch it. On macOS that
-# means publishing a self-contained Release build, assembling an unsigned .app,
-# ad-hoc signing it, and launching via Launch Services. Slow; run after changing
-# source. run-built launches the existing bundle without rebuilding.
-#
-# The .app assembly itself lives in build-macos-app.sh, the single shared
-# implementation also called by the release.yml CI workflow, so a local rebuild
-# and a CI release produce the same bundle. This launcher adds only the local
-# concerns: a failure pause (so a double-clicked window doesn't vanish on error)
-# and launching the freshly built bundle.
-#
-# No Apple Developer identity is used.
+# rebuild: produce a fresh self-contained Release build and launch it. The macOS
+# .app bundle is assembled and ad-hoc signed by the AssembleMacAppBundle target
+# (Directory.Build.targets) as part of `dotnet publish`, so this launcher only
+# publishes and opens the result — the same bundle the release workflow produces.
+# Slow; run after changing source. run-built launches the existing bundle.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUILD_SCRIPT="$SCRIPT_DIR/build-macos-app.sh"
+PROJECT_FILE="$REPO_DIR/src/DayNote/DayNote.csproj"
 APP_BUNDLE="$REPO_DIR/publish/DayNote.app"
 
-log_step() {
-  printf '\n==> %s\n' "$1"
-}
+# Map the host CPU to a .NET runtime identifier so a local rebuild runs natively
+# on Apple Silicon and Intel Macs without a manual flag.
+ARCH="$(uname -m)"
+case "$ARCH" in
+  arm64)  RID="osx-arm64" ;;
+  x86_64) RID="osx-x64"   ;;
+  *)
+    echo "Unsupported macOS architecture: $ARCH (expected arm64 or x86_64)." >&2
+    exit 1
+    ;;
+esac
 
 pause_on_failure() {
   local status="$1"
@@ -36,11 +37,9 @@ trap 'pause_on_failure $?' EXIT
 
 cd "$REPO_DIR"
 
-# Assemble the bundle (publish, lay out Contents, copy icon/catalog, ad-hoc sign).
-# Same script CI runs, so the local and released bundles match.
-bash "$BUILD_SCRIPT"
+# Clear stale output, then publish. `dotnet publish` runs the bundling target,
+# leaving publish/ holding only the signed .app.
+rm -rf "$REPO_DIR/publish"
+dotnet publish "$PROJECT_FILE" -c Release -r "$RID" --self-contained true -o "$REPO_DIR/publish"
 
-log_step "Launching"
-# `open` routes through Launch Services, which is what registers the app's
-# bundle identity with TCC and triggers permission prompts on first access.
 open "$APP_BUNDLE"

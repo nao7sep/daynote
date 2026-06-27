@@ -154,10 +154,7 @@ public partial class MainWindow : Window
         {
             // Reflow: shift the other rows to open a gap where the dragged row will land. The target
             // slot is the start index moved by however many whole rows the cursor has travelled.
-            var target = Math.Clamp(
-                _attachStartIndex + (int)Math.Round(delta / _attachRowStep, MidpointRounding.AwayFromZero),
-                0,
-                vm.Attachments.Count - 1);
+            var target = AttachmentReorder.TargetIndex(_attachStartIndex, delta, _attachRowStep, vm.Attachments.Count);
             var current = vm.Attachments.IndexOf(item);
             if (target != current)
             {
@@ -509,22 +506,16 @@ public partial class MainWindow : Window
             return false;
         }
 
-        switch (action)
+        // FilterNotes is handled here (it focuses a view control); every other action routes to
+        // a view-model command through ShortcutRouter, whose completeness is asserted by a test.
+        if (action == ShortcutAction.FilterNotes)
         {
-            case ShortcutAction.NewBinder: return Run(vm.NewBinderCommand);
-            case ShortcutAction.OpenBinder: return Run(vm.OpenBinderCommand);
-            case ShortcutAction.SaveNow: return Run(vm.SaveNowCommand);
-            case ShortcutAction.CloseBinder: return Run(vm.CloseBinderCommand);
-            case ShortcutAction.NewNote: return Run(vm.NewNoteCommand);
-            case ShortcutAction.CycleTextStyle: return Run(vm.CycleTextStyleCommand);
-            case ShortcutAction.OpenSettings: return Run(vm.OpenSettingsCommand);
-            case ShortcutAction.ShowShortcuts: return Run(vm.OpenShortcutsCommand);
-            case ShortcutAction.FilterNotes:
-                NotesFilterBox.Focus();
-                return true;
-            default:
-                return false;
+            NotesFilterBox.Focus();
+            return true;
         }
+
+        var command = ShortcutRouter.CommandFor(vm, action);
+        return command is not null && Run(command);
     }
 
     // Runs a command if enabled; a disabled command lets the key fall through to default handling.

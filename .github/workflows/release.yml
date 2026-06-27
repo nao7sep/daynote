@@ -1,30 +1,10 @@
 name: Release
 
-# DayNote is developed and primarily used on macOS. Windows is a secondary
-# target that cannot be cross-compiled from a Mac, so both platforms are built
-# here in CI: macOS on a macos-latest runner, Windows on a windows-latest one.
-#
-# fail-fast is disabled so a Windows build failure never blocks the macOS one.
-#
-# Two ways to trigger:
-#   - Push a tag like v0.1.0  -> builds both platforms and attaches ONLY the two
-#     builds (macOS .dmg + Windows .zip) to a single DRAFT GitHub Release for
-#     that tag (test it, then publish the draft).
-#   - Run manually from the Actions tab ("Run workflow") -> builds both and
-#     uploads them as run artifacts, without creating a release.
-#
-# The macOS job runs scripts/build-macos-app.sh — the SAME script the local
-# rebuild launcher runs — so the released .app carries the classic icon
-# (icon.icns) and the Tahoe Liquid Glass catalog (Assets.car), and is ad-hoc
-# signed exactly as a local build. The .app is then wrapped in a .dmg with the
-# native hdiutil (no brew dependency). The Windows job is a self-contained
-# `dotnet publish` zipped as a portable build (no installer toolchain); the .exe
-# icon is embedded via the csproj <ApplicationIcon>, so no shared assembly script
-# is needed there.
-#
-# Artifacts follow `daynote-<version>[-win-x64].<ext>` naming; the version is read
-# from Directory.Build.props (<Version>), the single source the assemblies and
-# Info.plist derive from.
+# Per the app-release-conventions: tag-driven, one build job per target OS, each
+# attaching its self-contained artifact to the tagged release. macOS publishes a
+# signed .app (assembled by the AssembleMacAppBundle target in Directory.Build.targets);
+# Windows and Linux publish the loose self-contained folder. fail-fast is off so a
+# secondary/best-effort platform failure never cancels the primary macOS build.
 
 on:
   push:
@@ -32,92 +12,34 @@ on:
       - "v*"
   workflow_dispatch:
 
-# Needed for the gh CLI to create/upload the draft release.
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            artifact-name: daynote-macos
-          - platform: windows-latest
-            artifact-name: daynote-windows
-    runs-on: ${{ matrix.platform }}
+          - os: macos-latest
+            rid: osx-arm64
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
-
-      # macOS: assemble the ad-hoc-signed .app with the shared build script, then
-      # wrap it in a .dmg with hdiutil. The script publishes the mac RID matching
-      # the runner's arch and emits publish/DayNote.app.
-      - name: Build macOS .app and package .dmg
-        if: runner.os == 'macOS'
+      - name: Publish
+        run: dotnet publish src/DayNote/DayNote.csproj -c Release -r ${{ matrix.rid }} --self-contained -o publish
+      - name: Package
         shell: bash
-        run: |
-          VERSION=$(grep -oE '<Version>[^<]+</Version>' Directory.Build.props | sed -E 's/<\/?Version>//g')
-          bash scripts/build-macos-app.sh
-          mkdir -p artifacts
-          hdiutil create -volname "DayNote" \
-            -srcfolder "publish/DayNote.app" \
-            -ov -format UDZO \
-            "artifacts/daynote-${VERSION}.dmg"
-          ls -la artifacts
-
-      # Windows: self-contained Release publish. The project does NOT set
-      # PublishSingleFile, so the output is a FOLDER (DayNote.exe plus the
-      # .NET runtime and native DLLs — SkiaSharp/HarfBuzz/etc.); the bare .exe alone
-      # would not run. So the whole publish folder is zipped as a portable build
-      # (DayNote has no installer toolchain). The .exe icon is embedded via the csproj
-      # <ApplicationIcon>, so no shared assembly script is needed here. pwsh is used so
-      # Compress-Archive is available natively without a bundled zip dependency.
-      - name: Build Windows .zip
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $version = (Select-String -Path Directory.Build.props -Pattern '<Version>(.*?)</Version>').Matches[0].Groups[1].Value
-          dotnet publish src/DayNote/DayNote.csproj `
-            -c Release `
-            -r win-x64 `
-            --self-contained true `
-            -o publish/DayNote
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Compress-Archive -Path publish/DayNote -DestinationPath "artifacts/daynote-$version-win-x64.zip" -Force
-          Get-ChildItem artifacts
-
-      # Tag pushes: attach this platform's installer to the shared draft release.
-      # The first matrix job to finish creates the draft; the other's create is a
-      # no-op (|| true). --clobber makes re-running the same tag idempotent.
-      - name: Attach installer to the draft release (tag pushes)
-        if: github.ref_type == 'tag'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          shopt -s nullglob
-          files=(artifacts/*.dmg artifacts/*.zip)
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
-            --title "DayNote $TAG" \
-            --notes "DayNote $TAG — unsigned macOS app (.dmg) and portable Windows build (.zip)." \
-            2>/dev/null || true
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" "${files[@]}" --clobber
-
-      # Manual runs: no release, just the installers as downloadable artifacts.
-      - name: Upload installers as run artifacts (manual runs)
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v7
+        run: tar -C publish -czf "${{ github.event.repository.name }}-${{ github.ref_name }}-${{ matrix.rid }}.tar.gz" .
+      - if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
-          name: ${{ matrix.artifact-name }}
-          if-no-files-found: error
-          path: |
-            artifacts/*.dmg
-            artifacts/*.zip
+          files: "*.tar.gz"
+          prerelease: ${{ contains(github.ref_name, '-') }}

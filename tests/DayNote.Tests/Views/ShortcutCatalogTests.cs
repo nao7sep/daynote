@@ -59,9 +59,13 @@ public sealed class ShortcutCatalogTests
     public void Each_command_label_and_gesture_agree_on_modifiers()
     {
         var (items, cmd) = BuildCatalog();
+        // Per the keyboard-shortcut convention the label shows the single platform
+        // word resolved at runtime — "Cmd" when the command modifier is Meta (macOS),
+        // "Ctrl" otherwise — never the combined "Cmd/Ctrl" form.
+        var cmdLabel = cmd == KeyModifiers.Meta ? "Cmd" : "Ctrl";
         foreach (var item in items.Where(i => i.Gesture is not null))
         {
-            Assert.StartsWith("Cmd/Ctrl+", item.Label);
+            Assert.StartsWith(cmdLabel + "+", item.Label);
             Assert.True(item.Gesture!.KeyModifiers.HasFlag(cmd)); // the gesture carries the platform command modifier
             Assert.Equal(item.Gesture.KeyModifiers.HasFlag(KeyModifiers.Shift), item.Label.Contains("Shift+"));
         }

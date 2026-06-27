@@ -16,17 +16,11 @@ namespace DayNote.Views;
 /// </summary>
 public sealed class SettingsDialog : DialogBase
 {
-    private const double MinFontSize = 8;
-    private const double MaxFontSize = 48;
-    private const double MinLineSpacing = 1.0;
-    private const double MaxLineSpacing = 3.0;
-    private const double MinPadding = 0;
-    private const double MaxPadding = 48;
-
     private readonly AppConfig _config;
     private readonly AppConfig _original;
     private readonly StackPanel _styleItems = new() { Spacing = 8 };
     private readonly Dictionary<EditorTextStyle, StyleEditorControls> _styleEditors = [];
+    private readonly TextBox _uiFont;
     private readonly NumericUpDown _autosave;
     private readonly TextBox _timeZone;
     private readonly Button _saveButton;
@@ -70,13 +64,18 @@ public sealed class SettingsDialog : DialogBase
             },
         };
 
-        _autosave = Numeric(0.25m, 60m, 0.25m);
+        _uiFont = new TextBox { Text = config.UiFontFamily, PlaceholderText = AppConfig.DefaultUiFontFamily };
+        _autosave = Numeric((decimal)SettingsValidator.MinAutosaveSeconds, (decimal)SettingsValidator.MaxAutosaveSeconds, 0.25m);
         _autosave.Value = (decimal)config.AutosaveDelaySeconds;
         _timeZone = new TextBox { Text = config.DisplayTimeZone };
 
         var panel = new StackPanel { Spacing = 8, Width = 540 };
         panel.Children.Add(styleHeader);
         panel.Children.Add(styleList);
+        // The UI (chrome) font sits with the appearance settings, just below the editor text styles;
+        // it governs the whole app's chrome, while the styles above govern the note body.
+        panel.Children.Add(Label("UI font (comma-separated; first installed is used; blank = Inter)"));
+        panel.Children.Add(_uiFont);
         panel.Children.Add(Label("Autosave delay (seconds)"));
         panel.Children.Add(_autosave);
         panel.Children.Add(Label("Display time zone (IANA id, e.g. Asia/Tokyo)"));
@@ -106,6 +105,12 @@ public sealed class SettingsDialog : DialogBase
             _config.DisplayTimeZone = (_timeZone.Text ?? string.Empty).Trim();
             Revalidate();
         };
+        _uiFont.TextChanged += (_, _) =>
+        {
+            // Free text; blank is allowed and resolves to the bundled default at apply time.
+            _config.UiFontFamily = (_uiFont.Text ?? string.Empty).Trim();
+            Revalidate();
+        };
 
         Revalidate();
         if (_defaultStyle is not null && _styleEditors.TryGetValue(_defaultStyle, out var editor))
@@ -127,11 +132,11 @@ public sealed class SettingsDialog : DialogBase
 
         var name = new TextBox { Text = style.Name, PlaceholderText = "Preset name" };
         var fontFamily = new TextBox { Text = style.FontFamily, PlaceholderText = "Font family (e.g. Menlo)" };
-        var fontSize = Numeric((decimal)MinFontSize, (decimal)MaxFontSize, 1);
+        var fontSize = Numeric((decimal)SettingsValidator.MinFontSize, (decimal)SettingsValidator.MaxFontSize, 1);
         fontSize.Value = (decimal)style.FontSize;
-        var lineSpacing = Numeric((decimal)MinLineSpacing, (decimal)MaxLineSpacing, 0.1m);
+        var lineSpacing = Numeric((decimal)SettingsValidator.MinLineSpacing, (decimal)SettingsValidator.MaxLineSpacing, 0.1m);
         lineSpacing.Value = (decimal)style.LineSpacing;
-        var padding = Numeric((decimal)MinPadding, (decimal)MaxPadding, 1);
+        var padding = Numeric((decimal)SettingsValidator.MinPadding, (decimal)SettingsValidator.MaxPadding, 1);
         padding.Value = (decimal)style.Padding;
         var bold = new CheckBox { Content = "Bold", IsChecked = style.Bold };
         var italic = new CheckBox { Content = "Italic", IsChecked = style.Italic };
@@ -144,9 +149,12 @@ public sealed class SettingsDialog : DialogBase
             Child = new TextBlock
             {
                 Text = "Default",
-                FontSize = 11,
+                FontSize = 13,
                 FontWeight = FontWeight.SemiBold,
                 Foreground = PaletteBrush.Resolve("AccentForegroundBrush"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
             },
         };
         defaultLabel.Classes.Add("pill");
@@ -311,56 +319,39 @@ public sealed class SettingsDialog : DialogBase
         }
     }
 
-    private string UniqueName(string baseName)
-    {
-        var name = baseName;
-        var counter = 2;
-        while (_config.TextStyles.Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)))
-        {
-            name = $"{baseName} {counter++}";
-        }
+    private string UniqueName(string baseName) =>
+        SettingsValidator.UniqueName(baseName, _config.TextStyles.Select(s => s.Name));
 
-        return name;
-    }
-
-    private void Revalidate() => _saveButton.IsEnabled = IsValid() && IsDirty();
+    private void Revalidate() => _saveButton.IsEnabled = IsValid() && SettingsValidator.IsDirty(_config, _original);
 
     private bool IsValid()
     {
-        if (!DayNoteTime.TryResolveTimeZone((_timeZone.Text ?? string.Empty).Trim(), out _) || !InRange(_autosave))
-        {
-            return false;
-        }
-
+        // UI invariant: every style must have a matching editor before we can read its
+        // controls; a mismatch (or no styles) is not a savable state.
         if (_config.TextStyles.Count == 0 || _styleEditors.Count != _config.TextStyles.Count)
         {
             return false;
         }
 
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var style in _config.TextStyles)
+        var styles = _config.TextStyles.Select(style =>
         {
             var controls = _styleEditors[style];
-            if (string.IsNullOrWhiteSpace(controls.Name.Text)
-                || string.IsNullOrWhiteSpace(controls.FontFamily.Text)
-                || !InRange(controls.FontSize)
-                || !InRange(controls.LineSpacing)
-                || !InRange(controls.Padding)
-                || !names.Add(style.Name))
-            {
-                return false;
-            }
-        }
+            return new TextStyleDraft(
+                controls.Name.Text ?? string.Empty,
+                controls.FontFamily.Text ?? string.Empty,
+                (double)(controls.FontSize.Value ?? 0),
+                (double)(controls.LineSpacing.Value ?? 0),
+                (double)(controls.Padding.Value ?? 0));
+        }).ToList();
 
-        return _defaultStyle is not null;
+        var draft = new SettingsDraft(
+            _timeZone.Text ?? string.Empty,
+            (double)(_autosave.Value ?? 0),
+            styles,
+            _defaultStyle is not null);
+
+        return SettingsValidator.IsValid(draft);
     }
-
-    private bool IsDirty() => Serialize(_config) != Serialize(_original);
-
-    private static string Serialize(AppConfig config) => JsonSerializer.Serialize(config, DayNoteJson.Options);
-
-    private static bool InRange(NumericUpDown control) =>
-        control.Value is { } value && value >= control.Minimum && value <= control.Maximum;
 
     private static NumericUpDown Numeric(decimal min, decimal max, decimal increment) => new()
     {

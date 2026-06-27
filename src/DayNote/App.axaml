@@ -61,6 +61,11 @@
             <SolidColorBrush x:Key="StatusReadyBrush" Color="{StaticResource Warning}"/>
             <SolidColorBrush x:Key="StatusPublishedBrush" Color="{StaticResource Positive}"/>
             <SolidColorBrush x:Key="StatusExpiredBrush" Color="{StaticResource Danger}"/>
+
+            <!-- The app-wide UI (chrome) font. The default is the bundled Inter; the view model
+                 overrides this resource at runtime from the configured UI font, and the Window style
+                 below binds it via DynamicResource so the change applies live across every window. -->
+            <FontFamily x:Key="AppFontFamily">Inter</FontFamily>
         </ResourceDictionary>
     </Application.Resources>
 
@@ -73,6 +78,12 @@
                                        ErrorText="{StaticResource Danger}"/>
             </FluentTheme.Palettes>
         </FluentTheme>
+
+        <!-- Every window (main + dialogs) takes the configured UI font; FontFamily inherits to child
+             controls. The editor body overrides it with its own text-style preset (content font). -->
+        <Style Selector="Window">
+            <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}"/>
+        </Style>
 
         <Style Selector="Button.accent">
             <Setter Property="Background" Value="{StaticResource Accent}"/>
@@ -179,8 +190,8 @@
         <!-- A small colored pill (e.g. the "Default" text-style marker); its text is set by the caller. -->
         <Style Selector="Border.pill">
             <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-            <Setter Property="CornerRadius" Value="9"/>
-            <Setter Property="Padding" Value="9,2"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="11,5"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 

@@ -8,6 +8,7 @@ using DayNote.Core.Storage;
 using DayNote.Logging;
 using DayNote.Services;
 using DayNote.ViewModels;
+using DayNote.Views;
 using DayNote.Tests.Storage;
 using Xunit;
 
@@ -171,6 +172,54 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Empty(vm.Binders);
         Assert.False(vm.HasBinder);
+    }
+
+    [AvaloniaFact]
+    public async Task Adding_attachments_dedups_by_content_hash()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+
+        var sources = Path.Combine(_home, "sources");
+        Directory.CreateDirectory(sources);
+        var a = Path.Combine(sources, "a.txt");
+        var aCopy = Path.Combine(sources, "a-copy.txt");
+        var b = Path.Combine(sources, "b.txt");
+        File.WriteAllText(a, "same content");
+        File.WriteAllText(aCopy, "same content"); // identical bytes, different name
+        File.WriteAllText(b, "different content");
+
+        // Within one batch, the second identical file dedups against the first.
+        vm.AddDroppedFiles(new[] { a, aCopy, b });
+        Assert.Equal(2, note.Attachments.Count);
+
+        // A later file whose content the note already holds is not copied again.
+        var c = Path.Combine(sources, "c.txt");
+        File.WriteAllText(c, "same content");
+        vm.AddDroppedFiles(new[] { c });
+        Assert.Equal(2, note.Attachments.Count);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Every_shortcut_action_routes_to_a_command_or_the_view()
+    {
+        // Guards against the old `default: return false` silently no-oping a newly-added
+        // ShortcutAction: every action must route to a command (FilterNotes is view-handled).
+        var vm = await OpenNewBinderAsync();
+        foreach (var action in Enum.GetValues<ShortcutAction>())
+        {
+            if (action == ShortcutAction.FilterNotes)
+            {
+                continue;
+            }
+
+            Assert.NotNull(ShortcutRouter.CommandFor(vm, action));
+        }
+
+        await vm.ShutdownAsync();
     }
 
     public void Dispose()

@@ -74,49 +74,60 @@ public static class ShortcutCatalog
 
     /// <summary>
     /// The platform command key — <c>Meta</c> (Cmd) on macOS, <c>Control</c> on Windows/Linux. Resolved
-    /// once here so every accelerator binds the right modifier while labels stay the universal
-    /// <c>Cmd/Ctrl+…</c>. Falls back to <c>Control</c> if platform settings are unavailable.
+    /// once here so every accelerator binds the right modifier on every platform. Falls back to
+    /// <c>Control</c> if platform settings are unavailable.
     /// </summary>
     public static KeyModifiers CommandModifier(TopLevel top) =>
         top.GetPlatformSettings()?.HotkeyConfiguration.CommandModifiers ?? KeyModifiers.Control;
 
+    /// <summary>
+    /// The displayed word for the platform command key — <c>"Cmd"</c> on macOS (where the command
+    /// modifier is <c>Meta</c>), <c>"Ctrl"</c> on Windows/Linux. Derived from the same platform signal
+    /// as <see cref="CommandModifier"/> so labels show the running platform's single word, never the
+    /// combined <c>Cmd/Ctrl</c>.
+    /// </summary>
+    public static string CommandModifierLabel(TopLevel top) =>
+        CommandModifier(top) == KeyModifiers.Meta ? "Cmd" : "Ctrl";
+
     public static IReadOnlyList<ShortcutItem> Build(TopLevel top)
     {
         var cmd = CommandModifier(top);
+        var cmdLabel = CommandModifierLabel(top);
         return new List<ShortcutItem>
         {
             // Binders — file lifecycle: create, open, persist, close.
-            Command(ShortcutGroup.Binders, "New binder", cmd, shift: false, Key.N, "N", ShortcutAction.NewBinder),
-            Command(ShortcutGroup.Binders, "Open binder", cmd, shift: false, Key.O, "O", ShortcutAction.OpenBinder),
-            Command(ShortcutGroup.Binders, "Save now", cmd, shift: false, Key.S, "S", ShortcutAction.SaveNow),
-            Command(ShortcutGroup.Binders, "Close binder", cmd, shift: false, Key.W, "W", ShortcutAction.CloseBinder),
+            Command(ShortcutGroup.Binders, "New binder", cmd, cmdLabel, shift: false, Key.N, "N", ShortcutAction.NewBinder),
+            Command(ShortcutGroup.Binders, "Open binder", cmd, cmdLabel, shift: false, Key.O, "O", ShortcutAction.OpenBinder),
+            Command(ShortcutGroup.Binders, "Save now", cmd, cmdLabel, shift: false, Key.S, "S", ShortcutAction.SaveNow),
+            Command(ShortcutGroup.Binders, "Close binder", cmd, cmdLabel, shift: false, Key.W, "W", ShortcutAction.CloseBinder),
 
             // Notes — create, delete, find. (Delete is list-scoped, handled by the notes list itself,
             // so it is documented here as a display row rather than a global accelerator.)
-            Command(ShortcutGroup.Notes, "New note", cmd, shift: true, Key.N, "N", ShortcutAction.NewNote),
+            Command(ShortcutGroup.Notes, "New note", cmd, cmdLabel, shift: true, Key.N, "N", ShortcutAction.NewNote),
             Display(ShortcutGroup.Notes, "Delete the selected note", "Delete"),
-            Command(ShortcutGroup.Notes, "Filter notes", cmd, shift: false, Key.F, "F", ShortcutAction.FilterNotes),
+            Command(ShortcutGroup.Notes, "Filter notes", cmd, cmdLabel, shift: false, Key.F, "F", ShortcutAction.FilterNotes),
 
             // Navigation — move within the binders and notes lists (selecting a row opens it).
             Display(ShortcutGroup.Navigation, "Move the selection up or down a list", "Up / Down"),
 
             // Editor — the open note.
-            Command(ShortcutGroup.Editor, "Cycle text style", cmd, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),
+            Command(ShortcutGroup.Editor, "Cycle text style", cmd, cmdLabel, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),
 
             // App — settings and this help.
-            Command(ShortcutGroup.App, "Settings", cmd, shift: false, Key.OemComma, "Comma", ShortcutAction.OpenSettings),
-            Command(ShortcutGroup.App, "Keyboard shortcuts", cmd, shift: false, Key.OemQuestion, "Slash", ShortcutAction.ShowShortcuts),
+            Command(ShortcutGroup.App, "Settings", cmd, cmdLabel, shift: false, Key.OemComma, "Comma", ShortcutAction.OpenSettings),
+            Command(ShortcutGroup.App, "Keyboard shortcuts", cmd, cmdLabel, shift: false, Key.OemQuestion, "Slash", ShortcutAction.ShowShortcuts),
         };
     }
 
     /// <summary>
     /// Builds a command accelerator from one definition so the label and gesture cannot diverge. The
-    /// label is always the universal <c>Cmd/Ctrl+…</c>; only the gesture's modifier is platform-resolved.
+    /// label uses the running platform's single command word (<paramref name="cmdLabel"/>); only the
+    /// gesture's modifier is platform-resolved.
     /// </summary>
     private static ShortcutItem Command(
-        ShortcutGroup group, string description, KeyModifiers cmd, bool shift, Key key, string keyName, ShortcutAction action)
+        ShortcutGroup group, string description, KeyModifiers cmd, string cmdLabel, bool shift, Key key, string keyName, ShortcutAction action)
     {
-        var label = "Cmd/Ctrl+" + (shift ? "Shift+" : string.Empty) + keyName;
+        var label = cmdLabel + "+" + (shift ? "Shift+" : string.Empty) + keyName;
         var modifiers = cmd | (shift ? KeyModifiers.Shift : KeyModifiers.None);
         return new ShortcutItem(group, description, label, new KeyGesture(key, modifiers), action);
     }
