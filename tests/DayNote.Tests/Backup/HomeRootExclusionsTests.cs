@@ -23,6 +23,12 @@ public sealed class HomeRootExclusionsTests
     [InlineData("backups/backup-20260701-120000-utc.zip")]
     [InlineData("config.json.abc123.tmp")]
     [InlineData(".config.json.deadbeef.tmp")]
+    [InlineData(".DS_Store")]
+    [InlineData("notes/.DS_Store")]                              // OS litter at any depth
+    [InlineData("Thumbs.db")]
+    [InlineData("thumbs.db")]                                    // matched case-insensitively
+    [InlineData("desktop.ini")]                                 // Explorer folder-metadata (fleet floor)
+    [InlineData("Desktop.ini")]
     public void Throwaway_And_Self_Managed_Paths_Are_Excluded(string relativePath)
     {
         Assert.True(HomeRootExclusions.IsExcluded(relativePath));
