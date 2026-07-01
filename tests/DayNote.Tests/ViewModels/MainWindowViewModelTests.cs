@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
+using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
 using DayNote.Core.Storage;
 using DayNote.Logging;
@@ -70,6 +72,26 @@ public sealed class MainWindowViewModelTests : IDisposable
         var after = File.ReadAllText(configFile);
         _ = NewViewModel();
         Assert.Equal(after, File.ReadAllText(configFile));
+    }
+
+    [AvaloniaFact]
+    public void First_run_backup_captures_the_materialized_config()
+    {
+        // Reproduces the real startup order: the constructor materializes config.json synchronously
+        // (LoadConfigAndState), and only then does the app trigger the backup. So the very first backup
+        // must capture config.json rather than finding an empty root — the regression this guards is
+        // materialization drifting into async InitializeAsync, which would run after the backup thread.
+        _ = NewViewModel();
+
+        var paths = new AppPaths();
+        var report = new BackupEngine(paths).Run(new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero));
+
+        Assert.False(report.NothingChanged);
+        Assert.Equal(1, report.FilesArchived); // config.json only — no binders on a fresh first run
+        Assert.Equal("backup-20260701-000000-utc.zip", report.ArchiveFileName);
+
+        using var zip = ZipFile.OpenRead(Path.Combine(paths.BackupsDirectory, "backup-20260701-000000-utc.zip"));
+        Assert.Contains(zip.Entries, e => e.FullName == "config.json");
     }
 
     [AvaloniaFact]
