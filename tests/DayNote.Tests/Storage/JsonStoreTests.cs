@@ -82,6 +82,33 @@ public sealed class JsonStoreTests : IDisposable
         Assert.Throws<JsonException>(() => _store.Load());
     }
 
+    [Fact]
+    public void CreateIfMissing_writes_the_defaults_on_first_run()
+    {
+        var created = _store.CreateIfMissing(new AppConfig());
+
+        Assert.True(created);
+        Assert.True(File.Exists(_path));
+        // Produced through Save, so it is the canonical form and round-trips.
+        Assert.EndsWith("\n", File.ReadAllText(_path));
+        Assert.NotNull(_store.Load());
+    }
+
+    [Fact]
+    public void CreateIfMissing_never_touches_an_existing_file()
+    {
+        _store.Save(new AppConfig { SelectedTextStyle = "Mine" });
+        var before = File.ReadAllText(_path);
+
+        // A different value must not overwrite: the single trigger is absence, so a good (possibly
+        // hand-edited) file is left byte-for-byte as it was.
+        var created = _store.CreateIfMissing(new AppConfig { SelectedTextStyle = "Default" });
+
+        Assert.False(created);
+        Assert.Equal(before, File.ReadAllText(_path));
+        Assert.Equal("Mine", _store.Load()!.SelectedTextStyle);
+    }
+
     public void Dispose()
     {
         try

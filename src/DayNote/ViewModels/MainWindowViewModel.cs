@@ -1252,6 +1252,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _config = new AppConfig();
             _state = new AppState();
             _log.Error("Failed to load configuration or state; saving disabled", new { root = _paths.Root }, ex);
+            return;
+        }
+
+        // Write config.json on first run so the settings file exists on disk immediately, rather than
+        // only after the user first changes something (storage-path conventions, "Materializing settings
+        // on first run"). This runs here — after _config is populated and before ApplyConfig, pane
+        // restore, or the background backup read it — and only creates the file when absent, so a good
+        // (possibly hand-edited) file is never at risk. It is gated on a clean load: a corrupt config
+        // sets _loadError above and returns, so it is never overwritten. state.json is deliberately not
+        // created here — it is volatile UI state, written only when there is state to record. A write
+        // failure is logged and tolerated (the in-memory defaults still drive the session and the next
+        // save surfaces a real error) rather than disabling editing over a transient inability to write.
+        try
+        {
+            if (_configStore.CreateIfMissing(_config))
+            {
+                _log.Info("Created config.json with defaults", ConfigSummary(_config));
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Warn("Could not create config.json on first run", new { path = _paths.ConfigFile }, ex);
         }
     }
 

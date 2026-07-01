@@ -53,6 +53,26 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void First_run_creates_config_json_but_not_state_json()
+    {
+        var configFile = Path.Combine(_home, "config.json");
+        var stateFile = Path.Combine(_home, "state.json");
+        Assert.False(File.Exists(configFile));
+
+        _ = NewViewModel();
+
+        // config.json is written on first run so the settings file is present and hand-editable
+        // immediately; state.json (volatile UI state) is deliberately not created until there is state.
+        Assert.True(File.Exists(configFile));
+        Assert.False(File.Exists(stateFile));
+
+        // A second launch is create-if-absent, so the existing file is left byte-for-byte untouched.
+        var after = File.ReadAllText(configFile);
+        _ = NewViewModel();
+        Assert.Equal(after, File.ReadAllText(configFile));
+    }
+
+    [AvaloniaFact]
     public async Task New_binder_creates_the_file_and_lists_it()
     {
         var vm = await OpenNewBinderAsync();
