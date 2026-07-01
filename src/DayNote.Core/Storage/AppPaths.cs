@@ -26,6 +26,16 @@ public sealed class AppPaths
     public string StateFile => Path.Combine(Root, "state.json");
     public string LogsDirectory => Path.Combine(Root, "logs");
 
+    /// <summary>
+    /// Where the data-backup feature keeps its archives and index. Not created by
+    /// <see cref="EnsureCreated"/>: the backup engine makes it lazily on the first run that actually
+    /// writes an archive, so a launch with nothing to back up leaves the root untouched.
+    /// </summary>
+    public string BackupsDirectory => Path.Combine(Root, "backups");
+
+    /// <summary>The backup change ledger, <c>backups/index.json</c> (see the data-backup conventions).</summary>
+    public string BackupIndexFile => Path.Combine(BackupsDirectory, "index.json");
+
     /// <summary>Creates the root and logs directories if they do not yet exist.</summary>
     public void EnsureCreated()
     {

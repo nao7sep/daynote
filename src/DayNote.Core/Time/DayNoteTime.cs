@@ -51,6 +51,15 @@ public static class DayNoteTime
         value.ToUniversalTime().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-utc";
 
     /// <summary>
+    /// A whole-second UTC ISO-8601 stamp (<c>yyyy-MM-ddTHH:mm:ssZ</c>), used where sub-second precision
+    /// is deliberately dropped — the backup index's stored file modification time, which is compared
+    /// with a two-second tolerance and so carries no sub-second component. Parses back through
+    /// <see cref="TryParseIso"/>.
+    /// </summary>
+    public static string ToIsoSeconds(DateTimeOffset value) =>
+        value.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// Renders a UTC timestamp for display in the given IANA time zone (e.g. <c>Asia/Tokyo</c>),
     /// in the ISO-like format <c>yyyy-MM-dd HH:mm:ss</c>. Falls back to UTC if the zone is unknown.
     /// </summary>
