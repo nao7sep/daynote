@@ -94,7 +94,21 @@ public sealed class BackupEngine
     private List<BackupCandidate> WriteArchive(
         string archivedAt, IReadOnlyList<BackupCandidate> changed, List<BackupSkip> skips)
     {
-        Directory.CreateDirectory(_paths.BackupsDirectory);
+        var backupsDir = Directory.CreateDirectory(_paths.BackupsDirectory);
+        // Owner-only (0700) on POSIX so an archived owner-only file (e.g. an api-keys.json, per the
+        // api-key-storage conventions) is never downgraded to world-readable; a near-no-op on Windows.
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                backupsDir.UnixFileMode =
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+            }
+            catch
+            {
+                // Best effort: an inability to tighten the mode must not fail the backup.
+            }
+        }
         var finalPath = Path.Combine(_paths.BackupsDirectory, ArchiveFileName(archivedAt));
         var tempPath = finalPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
 

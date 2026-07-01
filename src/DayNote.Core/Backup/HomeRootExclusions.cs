@@ -15,6 +15,8 @@ public static class HomeRootExclusions
     /// <item><c>logs/</c> — per-session logs, recreatable and noisy.</item>
     /// <item><c>backups/</c> — the feature's own archives and index; backing them up would recurse.</item>
     /// <item><c>*.tmp</c> — atomic-write temporaries (they never outlive a write, but a crash can leave one).</item>
+    /// <item><c>.DS_Store</c>, <c>Thumbs.db</c>, <c>desktop.ini</c> — OS folder-metadata a file manager drops
+    /// into any directory the user opens; matched case-insensitively (the fleet floor).</item>
     /// </list>
     /// </summary>
     public static bool IsExcluded(string relativePath)
@@ -32,6 +34,20 @@ public static class HomeRootExclusions
             return true;
         }
 
-        return path.EndsWith(".tmp", StringComparison.Ordinal);
+        if (path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var name = LastSegment(path);
+        return string.Equals(name, ".DS_Store", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "Thumbs.db", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "desktop.ini", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string LastSegment(string path)
+    {
+        var slash = path.LastIndexOf('/');
+        return slash < 0 ? path : path[(slash + 1)..];
     }
 }
