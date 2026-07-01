@@ -490,7 +490,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     continue;
                 }
 
-                var name = UniqueFileName(directory, Path.GetFileName(source));
+                var existing = Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName)!;
+                var name = UniqueFileName.Pick(existing!, Path.GetFileName(source));
                 File.Copy(source, Path.Combine(directory, name));
                 note.Attachments.Add(name);
                 hashes[hash] = name;
@@ -1409,18 +1410,4 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             ? path
             : path + ".daynote";
 
-    private static string UniqueFileName(string directory, string fileName)
-    {
-        var candidate = fileName;
-        var name = Path.GetFileNameWithoutExtension(fileName);
-        var extension = Path.GetExtension(fileName);
-        var counter = 1;
-        while (File.Exists(Path.Combine(directory, candidate)))
-        {
-            candidate = $"{name} ({counter}){extension}";
-            counter++;
-        }
-
-        return candidate;
-    }
 }
