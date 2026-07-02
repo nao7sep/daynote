@@ -142,6 +142,11 @@ public partial class MainWindow : Window
             }
 
             e.Pointer.Capture(AttachList); // keep receiving moves even if the pointer leaves a row
+
+            // Show the move cursor for the duration of the reorder — the "grabbing" affordance
+            // (Avalonia has no closed-hand shape; SizeAll is its move cursor). Set on the window so it
+            // holds as the pointer roams during the captured drag; reset in ClearAttachDrag.
+            Cursor = new Cursor(StandardCursorType.SizeAll);
         }
 
         if (_attachDragContainer is null)
@@ -199,6 +204,7 @@ public partial class MainWindow : Window
         _attachDragItem = null;
         _attachDragOrigin = null;
         _attachReordering = false;
+        Cursor = null; // back to the inherited default arrow (no-op if a drag never started)
     }
 
     // The vertical distance between consecutive attachment rows (they are uniform), measured from the
