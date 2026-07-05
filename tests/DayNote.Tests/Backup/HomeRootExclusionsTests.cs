@@ -20,9 +20,9 @@ public sealed class HomeRootExclusionsTests
     [InlineData("state.json")]
     [InlineData("logs/20260701.jsonl")]
     [InlineData("backups/index.json")]
-    [InlineData("backups/backup-20260701-120000-utc.zip")]
-    [InlineData("config.json.abc123.tmp")]
-    [InlineData(".config.json.deadbeef.tmp")]
+    [InlineData("backups/backup-20260701-120000-000-utc.zip")]
+    [InlineData("config-V1StGXR8Z5jdHi6BUtaB.tmp")]
+    [InlineData("CONFIG-V1STGXR8Z5JDHI6BUTAB.TMP")]
     [InlineData(".DS_Store")]
     [InlineData("notes/.DS_Store")]                              // OS litter at any depth
     [InlineData("Thumbs.db")]

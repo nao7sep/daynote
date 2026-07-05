@@ -55,16 +55,19 @@ public sealed class BackupEngineTests : IDisposable
         Assert.Null(report.Fatal);
         Assert.False(report.NothingChanged);
         Assert.Equal(3, report.FilesArchived);
-        Assert.Equal("backup-20260701-000000-utc.zip", report.ArchiveFileName);
+        Assert.Equal("backup-20260701-000000-000-utc.zip", report.ArchiveFileName);
 
-        var entries = ArchiveEntries("backup-20260701-000000-utc.zip");
+        var entries = ArchiveEntries("backup-20260701-000000-000-utc.zip");
         Assert.Contains("config.json", entries);
         Assert.Contains("binders/BINDER1/Journal.daynote", entries);
         Assert.Contains("binders/BINDER1/assets/note1/photo.txt", entries);
 
         var index = LoadIndex();
         Assert.Equal(3, index.Entries.Count);
-        Assert.All(index.Entries, e => Assert.Equal("20260701-000000-utc", e.ArchivedAt));
+        Assert.All(index.Entries, e => Assert.Equal("20260701-000000-000-utc", e.ArchivedAt));
+
+        // The archive's own write-then-rename temp file never survives the run.
+        Assert.Empty(Directory.GetFiles(_paths.BackupsDirectory, "*.tmp"));
     }
 
     [Fact]
@@ -78,7 +81,7 @@ public sealed class BackupEngineTests : IDisposable
 
         Assert.True(report.NothingChanged);
         Assert.Null(report.ArchiveFileName);
-        Assert.False(File.Exists(Path.Combine(_paths.BackupsDirectory, "backup-20260701-010000-utc.zip")));
+        Assert.False(File.Exists(Path.Combine(_paths.BackupsDirectory, "backup-20260701-010000-000-utc.zip")));
     }
 
     [Fact]
@@ -94,7 +97,30 @@ public sealed class BackupEngineTests : IDisposable
 
         Assert.False(report.NothingChanged);
         Assert.Equal(1, report.FilesArchived);
-        Assert.Equal(new[] { "config.json" }, ArchiveEntries("backup-20260701-010000-utc.zip"));
+        Assert.Equal(new[] { "config.json" }, ArchiveEntries("backup-20260701-010000-000-utc.zip"));
+    }
+
+    [Fact]
+    public void A_Colliding_Archive_Name_Advances_To_The_Next_Free_Millisecond()
+    {
+        WriteConfig("{\"a\":1}");
+
+        // Simulate a name already claimed at the stamp this run would otherwise use (a second instance,
+        // or a clock collision) — the no-clobber create must advance to the next free millisecond rather
+        // than overwrite it.
+        Directory.CreateDirectory(_paths.BackupsDirectory);
+        File.WriteAllText(Path.Combine(_paths.BackupsDirectory, "backup-20260701-000000-000-utc.zip"), "claimed");
+
+        var report = new BackupEngine(_paths).Run(Run1);
+
+        Assert.Null(report.Fatal);
+        Assert.False(report.NothingChanged);
+        Assert.Equal("backup-20260701-000000-001-utc.zip", report.ArchiveFileName);
+        Assert.Equal("claimed", File.ReadAllText(Path.Combine(_paths.BackupsDirectory, "backup-20260701-000000-000-utc.zip")));
+
+        var index = LoadIndex();
+        Assert.NotEmpty(index.Entries);
+        Assert.All(index.Entries, e => Assert.Equal("20260701-000000-001-utc", e.ArchivedAt));
     }
 
     [Fact]

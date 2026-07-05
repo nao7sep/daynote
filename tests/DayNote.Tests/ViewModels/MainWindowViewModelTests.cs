@@ -88,9 +88,9 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.False(report.NothingChanged);
         Assert.Equal(1, report.FilesArchived); // config.json only — no binders on a fresh first run
-        Assert.Equal("backup-20260701-000000-utc.zip", report.ArchiveFileName);
+        Assert.Equal("backup-20260701-000000-000-utc.zip", report.ArchiveFileName);
 
-        using var zip = ZipFile.OpenRead(Path.Combine(paths.BackupsDirectory, "backup-20260701-000000-utc.zip"));
+        using var zip = ZipFile.OpenRead(Path.Combine(paths.BackupsDirectory, "backup-20260701-000000-000-utc.zip"));
         Assert.Contains(zip.Entries, e => e.FullName == "config.json");
     }
 

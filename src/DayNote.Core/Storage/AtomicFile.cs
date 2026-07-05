@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using DayNote.Core.Identity;
 
 namespace DayNote.Core.Storage;
 
@@ -20,7 +21,10 @@ public static partial class AtomicFile
             ?? throw new ArgumentException($"Path has no directory: {path}", nameof(path));
         Directory.CreateDirectory(directory);
 
-        var tempPath = Path.Combine(directory, "." + Path.GetFileName(fullPath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+        // <stem>-<nanoid>.tmp, beside the target: one final extension stating the file's current role
+        // (a temp), never a suffix dot-appended after the full target filename.
+        var stem = Path.GetFileNameWithoutExtension(fullPath);
+        var tempPath = Path.Combine(directory, stem + "-" + IdGenerator.New() + ".tmp");
         var bytes = Utf8NoBom.GetBytes(content);
 
         try

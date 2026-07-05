@@ -4,8 +4,9 @@ namespace DayNote.Core.Time;
 
 /// <summary>
 /// Timestamp conventions for DayNote. Internal timestamps are UTC, ISO-8601 with millisecond
-/// precision. Filename timestamps use <c>yyyymmdd-hhmmss-utc</c> at second precision — including the
-/// per-launch log files, since a desktop app is never realistically launched twice within one second.
+/// precision. Filename timestamps use <c>yyyymmdd-hhmmss-fff-utc</c> at millisecond precision —
+/// including the per-launch log files and the backup archive stamp — so two events within the same
+/// second still produce distinct names.
 /// User-facing timestamps are rendered in a configurable time zone (default Asia/Tokyo) in an
 /// ISO-like format.
 /// </summary>
@@ -46,9 +47,9 @@ public static class DayNoteTime
             || DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, styles, out value);
     }
 
-    /// <summary>Filename-safe UTC stamp in the <c>yyyymmdd-hhmmss-utc</c> convention.</summary>
+    /// <summary>Filename-safe UTC stamp in the <c>yyyymmdd-hhmmss-fff-utc</c> convention (millisecond precision).</summary>
     public static string FileStamp(DateTimeOffset value) =>
-        value.ToUniversalTime().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-utc";
+        value.ToUniversalTime().ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + "-utc";
 
     /// <summary>
     /// A whole-second UTC ISO-8601 stamp (<c>yyyy-MM-ddTHH:mm:ssZ</c>), used where sub-second precision

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -14,11 +13,11 @@ namespace DayNote.Logging;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The per-launch file is named <c>yyyymmdd-hhmmss-utc.log</c> — the UTC launch instant and nothing
-/// else — and created exclusively so sessions are never appended together. Second precision is
-/// sufficient: a user-launched desktop app is realistically never started twice within the same
-/// second, and on the practically impossible clash the create fails and degrades to the console
-/// fallback below. <c>warn</c>/<c>error</c>/<c>debug</c>
+/// The per-launch file is named <c>yyyymmdd-hhmmss-fff-utc.log</c> — the UTC launch instant, with
+/// millisecond precision, and nothing else — and created exclusively so sessions are never appended
+/// together. Millisecond precision makes even a near-simultaneous relaunch land on a distinct name;
+/// on the practically impossible clash the create fails and degrades to the console fallback below.
+/// <c>warn</c>/<c>error</c>/<c>debug</c>
 /// lines are flushed immediately so the last lines before a crash reach disk; <c>info</c> lines may be
 /// buffered and are flushed on <see cref="Dispose"/>. If the file cannot be opened or written the
 /// logger degrades to <see cref="Console.Error"/> and keeps running — logging never crashes the app
@@ -27,8 +26,6 @@ namespace DayNote.Logging;
 /// </remarks>
 public sealed class JsonLinesLogger : IAppLogger, IDisposable
 {
-    private const string LaunchStampFormat = "yyyyMMdd-HHmmss";
-
     /// <summary>
     /// Field names whose values are redacted before serialization (exact, case-insensitive). Seeded
     /// with the obvious secrets; DayNote logs none of these today, but the backstop is mandatory for
@@ -89,14 +86,8 @@ public sealed class JsonLinesLogger : IAppLogger, IDisposable
         }
     }
 
-    private static string NewLogFileName(DateTimeOffset launchTime)
-    {
-        var stamp = launchTime
-            .ToUniversalTime()
-            .ToString(LaunchStampFormat, CultureInfo.InvariantCulture);
-
-        return $"{stamp}-utc.log";
-    }
+    private static string NewLogFileName(DateTimeOffset launchTime) =>
+        $"{DayNoteTime.FileStamp(launchTime)}.log";
 
     public void Debug(string message, object? data = null, Exception? error = null)
     {

@@ -130,4 +130,13 @@ public sealed class DayNoteTimeTests
         var value = new DateTimeOffset(2024, 12, 1, 9, 30, 0, TimeSpan.Zero);
         Assert.Equal("2024-12-01", DayNoteTime.ToSmartDisplay(value, null!, SmartNow));
     }
+
+    [Fact]
+    public void FileStamp_uses_millisecond_precision()
+    {
+        // Pins the yyyymmdd-hhmmss-fff-utc convention shared by the per-launch log filename and the
+        // backup archive stamp.
+        var value = new DateTimeOffset(2026, 6, 10, 3, 15, 42, 123, TimeSpan.Zero);
+        Assert.Equal("20260610-031542-123-utc", DayNoteTime.FileStamp(value));
+    }
 }

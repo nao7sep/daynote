@@ -64,7 +64,7 @@ public sealed class JsonLinesLoggerTests
         }
 
         var name = Path.GetFileName(Directory.GetFiles(temp.Path, "*.log").Single());
-        Assert.Matches(@"^\d{8}-\d{6}-utc\.log$", name);
+        Assert.Matches(@"^\d{8}-\d{6}-\d{3}-utc\.log$", name);
     }
 
     [Fact]
