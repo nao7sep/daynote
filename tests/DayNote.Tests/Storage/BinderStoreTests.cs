@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
 using Xunit;
@@ -21,7 +22,7 @@ public sealed class BinderStoreTests : IDisposable
 
     public BinderStoreTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "daynote-store-tests-" + Guid.NewGuid().ToString("N"));
+        _directory = Path.Combine(Path.GetTempPath(), "daynote-store-tests-" + IdGenerator.New());
         Directory.CreateDirectory(_directory);
         _path = Path.Combine(_directory, "journal.daynote");
     }

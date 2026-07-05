@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Linq;
 using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
+using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
 using DayNote.Tests.Storage;
@@ -186,7 +187,7 @@ public sealed class BackupEngineTests : IDisposable
 
     private static string CreateTempDir(string prefix)
     {
-        var dir = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), prefix + IdGenerator.New());
         Directory.CreateDirectory(dir);
         return dir;
     }

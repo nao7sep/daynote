@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using DayNote.Core.Identity;
 using DayNote.Core.Storage;
 using Xunit;
 
@@ -18,7 +19,7 @@ public sealed class AtomicFileTests : IDisposable
 
     public AtomicFileTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "daynote-atomic-tests-" + Guid.NewGuid().ToString("N"));
+        _directory = Path.Combine(Path.GetTempPath(), "daynote-atomic-tests-" + IdGenerator.New());
         Directory.CreateDirectory(_directory);
         _path = Path.Combine(_directory, "data.txt");
     }

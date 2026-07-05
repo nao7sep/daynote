@@ -40,7 +40,7 @@ public sealed class ContentHashTests
     public void Hashes_a_file_to_the_same_value_as_its_bytes()
     {
         // The file hash drives attachment dedup; for a UTF-8 file (no BOM) it must equal the string hash.
-        var path = Path.Combine(Path.GetTempPath(), "daynote-hash-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(Path.GetTempPath(), "daynote-hash-" + IdGenerator.New());
         try
         {
             File.WriteAllText(path, "abc", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));

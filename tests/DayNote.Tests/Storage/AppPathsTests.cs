@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using DayNote.Core.Identity;
 using DayNote.Core.Storage;
 using Xunit;
 
@@ -39,7 +40,7 @@ public sealed class AppPathsTests : IDisposable
     [Fact]
     public void Override_Relocates_The_Whole_Root()
     {
-        var target = Path.Combine(Path.GetTempPath(), "daynote-home-tests-" + Guid.NewGuid().ToString("N"));
+        var target = Path.Combine(Path.GetTempPath(), "daynote-home-tests-" + IdGenerator.New());
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, target);
 
         var paths = new AppPaths();
@@ -64,7 +65,7 @@ public sealed class AppPathsTests : IDisposable
     [Fact]
     public void Relative_Override_Resolves_Against_Home_Not_Working_Directory()
     {
-        var relative = "daynote-relative-" + Guid.NewGuid().ToString("N");
+        var relative = "daynote-relative-" + IdGenerator.New();
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, relative);
 
         var paths = new AppPaths();
@@ -88,7 +89,7 @@ public sealed class AppPathsTests : IDisposable
     [Fact]
     public void Leading_Tilde_Override_Expands_Against_Home()
     {
-        var leaf = "daynote-tilde-" + Guid.NewGuid().ToString("N");
+        var leaf = "daynote-tilde-" + IdGenerator.New();
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "~/" + leaf);
 
         var paths = new AppPaths();
@@ -103,8 +104,10 @@ public sealed class AppPathsTests : IDisposable
         // The resolver expands the %VAR% form (here) as well as the POSIX $VAR / ${VAR} forms
         // (covered by the test below). Use a uniquely named variable so the test is independent of
         // the ambient environment, and restore it afterwards.
-        var variableName = "DAYNOTE_EXPAND_TEST_" + Guid.NewGuid().ToString("N");
-        var expansion = Path.Combine(Path.GetTempPath(), "daynote-expand-" + Guid.NewGuid().ToString("N"));
+        // The generated suffix must itself be a valid $VAR/%VAR% identifier (letters, digits,
+        // underscore only), so a nanoid's occasional hyphen is folded to an underscore.
+        var variableName = "DAYNOTE_EXPAND_TEST_" + IdGenerator.New().Replace('-', '_');
+        var expansion = Path.Combine(Path.GetTempPath(), "daynote-expand-" + IdGenerator.New());
         var previousValue = Environment.GetEnvironmentVariable(variableName);
         try
         {
@@ -124,8 +127,9 @@ public sealed class AppPathsTests : IDisposable
     [Fact]
     public void Override_Expands_Dollar_Environment_References()
     {
-        var variableName = "DAYNOTE_EXPAND_TEST_" + Guid.NewGuid().ToString("N");
-        var expansion = Path.Combine(Path.GetTempPath(), "daynote-dollar-" + Guid.NewGuid().ToString("N"));
+        // Same identifier-safety note as above: fold any hyphen so the name stays a valid $VAR/${VAR}.
+        var variableName = "DAYNOTE_EXPAND_TEST_" + IdGenerator.New().Replace('-', '_');
+        var expansion = Path.Combine(Path.GetTempPath(), "daynote-dollar-" + IdGenerator.New());
         var previousValue = Environment.GetEnvironmentVariable(variableName);
         try
         {
@@ -148,7 +152,8 @@ public sealed class AppPathsTests : IDisposable
     {
         // A reference to a variable that is definitely unset expands to empty; that is a
         // misconfiguration, reported rather than silently collapsing onto the home directory.
-        var unsetVariable = "DAYNOTE_UNSET_PROBE_" + Guid.NewGuid().ToString("N");
+        // Same identifier-safety note: fold any hyphen so the name stays a valid $VAR reference.
+        var unsetVariable = "DAYNOTE_UNSET_PROBE_" + IdGenerator.New().Replace('-', '_');
         Environment.SetEnvironmentVariable(unsetVariable, null);
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "$" + unsetVariable);
 

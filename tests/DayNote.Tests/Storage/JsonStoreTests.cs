@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using DayNote.Core.Configuration;
+using DayNote.Core.Identity;
 using DayNote.Core.Storage;
 using Xunit;
 
@@ -20,7 +21,7 @@ public sealed class JsonStoreTests : IDisposable
 
     public JsonStoreTests()
     {
-        _directory = Path.Combine(Path.GetTempPath(), "daynote-json-tests-" + Guid.NewGuid().ToString("N"));
+        _directory = Path.Combine(Path.GetTempPath(), "daynote-json-tests-" + IdGenerator.New());
         Directory.CreateDirectory(_directory);
         _path = Path.Combine(_directory, "config.json");
         _store = new JsonStore<AppConfig>(_path);

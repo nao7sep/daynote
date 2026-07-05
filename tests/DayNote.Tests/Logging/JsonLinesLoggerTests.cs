@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using DayNote.Core.Identity;
 using DayNote.Logging;
 using Xunit;
 
@@ -15,7 +16,7 @@ public sealed class JsonLinesLoggerTests
     private sealed class TempDir : IDisposable
     {
         public string Path { get; } =
-            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "daynote-logtests", Guid.NewGuid().ToString("N"));
+            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "daynote-logtests", IdGenerator.New());
 
         public TempDir() => Directory.CreateDirectory(Path);
 

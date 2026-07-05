@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
 using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
+using DayNote.Core.Identity;
 using DayNote.Core.Storage;
 using DayNote.Logging;
 using DayNote.Services;
@@ -32,7 +33,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     public MainWindowViewModelTests()
     {
         _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
-        _home = Path.Combine(Path.GetTempPath(), "daynote-vm-tests-" + Guid.NewGuid().ToString("N"));
+        _home = Path.Combine(Path.GetTempPath(), "daynote-vm-tests-" + IdGenerator.New());
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _home);
     }
 
