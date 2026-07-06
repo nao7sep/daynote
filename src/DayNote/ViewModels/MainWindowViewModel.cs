@@ -1258,8 +1258,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         // Write config.json on first run so the settings file exists on disk immediately, rather than
         // only after the user first changes something (storage-path conventions, "Materializing settings
-        // on first run"). This runs here — after _config is populated and before ApplyConfig, pane
-        // restore, or the background backup read it — and only creates the file when absent, so a good
+        // on first run"). This runs here — after _config is populated and before ApplyConfig or pane
+        // restore read it — and only creates the file when absent, so a good
         // (possibly hand-edited) file is never at risk. It is gated on a clean load: a corrupt config
         // sets _loadError above and returns, so it is never overwritten. state.json is deliberately not
         // created here — it is volatile UI state, written only when there is state to record. A write

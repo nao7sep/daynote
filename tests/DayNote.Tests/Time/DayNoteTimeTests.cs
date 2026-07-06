@@ -134,8 +134,7 @@ public sealed class DayNoteTimeTests
     [Fact]
     public void FileStamp_uses_millisecond_precision()
     {
-        // Pins the yyyymmdd-hhmmss-fff-utc convention shared by the per-launch log filename and the
-        // backup archive stamp.
+        // Pins the yyyymmdd-hhmmss-fff-utc convention used by the per-launch log filename.
         var value = new DateTimeOffset(2026, 6, 10, 3, 15, 42, 123, TimeSpan.Zero);
         Assert.Equal("20260610-031542-123-utc", DayNoteTime.FileStamp(value));
     }
