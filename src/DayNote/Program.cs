@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Avalonia;
+using DayNote.Core.Backup;
 using DayNote.Core.Storage;
 using DayNote.Logging;
 
@@ -40,6 +41,12 @@ internal static class Program
         Log = logger;
         Paths = paths;
         RegisterCrashHooks(logger);
+
+        // The write-through data-backup store (data-backup conventions) lives in DayNote.Core and must
+        // stay logger-framework-free, so it takes its one edge concern — a warn on a record/open failure —
+        // as a delegate installed here. Installed before any managed save so the very first record's
+        // failure (should one occur) is logged. The store logs ONLY failures; success is silent.
+        BackupStore.ConfigureWarn((message, path, error) => logger.Warn(message, new { file = path }, error));
 
         try
         {

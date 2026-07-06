@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using DayNote.Core.Backup;
 using DayNote.Core.Identity;
 
 namespace DayNote.Core.Storage;
@@ -10,6 +11,14 @@ namespace DayNote.Core.Storage;
 /// rename itself survives a crash. Files are UTF-8 without a byte-order mark; callers are
 /// responsible for supplying LF-terminated content.
 /// </summary>
+/// <remarks>
+/// This is the single managed-text atomic-write choke point for the app: config.json and state.json
+/// (via <see cref="JsonStore{T}"/>) and every binder <c>.daynote</c> file (via
+/// <see cref="BinderStore"/>) all pass through here. That is exactly why the data-backup hook lives in
+/// this one place — a managed-text write that bypassed this helper would be a silent backup gap, and
+/// there is deliberately no second atomic-write path in the app. The store records the exact bytes just
+/// written, strictly AFTER the rename lands (see <see cref="BackupStore.Record"/>).
+/// </remarks>
 public static partial class AtomicFile
 {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
@@ -47,6 +56,15 @@ public static partial class AtomicFile
             TryDelete(tempPath);
             throw;
         }
+
+        // After the rename and directory flush: the file is exactly where it belongs, so record the exact
+        // bytes we just wrote (data-backup conventions — strictly AFTER the rename lands, so the history
+        // never holds a version that never reached disk). We reuse the in-hand `bytes` buffer; the file is
+        // never re-read (which could capture a concurrent writer's content). This sits OUTSIDE the write's
+        // try/catch on purpose: the save has already fully succeeded, so a backup problem must never route
+        // into the temp-delete-and-rethrow path. Record is itself best-effort — it catches, logs once, and
+        // swallows every failure — so it can never throw here or break the save.
+        BackupStore.Record(fullPath, bytes);
     }
 
     /// <summary>

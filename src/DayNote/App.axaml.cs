@@ -23,9 +23,6 @@ public partial class App : Application
             dialogs.Owner = window;
 
             desktop.MainWindow = window;
-
-            // Kick off the just-in-case data backup on a background thread so the window never waits on it.
-            BackupService.RunInBackground(Program.Paths, Program.Log);
         }
 
         base.OnFrameworkInitializationCompleted();

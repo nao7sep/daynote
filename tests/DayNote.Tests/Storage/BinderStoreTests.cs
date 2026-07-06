@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using DayNote.Core.Backup;
 using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
@@ -14,10 +15,18 @@ namespace DayNote.Tests.Storage;
 /// the signal). These guarantees drive autosave conflict handling, so each runs against a throwaway
 /// file in a temp directory.
 /// </summary>
+/// <remarks>
+/// A binder Save goes through the atomic writer, which is the write-through data-backup hook, so
+/// <c>DAYNOTE_HOME</c> is relocated to this test's throwaway directory to keep the store out of the
+/// developer's real <c>~/.daynote/</c>. Joined to the AppPaths collection so that process-wide env var
+/// never races; the store singleton is closed in teardown so it re-opens per throwaway root.
+/// </remarks>
+[Collection(AppPathsEnvironment.CollectionName)]
 public sealed class BinderStoreTests : IDisposable
 {
     private readonly string _directory;
     private readonly string _path;
+    private readonly string? _previousHome;
     private readonly BinderStore _store = new();
 
     public BinderStoreTests()
@@ -25,6 +34,9 @@ public sealed class BinderStoreTests : IDisposable
         _directory = Path.Combine(Path.GetTempPath(), "daynote-store-tests-" + IdGenerator.New());
         Directory.CreateDirectory(_directory);
         _path = Path.Combine(_directory, "journal.daynote");
+
+        _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _directory);
     }
 
     [Fact]
@@ -108,6 +120,8 @@ public sealed class BinderStoreTests : IDisposable
 
     public void Dispose()
     {
+        BackupStore.Close();
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
         {
             Directory.Delete(_directory, recursive: true);

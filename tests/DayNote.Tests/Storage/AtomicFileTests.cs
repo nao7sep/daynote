@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
+using DayNote.Core.Backup;
 using DayNote.Core.Identity;
 using DayNote.Core.Storage;
 using Xunit;
@@ -12,17 +14,37 @@ namespace DayNote.Tests.Storage;
 /// the target ends up with exactly the supplied content (UTF-8, no BOM), an existing file is replaced
 /// in full, and the temp file used for the write-then-rename is never left behind.
 /// </summary>
+/// <remarks>
+/// The atomic writer is the write-through data-backup hook (<see cref="BackupStore.Record"/> fires after
+/// each rename lands), so <c>DAYNOTE_HOME</c> is relocated to this test's throwaway directory — otherwise
+/// the store would open under the developer's real <c>~/.daynote/</c>. Joined to the AppPaths collection
+/// so that process-wide env var never races another test; the store singleton is closed in teardown so it
+/// re-opens per throwaway root. Content assertions filter the store's own <c>backups.sqlite3</c>(+wal/shm).
+/// </remarks>
+[Collection(AppPathsEnvironment.CollectionName)]
 public sealed class AtomicFileTests : IDisposable
 {
     private readonly string _directory;
     private readonly string _path;
+    private readonly string? _previousHome;
 
     public AtomicFileTests()
     {
         _directory = Path.Combine(Path.GetTempPath(), "daynote-atomic-tests-" + IdGenerator.New());
         Directory.CreateDirectory(_directory);
         _path = Path.Combine(_directory, "data.txt");
+
+        _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _directory);
     }
+
+    /// <summary>The files under <see cref="_directory"/>, excluding the write-through store and its
+    /// <c>-wal</c>/<c>-shm</c> sidecars — normal SQLite artifacts that sit beside a relocated root, not
+    /// output of the code under test.</summary>
+    private string[] NonStoreFiles() =>
+        Directory.GetFiles(_directory)
+            .Where(f => !Path.GetFileName(f).StartsWith("backups.sqlite3", StringComparison.Ordinal))
+            .ToArray();
 
     [Fact]
     public void Writes_the_exact_content()
@@ -56,7 +78,7 @@ public sealed class AtomicFileTests : IDisposable
     {
         AtomicFile.WriteAllText(_path, "content");
 
-        Assert.Equal(new[] { _path }, Directory.GetFiles(_directory));
+        Assert.Equal(new[] { _path }, NonStoreFiles());
         Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
     }
 
@@ -72,6 +94,9 @@ public sealed class AtomicFileTests : IDisposable
 
     public void Dispose()
     {
+        // Close the store so its singleton releases the file handle and re-opens per throwaway root.
+        BackupStore.Close();
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
         {
             Directory.Delete(_directory, recursive: true);

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
 using DayNote.Core.Identity;
 using DayNote.Core.Storage;
@@ -13,10 +14,18 @@ namespace DayNote.Tests.Storage;
 /// a missing file means first run (null, not an error), while a corrupt file must throw so the
 /// caller can disable saving rather than overwrite good data. Writes are atomic and newline-terminated.
 /// </summary>
+/// <remarks>
+/// A Save goes through the atomic writer, which is the write-through data-backup hook, so
+/// <c>DAYNOTE_HOME</c> is relocated to this test's throwaway directory to keep the store out of the
+/// developer's real <c>~/.daynote/</c>. Joined to the AppPaths collection so that process-wide env var
+/// never races; the store singleton is closed in teardown so it re-opens per throwaway root.
+/// </remarks>
+[Collection(AppPathsEnvironment.CollectionName)]
 public sealed class JsonStoreTests : IDisposable
 {
     private readonly string _directory;
     private readonly string _path;
+    private readonly string? _previousHome;
     private readonly JsonStore<AppConfig> _store;
 
     public JsonStoreTests()
@@ -25,6 +34,9 @@ public sealed class JsonStoreTests : IDisposable
         Directory.CreateDirectory(_directory);
         _path = Path.Combine(_directory, "config.json");
         _store = new JsonStore<AppConfig>(_path);
+
+        _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _directory);
     }
 
     [Fact]
@@ -112,6 +124,8 @@ public sealed class JsonStoreTests : IDisposable
 
     public void Dispose()
     {
+        BackupStore.Close();
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
         {
             Directory.Delete(_directory, recursive: true);

@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
+using Microsoft.Data.Sqlite;
 using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
 using DayNote.Core.Identity;
@@ -76,23 +76,20 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void First_run_backup_captures_the_materialized_config()
+    public void First_run_materializes_config_and_the_write_through_store_records_it()
     {
-        // Reproduces the real startup order: the constructor materializes config.json synchronously
-        // (LoadConfigAndState), and only then does the app trigger the backup. So the very first backup
-        // must capture config.json rather than finding an empty root — the regression this guards is
-        // materialization drifting into async InitializeAsync, which would run after the backup thread.
+        // The write-through backup records config.json the instant its atomic write lands. The
+        // constructor materializes config.json synchronously (LoadConfigAndState via CreateIfMissing,
+        // which goes through AtomicFile), so the very first launch must already hold a config.json row —
+        // the regression this guards is materialization drifting away from the atomic-write choke point,
+        // which would leave the store with no record of the file it just created.
         _ = NewViewModel();
 
         var paths = new AppPaths();
-        var report = new BackupEngine(paths).Run(new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero));
+        BackupStore.Close(); // release the file handle the constructor opened, so we can read it here
 
-        Assert.False(report.NothingChanged);
-        Assert.Equal(1, report.FilesArchived); // config.json only — no binders on a fresh first run
-        Assert.Equal("backup-20260701-000000-000-utc.zip", report.ArchiveFileName);
-
-        using var zip = ZipFile.OpenRead(Path.Combine(paths.BackupsDirectory, "backup-20260701-000000-000-utc.zip"));
-        Assert.Contains(zip.Entries, e => e.FullName == "config.json");
+        var configFile = Path.Combine(_home, "config.json");
+        Assert.Equal(1, RowCountFor(paths.BackupStoreFile, configFile));
     }
 
     [AvaloniaFact]
@@ -265,8 +262,24 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
     }
 
+    /// <summary>Counts rows the write-through store holds for <paramref name="path"/>, reading the store
+    /// file directly. The caller closes the singleton first so its handle is released.</summary>
+    private static int RowCountFor(string storeFile, string path)
+    {
+        using var connection = new SqliteConnection($"Data Source={storeFile};Mode=ReadOnly;Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM backups WHERE path = $path";
+        // The store records the full absolute path (AtomicFile GetFullPath's before recording), so match it.
+        command.Parameters.AddWithValue("$path", Path.GetFullPath(path));
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
     public void Dispose()
     {
+        // Close the backup store so its singleton re-opens against the next test's throwaway root and
+        // releases the file handle before the directory is deleted.
+        BackupStore.Close();
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
         {
