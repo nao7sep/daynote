@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -12,11 +13,10 @@ using Xunit;
 namespace DayNote.Tests.Controls;
 
 /// <summary>
-/// The single IME-aware text input. Two contracts are exercised: Enter is a submit only when it is a
-/// real Enter (never the IME's candidate-commit, which arrives as <see cref="Key.ImeProcessed"/>), and
-/// <see cref="ComposingTextBox.IsComposing"/> tracks the presenter's preedit buffer so a window
-/// accelerator can stand down mid-composition. Composition is simulated by setting the preedit text
-/// directly — a public presenter property — so no real input method is needed.
+/// The single IME-aware text input. Enter submits only when it is a real Enter, persistent preedit
+/// state guards window accelerators, and the macOS client uses the same visual coordinate space as
+/// its cursor rectangle. Composition is simulated through the public text-input client/presenter APIs
+/// so no real input method is needed.
 /// </summary>
 public sealed class ComposingTextBoxTests
 {
@@ -37,6 +37,16 @@ public sealed class ComposingTextBoxTests
         var e = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key };
         box.RaiseEvent(e);
         return e.Handled;
+    }
+
+    private static TextInputMethodClient InputMethodClient(ComposingTextBox box)
+    {
+        var e = new TextInputMethodClientRequestedEventArgs
+        {
+            RoutedEvent = InputElement.TextInputMethodClientRequestedEvent,
+        };
+        box.RaiseEvent(e);
+        return Assert.IsAssignableFrom<TextInputMethodClient>(e.Client);
     }
 
     [AvaloniaFact]
@@ -109,5 +119,66 @@ public sealed class ComposingTextBoxTests
         b.Focus();
         Dispatcher.UIThread.RunJobs();
         Assert.False(ComposingTextBox.IsFocusedElementComposing(window)); // the composing box no longer holds focus
+    }
+
+    [AvaloniaFact]
+    public void MacOs_input_client_reports_the_text_box_as_its_coordinate_visual()
+    {
+        var box = Host(new ComposingTextBox());
+        var client = InputMethodClient(box);
+
+        if (OperatingSystem.IsMacOS())
+        {
+            Assert.Same(box, client.TextViewVisual);
+        }
+        else
+        {
+            Assert.Same(Presenter(box), client.TextViewVisual);
+        }
+    }
+
+    [AvaloniaFact]
+    public void MacOs_input_client_preserves_preedit_and_cursor_notifications()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var box = Host(new ComposingTextBox { Text = "abc" });
+        var presenter = Presenter(box);
+        var client = InputMethodClient(box);
+        var cursorChanges = 0;
+        client.CursorRectangleChanged += (_, _) => cursorChanges++;
+
+        client.SetPreeditText("にほん", 2);
+
+        Assert.Equal("にほん", presenter.PreeditText);
+        Assert.True(cursorChanges > 0);
+    }
+
+    [AvaloniaFact]
+    public void MacOs_input_client_refreshes_its_cursor_rectangle_when_the_text_box_scrolls()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var box = Host(new ComposingTextBox
+        {
+            AcceptsReturn = true,
+            Height = 80,
+            Text = string.Join('\n', Enumerable.Repeat("line", 30)),
+        });
+        var scrollViewer = box.GetVisualDescendants().OfType<ScrollViewer>().Single();
+        var client = InputMethodClient(box);
+        var cursorChanges = 0;
+        client.CursorRectangleChanged += (_, _) => cursorChanges++;
+
+        scrollViewer.Offset = new Avalonia.Vector(0, 100);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(cursorChanges > 0);
     }
 }

@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using DayNote.Controls;
 using DayNote.Core.Configuration;
 using DayNote.Core.Time;
 
@@ -64,10 +65,10 @@ public sealed class SettingsDialog : DialogBase
             },
         };
 
-        _uiFont = new TextBox { Text = config.UiFontFamily, PlaceholderText = AppConfig.DefaultUiFontFamily };
+        _uiFont = new ComposingTextBox { Text = config.UiFontFamily, PlaceholderText = AppConfig.DefaultUiFontFamily };
         _autosave = Numeric((decimal)SettingsValidator.MinAutosaveSeconds, (decimal)SettingsValidator.MaxAutosaveSeconds, 0.25m);
         _autosave.Value = (decimal)config.AutosaveDelaySeconds;
-        _timeZone = new TextBox { Text = config.DisplayTimeZone };
+        _timeZone = new ComposingTextBox { Text = config.DisplayTimeZone };
 
         var panel = new StackPanel { Spacing = 8, Width = 540 };
         panel.Children.Add(styleHeader);
@@ -130,8 +131,8 @@ public sealed class SettingsDialog : DialogBase
             FontSize = 14,
         };
 
-        var name = new TextBox { Text = style.Name, PlaceholderText = "Preset name" };
-        var fontFamily = new TextBox { Text = style.FontFamily, PlaceholderText = "Font family (e.g. Menlo)" };
+        var name = new ComposingTextBox { Text = style.Name, PlaceholderText = "Preset name" };
+        var fontFamily = new ComposingTextBox { Text = style.FontFamily, PlaceholderText = "Font family (e.g. Menlo)" };
         var fontSize = Numeric((decimal)SettingsValidator.MinFontSize, (decimal)SettingsValidator.MaxFontSize, 1);
         fontSize.Value = (decimal)style.FontSize;
         var lineSpacing = Numeric((decimal)SettingsValidator.MinLineSpacing, (decimal)SettingsValidator.MaxLineSpacing, 0.1m);
