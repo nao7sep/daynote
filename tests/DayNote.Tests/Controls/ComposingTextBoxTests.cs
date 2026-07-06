@@ -52,7 +52,7 @@ public sealed class ComposingTextBoxTests
     [AvaloniaFact]
     public void Real_Enter_in_a_single_line_box_raises_Submitted()
     {
-        var box = Host(new ComposingTextBox { AcceptsReturn = false });
+        var box = Host(new ComposingTextBox { AcceptsReturn = false, SubmitOnEnter = true });
         var submitted = 0;
         box.Submitted += (_, _) => submitted++;
 
@@ -66,7 +66,7 @@ public sealed class ComposingTextBoxTests
     public void Ime_commit_Enter_does_not_raise_Submitted()
     {
         // A key the input method consumed (Enter accepting a candidate) arrives as ImeProcessed, not Enter.
-        var box = Host(new ComposingTextBox { AcceptsReturn = false });
+        var box = Host(new ComposingTextBox { AcceptsReturn = false, SubmitOnEnter = true });
         var submitted = 0;
         box.Submitted += (_, _) => submitted++;
 
@@ -85,6 +85,16 @@ public sealed class ComposingTextBoxTests
         RaiseKeyDown(box, Key.Enter);
 
         Assert.Equal(0, submitted);
+    }
+
+    [AvaloniaFact]
+    public void Enter_in_a_field_without_submit_opt_in_remains_unhandled()
+    {
+        var box = Host(new ComposingTextBox { AcceptsReturn = false });
+
+        var handled = RaiseKeyDown(box, Key.Enter);
+
+        Assert.False(handled);
     }
 
     [AvaloniaFact]

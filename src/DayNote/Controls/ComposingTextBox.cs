@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
@@ -14,8 +15,9 @@ namespace DayNote.Controls;
 ///
 /// <para><b>Enter is a submit only when it is a real Enter.</b> A key consumed by the input method
 /// arrives as <see cref="Key.ImeProcessed"/>, so an Enter that merely commits a candidate raises
-/// nothing here. Single-line fields (<see cref="TextBox.AcceptsReturn"/> false) raise
-/// <see cref="Submitted"/>; the multiline body (AcceptsReturn true) lets Enter insert a newline.</para>
+/// nothing here. Single-line fields with <see cref="SubmitOnEnter"/> enabled raise
+/// <see cref="Submitted"/>; other fields retain normal Enter/default-button behavior, and the
+/// multiline body (AcceptsReturn true) lets Enter insert a newline.</para>
 ///
 /// <para><b><see cref="IsComposing"/> reports composition as state,</b> read from the presenter's
 /// preedit buffer. A window-level command accelerator (Cmd/Ctrl+S and the rest) is a chord the IME
@@ -34,6 +36,9 @@ public class ComposingTextBox : TextBox
     private ScrollViewer? _scrollViewer;
     private MacOsTextInputMethodClient? _macOsInputClient;
 
+    public static readonly StyledProperty<bool> SubmitOnEnterProperty =
+        AvaloniaProperty.Register<ComposingTextBox, bool>(nameof(SubmitOnEnter));
+
     public ComposingTextBox()
     {
         if (OperatingSystem.IsMacOS())
@@ -44,6 +49,13 @@ public class ComposingTextBox : TextBox
 
     public static readonly RoutedEvent<RoutedEventArgs> SubmittedEvent =
         RoutedEvent.Register<ComposingTextBox, RoutedEventArgs>(nameof(Submitted), RoutingStrategies.Bubble);
+
+    /// <summary>Whether a genuine Enter in a single-line field raises <see cref="Submitted"/>.</summary>
+    public bool SubmitOnEnter
+    {
+        get => GetValue(SubmitOnEnterProperty);
+        set => SetValue(SubmitOnEnterProperty, value);
+    }
 
     public event EventHandler<RoutedEventArgs> Submitted
     {
@@ -114,7 +126,7 @@ public class ComposingTextBox : TextBox
             return;
         }
 
-        if (e.Key == Key.Enter && !AcceptsReturn)
+        if (e.Key == Key.Enter && !AcceptsReturn && SubmitOnEnter)
         {
             RaiseEvent(new RoutedEventArgs(SubmittedEvent));
             e.Handled = true;

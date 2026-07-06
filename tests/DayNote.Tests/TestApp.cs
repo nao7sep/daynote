@@ -2,8 +2,13 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using DayNote;
+using Xunit;
 
 [assembly: AvaloniaTestApplication(typeof(DayNote.Tests.TestAppBuilder))]
+
+// Avalonia headless drives every [AvaloniaFact] through one shared application and dispatcher.
+// Serialize the assembly so separate test classes cannot claim that dispatcher from different threads.
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace DayNote.Tests;
 
