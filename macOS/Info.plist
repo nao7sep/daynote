@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.nao7sep.daynote</string>
+    <key>CFBundleName</key>
+    <string>DayNote</string>
+    <key>CFBundleDisplayName</key>
+    <string>DayNote</string>
+    <key>CFBundleExecutable</key>
+    <string>DayNote</string>
+    <key>CFBundleIconFile</key>
+    <string>icon</string>
+    <key>CFBundleIconName</key>
+    <string>scrapbook-journal-royal-canvas</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSSupportsAutomaticTermination</key>
+    <true/>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>DayNote needs access to open and save notebooks and their attachments in your Documents folder.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>DayNote needs access to open and save notebooks and their attachments on your Desktop.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>DayNote needs access to open and save notebooks and their attachments in your Downloads folder.</string>
+</dict>
+</plist>

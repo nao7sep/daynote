@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyTitle>DayNote.Core</AssemblyTitle>
+    <Description>Framework-independent core for DayNote: domain model, the TOML notebook format, body cleanup, character counting, identifier generation, application configuration and state, and the write-through data-backup store.</Description>
+    <!-- Required by the source-generated LibraryImport marshalling in AtomicFile's directory fsync. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The write-through data-backup store (BackupStore). Microsoft.Data.Sqlite is the .NET-native
+         binding (managed provider + bundled native e_sqlite3), so the store needs no native rebuild. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <!-- Explicit top-level pin to override the vulnerable e_sqlite3 native lib (2.1.11,
+         GHSA-2m69-gcr7-jv3q) that Microsoft.Data.Sqlite 10.0.9 pulls transitively; 3.0.3 ships the
+         patched native build. Forward per the dependency-currency rule, not a freeze. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageReference Include="Nanoid" Version="3.1.0" />
+    <PackageReference Include="Tomlyn" Version="2.10.1" />
+  </ItemGroup>
+
+</Project>

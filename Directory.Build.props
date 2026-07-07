@@ -1,0 +1,21 @@
+<Project>
+
+  <!-- Shared metadata and language settings for every project in the solution.
+       Project-specific values (OutputType, AssemblyTitle, package references)
+       live in each .csproj. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- Globalization is left enabled (ICU) so TimeZoneInfo can resolve IANA
+         ids such as "Asia/Tokyo" on every platform, including Windows. -->
+
+    <Authors>Yoshinao Inoguchi</Authors>
+    <Company>Yoshinao Inoguchi</Company>
+    <Product>DayNote</Product>
+    <Copyright>Copyright © 2026 Yoshinao Inoguchi</Copyright>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+</Project>

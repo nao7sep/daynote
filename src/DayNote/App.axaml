@@ -1,0 +1,229 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DayNote.App"
+             xmlns:local="using:DayNote"
+             RequestedThemeVariant="Dark">
+
+    <Application.DataTemplates>
+        <local:ViewLocator/>
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <!-- Keep Fluent form controls quiet against the custom dark surfaces. -->
+                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#3A3442"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#51485A"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#A78BFA"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#2D2935"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#3A3442"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#51485A"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#51485A"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushDisabled" Color="#2D2935"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <!-- Twilight journal: soft plum surfaces with a cheerful lavender accent. -->
+            <Color x:Key="AppBackground">#17151C</Color>
+            <Color x:Key="Surface">#211E28</Color>
+            <Color x:Key="Border">#3A3442</Color>
+            <Color x:Key="TextPrimary">#F1ECF4</Color>
+            <Color x:Key="TextSecondary">#A89CAA</Color>
+            <Color x:Key="Accent">#A78BFA</Color>
+            <Color x:Key="AccentHover">#B69CFF</Color>
+            <Color x:Key="AccentForeground">#1B1425</Color>
+            <Color x:Key="Danger">#B93650</Color>
+            <Color x:Key="DangerHover">#C2415D</Color>
+            <Color x:Key="Warning">#E0A14A</Color>
+            <Color x:Key="Utility">#3A3347</Color>
+            <Color x:Key="UtilityHover">#484054</Color>
+            <Color x:Key="ListBackground">#121015</Color>
+            <Color x:Key="ListSelection">#3B2F51</Color>
+            <Color x:Key="ListSelectionHover">#493A61</Color>
+            <!-- Note lifecycle status accents: draft (muted) → ready (amber) → published (green); expired (red). -->
+            <Color x:Key="Positive">#5FB98B</Color>
+
+            <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackground}"/>
+            <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Surface}"/>
+            <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource Border}"/>
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}"/>
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}"/>
+            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}"/>
+            <SolidColorBrush x:Key="AccentForegroundBrush" Color="{StaticResource AccentForeground}"/>
+            <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}"/>
+            <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource Warning}"/>
+            <SolidColorBrush x:Key="ListBackgroundBrush" Color="{StaticResource ListBackground}"/>
+            <SolidColorBrush x:Key="ListSelectionBrush" Color="{StaticResource ListSelection}"/>
+            <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="{StaticResource ListSelectionHover}"/>
+            <SolidColorBrush x:Key="PositiveBrush" Color="{StaticResource Positive}"/>
+            <SolidColorBrush x:Key="StatusDraftBrush" Color="{StaticResource TextSecondary}"/>
+            <SolidColorBrush x:Key="StatusReadyBrush" Color="{StaticResource Warning}"/>
+            <SolidColorBrush x:Key="StatusPublishedBrush" Color="{StaticResource Positive}"/>
+            <SolidColorBrush x:Key="StatusExpiredBrush" Color="{StaticResource Danger}"/>
+
+            <!-- The app-wide UI (chrome) font. The default is the bundled Inter; the view model
+                 overrides this resource at runtime from the configured UI font, and the Window style
+                 below binds it via DynamicResource so the change applies live across every window. -->
+            <FontFamily x:Key="AppFontFamily">Inter</FontFamily>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <ColorPaletteResources x:Key="Dark"
+                                       Accent="{StaticResource Accent}"
+                                       RegionColor="{StaticResource AppBackground}"
+                                       ErrorText="{StaticResource Danger}"/>
+            </FluentTheme.Palettes>
+        </FluentTheme>
+
+        <!-- Every window (main + dialogs) takes the configured UI font; FontFamily inherits to child
+             controls. The editor body overrides it with its own text-style preset (content font). -->
+        <Style Selector="Window">
+            <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}"/>
+        </Style>
+
+        <Style Selector="Button.accent">
+            <Setter Property="Background" Value="{StaticResource Accent}"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.accent /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Accent}"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
+        </Style>
+        <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentHover}"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
+        </Style>
+
+        <Style Selector="Button.utility">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.utility:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource UtilityHover}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        </Style>
+
+        <Style Selector="Button.destructive">
+            <Setter Property="Background" Value="{StaticResource Danger}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Button.destructive:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource DangerHover}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
+        </Style>
+
+        <!-- Stable app-toned list selection instead of the user's platform accent. -->
+        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource ListSelectionBrush}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource ListSelectionHoverBrush}"/>
+        </Style>
+
+        <!-- Pane header strip: a title row separated from the pane body by a bottom borderline,
+             matching the fleet (zipkit). The header spans the full pane width; the body below
+             carries its own padding. -->
+        <Style Selector="Border.paneHeader">
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="12,9"/>
+        </Style>
+
+        <!-- A row's inline action (e.g. a close/delete "✕"): revealed only when its list row is
+             hovered or selected, so rows stay clean. Space is reserved at all times, so revealing
+             it never reflows the row. Because the row must be hovered for the icon to appear, an
+             opacity-0 icon is never under the pointer — no accidental clicks. -->
+        <Style Selector="Button.rowAction">
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <!-- Pointer-only affordance: a row's ✕ is not a keyboard tab stop (so Tab never lands on a
+                 hidden, opacity-0 icon). The keyboard path is Delete on the selected row. -->
+            <Setter Property="IsTabStop" Value="False"/>
+        </Style>
+        <Style Selector="ListBoxItem:pointerover Button.rowAction">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected Button.rowAction">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="Button.rowAction:pointerover">
+            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+        </Style>
+        <Style Selector="Button.rowAction:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+        </Style>
+
+        <!-- Text-style preset cards are uniform; the default one is marked by its "Default" pill,
+             not a whole-card highlight (that read as a selection). -->
+        <Style Selector="Border.stylePreset">
+            <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="7"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+
+        <!-- A small colored pill (e.g. the "Default" text-style marker); its text is set by the caller. -->
+        <Style Selector="Border.pill">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="11,5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- A muted, neutral badge (e.g. the editor's "Read-only" hint). -->
+        <Style Selector="Border.badge">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Subtle resting border on text inputs; the theme's accent focus indicator still shows on focus. -->
+        <Style Selector="TextBox /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        </Style>
+        <Style Selector="ComboBox, NumericUpDown">
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        </Style>
+
+        <!-- A read-only text field (a locked note's title/body) is shown recessed, so it visibly
+             reads as not-editable. :is(TextBox) also covers the ComposingTextBox title field. -->
+        <Style Selector=":is(TextBox)[IsReadOnly=True] /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
+        </Style>
+
+        <!-- Slim, rounded scroll bars per the window-chrome-conventions (matches the fleet, e.g. scriptdock):
+             a transparent track and a rounded-pill thumb instead of the thick square OS/Fluent default. -->
+        <Style Selector="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="ScrollBar /template/ Thumb">
+            <Setter Property="CornerRadius" Value="5"/>
+        </Style>
+    </Application.Styles>
+</Application>

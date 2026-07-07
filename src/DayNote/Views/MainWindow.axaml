@@ -1,0 +1,370 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DayNote.ViewModels"
+        xmlns:ctl="using:DayNote.Controls"
+        x:Class="DayNote.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="DayNote"
+        Icon="/Assets/icon.png"
+        Width="1200" Height="800"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource AppBackgroundBrush}"
+        RequestedThemeVariant="Dark"><!-- DayNote is dark; forcing the window's theme variant makes
+        its ActualThemeVariant Dark so Avalonia's macOS backend paints a dark native title bar
+        instead of inheriting the OS appearance. CAVEAT: the native title-bar color cannot be
+        verified in this headless build — it must be VISUALLY VERIFIED on a light-mode Mac. If it
+        still renders light there, the follow-up (not done here, as it needs native interop) is to
+        force NSApplication.appearance = darkAqua at startup. -->
+
+    <!-- Accelerators are driven from ShortcutCatalog in code-behind so the command key resolves to
+         Cmd on macOS and Ctrl on Windows (a static XAML gesture cannot do that). -->
+
+    <Window.Styles>
+        <!-- The status-bar X budget: a bright primary count that turns danger-red over the limit. The
+             base color is set via this class (not a local value) so the .over setter can override it —
+             a local Foreground would win over a style setter and the red would never show. -->
+        <Style Selector="TextBlock.xcount">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.xcount.over">
+            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.pane">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Margin" Value="4"/>
+        </Style>
+        <!-- Give list rows breathing room so the title and subtitle lines do not touch. -->
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="8,6"/>
+        </Style>
+    </Window.Styles>
+
+    <Panel>
+    <!-- Three reserved tracks (toolbar / panes / status bar) so the fixed chrome bars each own an
+         auto-sized row and the star-sized pane row can never grow past its track and overlap the
+         status bar (a DockPanel fill child can — see the window-chrome conventions). The window's
+         minimum height (set in code-behind from WindowMetrics) reserves all three. -->
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- Toolbar -->
+        <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,8" VerticalAlignment="Center">
+                    <!-- The app name, always — never the open binder's title (that shows, highlighted, in the list). -->
+                    <TextBlock Text="DayNote" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
+                    <!-- Settings / Shortcuts / About live in a hamburger menu, matching the fleet. -->
+                    <Button Classes="utility" Padding="14,6" ToolTip.Tip="Menu" AutomationProperties.Name="Menu">
+                        <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across fonts. -->
+                        <Path Width="18" Height="14" VerticalAlignment="Center" HorizontalAlignment="Center"
+                              Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="2" StrokeLineCap="Round"
+                              UseLayoutRounding="True" Data="M0,1 H18 M0,7 H18 M0,13 H18"/>
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Header="Settings" Click="Settings_Click"/>
+                                <MenuItem Header="Shortcuts" Click="Shortcuts_Click"/>
+                                <MenuItem Header="About" Click="About_Click"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Status bar. Left: save state — a color-coded dot + label, shown whenever a binder is open.
+             Right (single-document app, so the side-pane-flanked editor is narrow and the bar has the
+             spare width): per-note metadata when a note is open — the counts cluster (bright) and the
+             created/modified timestamps (muted), split by a thin rule — or the binder's note count when
+             no note is selected, so the bar is never blank. The two right-side blocks share the column;
+             only one carries content at a time. -->
+        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto,*" Margin="12,5">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                            IsVisible="{Binding HasBinder}">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{Binding SaveStateBrush}"/>
+                    <TextBlock Text="{Binding SaveStateText}" FontWeight="SemiBold"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="16,0,0,0"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            IsVisible="{Binding Editor.HasNote}">
+                    <TextBlock Text="{Binding Editor.WordsText}" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.CharsText}" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.XCountText}" FontSize="12"
+                               Classes="xcount" Classes.over="{Binding !Editor.IsWithinXLimit}"/>
+                    <Border Width="1" Height="14" Margin="4,0" VerticalAlignment="Center"
+                            Background="{StaticResource BorderBrush}"/>
+                    <TextBlock Text="{Binding Editor.CreatedText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ReadyAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Editor.ReadyAtText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ReadyAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.PublishedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Editor.PublishedAtText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.PublishedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ExpiredAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Editor.ExpiredAtText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ExpiredAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+
+                <TextBlock Grid.Column="1" Text="{Binding BinderStatusText}" FontSize="12"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+            </Grid>
+        </Border>
+
+        <!-- Four panes -->
+        <Grid x:Name="PaneGrid" Grid.Row="1" Margin="4">
+            <Grid.ColumnDefinitions>
+                <!-- The three side panes are pixel-sized; the editor is the sole star column (fill
+                     pane) that absorbs window resize. The code-behind tracks each side pane's "intent"
+                     (the pixel width the user last dragged it to) and re-derives the displayed width
+                     as clamp(min, intent, whatFitsTheCurrentWindow) on every resize, so the side
+                     panes stay fixed and only the editor grows or shrinks. The derived window minimum
+                     sums these MinWidths, so at the minimum every pane sits at exactly its MinWidth
+                     and none is clipped. -->
+                <ColumnDefinition Width="220" MinWidth="150"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="260" MinWidth="170"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*" MinWidth="320"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="260" MinWidth="170"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Binders -->
+            <Border x:Name="BindersPane" Grid.Column="0" Classes="pane">
+                <!-- Real content minimum (a side pane needs header + filter + a few rows). The
+                     window minimum derives the editor pane's taller minimum (300); the side panes
+                     get 200 so they are never crushed below a usable height. -->
+                <DockPanel MinHeight="200">
+                    <Border DockPanel.Dock="Top" Classes="paneHeader">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Binders" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                <Button Content="New" Classes="accent" Command="{Binding NewBinderCommand}"/>
+                                <Button Content="Open" Classes="utility" Command="{Binding OpenBinderCommand}"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <DockPanel Margin="10">
+                        <ctl:ComposingTextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
+                        <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
+                        <ListBox ItemsSource="{Binding Binders}"
+                                 SelectedItem="{Binding SelectedBinder}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:BinderListItemViewModel">
+                                    <!-- Primary label is the binder title (capitalized, human-friendly); the path
+                                         below shows the lowercase file. Double-tap the row to rename the title. -->
+                                    <Grid ColumnDefinitions="*,Auto" Background="Transparent" DoubleTapped="BinderRow_DoubleTapped">
+                                        <StackPanel Spacing="2">
+                                            <Panel>
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                           IsVisible="{Binding !IsEditing}"/>
+                                                <ctl:ComposingTextBox Text="{Binding EditText}" IsVisible="{Binding IsEditing}" SubmitOnEnter="True"
+                                                         FontWeight="SemiBold" Padding="2,0" MinHeight="0"
+                                                         Submitted="BinderTitle_Submitted" LostFocus="BinderTitle_LostFocus"
+                                                         KeyDown="BinderTitle_KeyDown"/>
+                                            </Panel>
+                                            <!-- Truncate the START of the path so the file name (the useful end) stays visible. -->
+                                            <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="PrefixCharacterEllipsis"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <!-- Remove from the list (revealed on hover/selection). If it's the open
+                                             binder, this closes it (flushing edits) first; closing == forgetting. -->
+                                        <Button Grid.Column="1" Classes="rowAction" Click="RemoveBinderRow_Click"
+                                                ToolTip.Tip="Remove from list">
+                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter x:Name="BindersSplitter" Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns"/>
+
+            <!-- Notes -->
+            <Border x:Name="NotesPane" Grid.Column="2" Classes="pane">
+                <DockPanel MinHeight="200">
+                    <Border DockPanel.Dock="Top" Classes="paneHeader">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Notes" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <Button Grid.Column="1" Content="New" Classes="accent"
+                                    Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasBinder}"/>
+                        </Grid>
+                    </Border>
+                    <DockPanel Margin="10">
+                        <ctl:ComposingTextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
+                        <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
+                                 KeyDown="NotesList_KeyDown">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:NoteListItemViewModel">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                        <!-- A status-colored stripe makes each row read by lifecycle state at a glance. -->
+                                        <Border Width="3" CornerRadius="1.5" VerticalAlignment="Stretch"
+                                                Background="{Binding StatusBrush}"/>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{Binding StatusBrush}"/>
+                                                <TextBlock Text="{Binding Subtitle}" FontSize="11"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <!-- Per-row delete, revealed on hover/selection (replaces the Delete button). -->
+                                        <Button Grid.Column="2" Classes="rowAction" Click="DeleteNoteRow_Click" ToolTip.Tip="Delete note">
+                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter x:Name="NotesSplitter" Grid.Column="3" Width="6" Background="Transparent" ResizeDirection="Columns"/>
+
+            <!-- Editor -->
+            <Border x:Name="EditorPane" Grid.Column="4" Classes="pane">
+                <!-- The editor is the tallest pane: it needs room for the header (title + status +
+                     the metadata wrap) plus a usable body. Its 300 is the content minimum that
+                     WindowMetrics folds into the window's minimum height (the tallest pane wins). -->
+                <Panel MinHeight="300">
+                    <TextBlock Text="Select a note, or create one." HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}" IsVisible="{Binding !Editor.HasNote}"/>
+                    <DockPanel IsVisible="{Binding Editor.HasNote}">
+                        <!-- Header: title + lifecycle status in one row, then the body directly below (no
+                             borderline — the metadata that used to sit here now lives in the status bar).
+                             Published and expired notes are read-only until moved to draft or ready. -->
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="10,10,10,6">
+                            <ctl:ComposingTextBox x:Name="TitleBox"
+                                                  Text="{Binding Editor.Title}" PlaceholderText="Title…"
+                                                  FontSize="18" FontWeight="SemiBold" AcceptsReturn="False" SubmitOnEnter="True"
+                                                  IsReadOnly="{Binding !Editor.IsEditable}"
+                                                  Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
+                            <!-- Shown when the note is locked (published or expired). -->
+                            <Border Grid.Column="1" Classes="badge" Margin="8,0,0,0" IsVisible="{Binding !Editor.IsEditable}"
+                                    ToolTip.Tip="This note is read-only — set its status to Draft or Ready to edit.">
+                                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                    <Path Width="11" Height="12" Stretch="Uniform" Fill="Transparent"
+                                          Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.3"
+                                          Data="M2,6 h8 v6 h-8 z M3.5,6 V4 a2.5,2.5 0 0 1 5,0 V6"/>
+                                    <TextBlock Text="Read-only" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+                            <ComboBox Grid.Column="2" Margin="8,0,0,0" MinWidth="130" VerticalAlignment="Center"
+                                      ItemsSource="{Binding Editor.StatusOptions}"
+                                      SelectedItem="{Binding Editor.Status}"
+                                      ToolTip.Tip="Lifecycle status"/>
+                        </Grid>
+                        <ctl:ComposingTextBox x:Name="BodyBox" Margin="10,0,10,10"
+                                 Text="{Binding Editor.Body}"
+                                 IsReadOnly="{Binding !Editor.IsEditable}"
+                                 AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                                 FontFamily="{Binding EditorFontFamily}" FontSize="{Binding EditorFontSize}"
+                                 LineHeight="{Binding EditorLineHeight}" Padding="{Binding EditorPadding}"
+                                 FontWeight="{Binding EditorFontWeight}" FontStyle="{Binding EditorFontStyle}"
+                                 VerticalContentAlignment="Top"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                    </DockPanel>
+                </Panel>
+            </Border>
+
+            <GridSplitter x:Name="AttachmentsSplitter" Grid.Column="5" Width="6" Background="Transparent" ResizeDirection="Columns"/>
+
+            <!-- Attachments -->
+            <Border x:Name="AttachPane" Grid.Column="6" Classes="pane" DragDrop.AllowDrop="True">
+                <DockPanel MinHeight="200">
+                    <Border DockPanel.Dock="Top" Classes="paneHeader">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Attachments" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <Button Grid.Column="1" Content="Add" Classes="utility"
+                                    Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding Editor.HasNote}"/>
+                        </Grid>
+                    </Border>
+                    <Panel Margin="10">
+                        <!-- A bordered list like the binders/notes lists; rows have no inner border.
+                             Rows can be dragged to reorder (wired in code-behind). -->
+                        <ListBox x:Name="AttachList" ItemsSource="{Binding Attachments}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:AttachmentItemViewModel">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" DoubleTapped="Attachment_DoubleTapped">
+                                        <Border Width="44" Height="44" CornerRadius="4" ClipToBounds="True"
+                                                Background="{StaticResource AppBackgroundBrush}">
+                                            <Panel>
+                                                <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" IsVisible="{Binding HasThumbnail}"/>
+                                                <!-- Generic document (folded corner) for non-images and failed previews. -->
+                                                <Path Width="22" Height="28" Stretch="Uniform"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5" Fill="Transparent"
+                                                      Data="M2,1 H18 L26,9 V33 H2 Z M18,1 V9 H26" IsVisible="{Binding ShowFilePlaceholder}"/>
+                                            </Panel>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding DetailsText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        </StackPanel>
+                                        <!-- Same hover-✕ remove affordance as the other lists. -->
+                                        <Button Grid.Column="2" Classes="rowAction" Click="RemoveAttachment_Click" ToolTip.Tip="Remove attachment">
+                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Text="No attachments yet." HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}" IsVisible="{Binding ShowAttachmentsEmptyHint}"/>
+                        <!-- Drag-and-drop hover affordance, shown while files are dragged over the pane. -->
+                        <Border IsVisible="{Binding IsAttachmentDropActive}" IsHitTestVisible="False"
+                                Background="{StaticResource SurfaceBrush}" Opacity="0.92"
+                                BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="6">
+                            <TextBlock Text="Drop files to attach" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        </Border>
+                    </Panel>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+
+    <!-- Toast overlay: top-right, below the toolbar; auto-dismissing cards from the Toasts collection. -->
+    <ItemsControl ItemsSource="{Binding Toasts}"
+                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Margin="0,24,24,0" Width="400" ZIndex="100">
+        <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:ToastViewModel">
+                <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Margin="0,0,0,8" BoxShadow="0 6 20 0 #50000000">
+                    <Grid ColumnDefinitions="4,*">
+                        <Border Background="{Binding Accent}" CornerRadius="8,0,0,8"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap"
+                                   Margin="12" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </Grid>
+                </Border>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    </Panel>
+</Window>
