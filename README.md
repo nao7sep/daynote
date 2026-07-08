@@ -25,9 +25,9 @@ Prebuilt builds for **macOS (Apple Silicon)** and **Windows (x64)** are on the [
 - **Autosave** — debounced save as you type; flushes on close and quit.
 - **Dark "Twilight" theme**, keyboard-driven throughout.
 
-## Getting started
+## Run from source
 
-Run from source — the fastest way to try it:
+The fastest way to try it:
 
 - **macOS:** `scripts/run-dev.command`
 - **Windows:** `scripts/run-dev.ps1`
