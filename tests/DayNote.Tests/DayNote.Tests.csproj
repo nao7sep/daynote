@@ -23,7 +23,7 @@
     </PackageReference>
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
     <!-- Official xUnit headless integration ([AvaloniaFact]); depends on xunit.v3. -->
-    <PackageReference Include="Avalonia.Headless.XUnit" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Headless.XUnit" Version="12.1.0" />
   </ItemGroup>
 
   <ItemGroup>
