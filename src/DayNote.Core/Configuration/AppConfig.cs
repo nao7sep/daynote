@@ -10,18 +10,30 @@ public sealed class AppConfig
     /// <summary>The bundled default UI (chrome) font, registered via <c>.WithInterFont()</c>.</summary>
     public const string DefaultUiFontFamily = "Inter";
 
+    /// <summary>The name of the built-in text-style preset selected by default.</summary>
+    public const string DefaultSelectedTextStyle = "Mono";
+
+    /// <summary>
+    /// The built-in text-style presets — the single source shared by first-run seeding (the
+    /// <see cref="TextStyles"/> initializer below) and the settings dialog's "Reset to latest
+    /// defaults". Returns a fresh list of fresh presets on every call, so each caller owns a
+    /// mutable copy it can edit without touching the built-ins.
+    /// </summary>
+    public static List<EditorTextStyle> DefaultTextStyles() => new()
+    {
+        new EditorTextStyle { Name = "Mono", FontFamily = "Menlo", FontSize = 14, LineSpacing = 1.4, Padding = 12 },
+        new EditorTextStyle { Name = "Sans", FontFamily = "Inter", FontSize = 15, LineSpacing = 1.5, Padding = 14 },
+    };
+
     // App appearance — the UI (chrome) font family. Family only; an empty value falls back to the
     // bundled default (Inter). Applied app-wide; the editor body uses its own text-style preset, so
     // this never touches the note content's font.
     public string UiFontFamily { get; set; } = DefaultUiFontFamily;
 
     // Editor appearance — named text-style presets and the one currently selected (by name).
-    public List<EditorTextStyle> TextStyles { get; set; } = new()
-    {
-        new EditorTextStyle { Name = "Mono", FontFamily = "Menlo", FontSize = 14, LineSpacing = 1.4, Padding = 12 },
-        new EditorTextStyle { Name = "Sans", FontFamily = "Inter", FontSize = 15, LineSpacing = 1.5, Padding = 14 },
-    };
-    public string SelectedTextStyle { get; set; } = "Mono";
+    // Both seed from the built-in defaults; "Reset to latest defaults" in Settings refreshes them.
+    public List<EditorTextStyle> TextStyles { get; set; } = DefaultTextStyles();
+    public string SelectedTextStyle { get; set; } = DefaultSelectedTextStyle;
 
     // Editing behavior.
     public double AutosaveDelaySeconds { get; set; } = 2;
