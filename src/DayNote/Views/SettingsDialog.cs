@@ -39,7 +39,6 @@ public sealed class SettingsDialog : DialogBase
             Spacing = 6,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        styleActions.Children.Add(Utility("Reset to latest defaults", ResetStyles));
         styleActions.Children.Add(Utility("Add", AddStyle));
 
         var styleHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
@@ -74,16 +73,6 @@ public sealed class SettingsDialog : DialogBase
         var panel = new StackPanel { Spacing = 8, Width = 540 };
         panel.Children.Add(styleHeader);
         panel.Children.Add(styleList);
-        // Discardable-draft hint for "Reset to latest defaults" (config-seeding-conventions): the reset
-        // mutates only this working copy, so close-without-save is the safety net — a hint, not a confirm.
-        panel.Children.Add(new TextBlock
-        {
-            Text = "Replaces your text styles with the latest built-in presets. " +
-                   "Applies on Save; Cancel to keep your current styles.",
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 12,
-            Foreground = PaletteBrush.Resolve("TextSecondaryBrush"),
-        });
         // The UI (chrome) font sits with the appearance settings, just below the editor text styles;
         // it governs the whole app's chrome, while the styles above govern the note body.
         panel.Children.Add(Label("UI font (comma-separated; first installed is used; blank = Inter)"));
@@ -284,18 +273,6 @@ public sealed class SettingsDialog : DialogBase
         _config.TextStyles.Add(style);
         // Adding a preset does not change which one is the default.
         RebuildStyleCards(_defaultStyle);
-        Revalidate();
-    }
-
-    private void ResetStyles()
-    {
-        // Wholesale restore per the config-seeding-conventions: replace the entire set AND the
-        // selection with the current built-in defaults, drawn from the same source that seeds a
-        // first run — so a later version's improved presets reach an existing user. This edits only
-        // the working copy; Save commits it, Cancel discards it (hence the hint, not a blocking confirm).
-        _config.TextStyles = AppConfig.DefaultTextStyles();
-        _config.SelectedTextStyle = AppConfig.DefaultSelectedTextStyle;
-        RebuildStyleCards(_config.ResolveSelectedStyle());
         Revalidate();
     }
 

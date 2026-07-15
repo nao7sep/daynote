@@ -14,9 +14,8 @@ public sealed class AppConfig
     public const string DefaultSelectedTextStyle = "Mono";
 
     /// <summary>
-    /// The built-in text-style presets — the single source shared by first-run seeding (the
-    /// <see cref="TextStyles"/> initializer below) and the settings dialog's "Reset to latest
-    /// defaults". Returns a fresh list of fresh presets on every call, so each caller owns a
+    /// The built-in text-style presets — the first-run seed, used by the <see cref="TextStyles"/>
+    /// initializer below. Returns a fresh list of fresh presets on every call, so each caller owns a
     /// mutable copy it can edit without touching the built-ins.
     /// </summary>
     public static List<EditorTextStyle> DefaultTextStyles() => new()
@@ -31,7 +30,7 @@ public sealed class AppConfig
     public string UiFontFamily { get; set; } = DefaultUiFontFamily;
 
     // Editor appearance — named text-style presets and the one currently selected (by name).
-    // Both seed from the built-in defaults; "Reset to latest defaults" in Settings refreshes them.
+    // Both seed from the built-in defaults on first run; from then on they are the user's to edit.
     public List<EditorTextStyle> TextStyles { get; set; } = DefaultTextStyles();
     public string SelectedTextStyle { get; set; } = DefaultSelectedTextStyle;
 
