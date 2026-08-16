@@ -24,21 +24,13 @@ public partial class App : Application
 
             desktop.MainWindow = window;
 
-            // Report any quarantine the startup loads performed: the store was
-            // set aside with its bytes preserved and defaults took over — the
-            // user hears it from a dialog, never only from the log
-            // (storage-path conventions: both branches report).
+            // Report material recovery once the main window can own the dialog.
             window.Opened += async (_, _) =>
             {
                 var quarantined = DayNote.Core.Storage.QuarantineJournal.Drain();
                 if (quarantined.Count > 0)
                 {
-                    // Per store, because the two say opposite things to the user: config.json
-                    // holds preferences that are simply re-authored, while state.json holds the
-                    // known-binder paths AND their locally-stored titles — telling someone their
-                    // binders are untouched while that list is empty is worse than saying nothing,
-                    // since the .invalid copy is the only surviving record (storage-path
-                    // conventions: the report names what was lost).
+                    // state.json contains the binder registry and needs more specific recovery copy.
                     var lostBinderList = quarantined.Any(
                         path => System.IO.Path.GetFileName(path).StartsWith("state-", StringComparison.Ordinal));
                     await dialogs.ShowErrorAsync(

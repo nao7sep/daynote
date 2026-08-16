@@ -1,10 +1,7 @@
 namespace DayNote.Core.Storage;
 
 /// <summary>
-/// Quarantines performed before any window existed (config and state load at
-/// startup), journaled so the app edge can report them once a surface exists —
-/// an unreported quarantine is a silent reset with extra steps (storage-path
-/// conventions: both branches report).
+/// Quarantines performed before the window exists, held for its recovery notice.
 /// </summary>
 public static class QuarantineJournal
 {
