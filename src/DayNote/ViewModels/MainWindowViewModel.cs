@@ -1260,8 +1260,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         // only after the user first changes something (storage-path conventions, "Materializing settings
         // on first run"). This runs here — after _config is populated and before ApplyConfig or pane
         // restore read it — and only creates the file when absent, so a good
-        // (possibly hand-edited) file is never at risk. It is gated on a clean load: a corrupt config
-        // sets _loadError above and returns, so it is never overwritten. state.json is deliberately not
+        // (possibly hand-edited) file is never at risk. A corrupt config never reaches this point as
+        // a file: the store quarantines it aside and reports at the window edge, so what is created
+        // here is a fresh seed beside the preserved .invalid copy, never an overwrite. state.json is deliberately not
         // created here — it is volatile UI state, written only when there is state to record. A write
         // failure is logged and tolerated (the in-memory defaults still drive the session and the next
         // save surfaces a real error) rather than disabling editing over a transient inability to write.
