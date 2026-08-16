@@ -88,11 +88,21 @@ public sealed class JsonStoreTests : IDisposable
     }
 
     [Fact]
-    public void Load_throws_on_corrupt_json_so_the_caller_can_gate_saving()
+    public void Load_quarantines_corrupt_json_and_returns_null()
     {
+        // Config and state are rebuildable, so a corrupt file is set aside —
+        // bytes preserved under the .invalid name — and the load proceeds with
+        // null so first-run materialization reseeds (storage-path conventions).
         File.WriteAllText(_path, "{ this is not valid json");
+        QuarantineJournal.Drain(); // isolate from other tests
 
-        Assert.Throws<JsonException>(() => _store.Load());
+        Assert.Null(_store.Load());
+
+        Assert.False(File.Exists(_path));
+        var quarantined = Directory.GetFiles(Path.GetDirectoryName(_path)!, "*.invalid");
+        Assert.Single(quarantined);
+        Assert.Equal("{ this is not valid json", File.ReadAllText(quarantined[0]));
+        Assert.Equal(quarantined[0], Assert.Single(QuarantineJournal.Drain()));
     }
 
     [Fact]

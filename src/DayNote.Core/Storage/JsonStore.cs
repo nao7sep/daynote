@@ -4,10 +4,13 @@ using DayNote.Core.Configuration;
 namespace DayNote.Core.Storage;
 
 /// <summary>
-/// A typed JSON store for a single file, used for the configuration and state files. Loads return
-/// <c>null</c> when the file does not exist (first run); a corrupt file throws so the caller can
-/// gate writes and avoid overwriting good data after a failed load. Writes are atomic and end with
-/// a trailing newline.
+/// A typed JSON store for a single file, used for the configuration and state files — both
+/// rebuildable (settings are re-authored, view state is rebuilt by use), so a present-but-corrupt
+/// file is quarantined aside to its <c>.invalid</c> name and the load returns <c>null</c>: launch
+/// proceeds, and first-run materialization reseeds config in the same launch (storage-path
+/// conventions). The quarantine move either lands or its failure propagates — falling through to
+/// defaults with the corrupt bytes in place would let the next save overwrite them. An I/O read
+/// error is not corruption and still throws. Writes are atomic and end with a trailing newline.
 /// </summary>
 public sealed class JsonStore<T>
     where T : class
@@ -24,7 +27,19 @@ public sealed class JsonStore<T>
         }
 
         var json = File.ReadAllText(_path);
-        return JsonSerializer.Deserialize<T>(json, DayNoteJson.Options);
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, DayNoteJson.Options);
+        }
+        catch (JsonException)
+        {
+            var quarantinePath = Path.Combine(
+                Path.GetDirectoryName(_path) ?? string.Empty,
+                $"{Path.GetFileNameWithoutExtension(_path)}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fff}-utc.invalid");
+            File.Move(_path, quarantinePath);
+            QuarantineJournal.Record(quarantinePath);
+            return null;
+        }
     }
 
     public void Save(T value)
