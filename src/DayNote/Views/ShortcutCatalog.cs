@@ -115,7 +115,10 @@ public static class ShortcutCatalog
 
             // App — settings and this help.
             Command(ShortcutGroup.App, "Settings", cmd, cmdLabel, shift: false, Key.OemComma, "Comma", ShortcutAction.OpenSettings),
-            Command(ShortcutGroup.App, "Keyboard shortcuts", cmd, cmdLabel, shift: false, Key.OemQuestion, "Slash", ShortcutAction.ShowShortcuts),
+            // F1 is bound in the window as a universal help alias; the spaced " / "
+            // joins independent chords (keyboard-shortcut-conventions), and the row
+            // must show it — a bound chord the help surface omits is a catalogue gap.
+            Command(ShortcutGroup.App, "Keyboard shortcuts", cmd, cmdLabel, shift: false, Key.OemQuestion, "Slash", ShortcutAction.ShowShortcuts, labelSuffix: " / F1"),
         };
     }
 
@@ -125,9 +128,10 @@ public static class ShortcutCatalog
     /// gesture's modifier is platform-resolved.
     /// </summary>
     private static ShortcutItem Command(
-        ShortcutGroup group, string description, KeyModifiers cmd, string cmdLabel, bool shift, Key key, string keyName, ShortcutAction action)
+        ShortcutGroup group, string description, KeyModifiers cmd, string cmdLabel, bool shift, Key key, string keyName, ShortcutAction action,
+        string? labelSuffix = null)
     {
-        var label = cmdLabel + "+" + (shift ? "Shift+" : string.Empty) + keyName;
+        var label = cmdLabel + "+" + (shift ? "Shift+" : string.Empty) + keyName + (labelSuffix ?? string.Empty);
         var modifiers = cmd | (shift ? KeyModifiers.Shift : KeyModifiers.None);
         return new ShortcutItem(group, description, label, new KeyGesture(key, modifiers), action);
     }
