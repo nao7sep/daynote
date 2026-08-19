@@ -1,0 +1,8 @@
+# Twitter's official twitter-text conformance vectors, vendored verbatim from
+# https://github.com/twitter/twitter-text/blob/master/conformance/validate.yml
+#
+# Exempt from the escape-sequence rule because it is a verbatim upstream copy, not
+# hand-authored source: its ~428 literal U+200D are the emoji ZWJ sequences under
+# test. Escaping them would fork this file from upstream and make a refresh
+# undiffable. The rule still binds every file DayNote actually writes.
+twitter-text-validate.yml
