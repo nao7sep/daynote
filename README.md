@@ -6,7 +6,7 @@ Everything is persistence-first: writes are atomic, the live files are the sourc
 
 ## Download
 
-Prebuilt builds for **macOS (Apple Silicon)** and **Windows (x64)** are on the [Releases](https://github.com/nao7sep/daynote/releases) page — a `.dmg` / `setup.exe` installer or a portable `.zip`. The builds are **self-contained** (no .NET install needed) and **unsigned**, so the OS warns the first time you open one:
+Prebuilt builds for **macOS (Apple Silicon)** and **Windows (x64)** are on the [Releases](https://github.com/nao7sep/daynote/releases/latest) page — a `.dmg` / `setup.exe` installer or a portable `.zip`. The builds are **self-contained** (no .NET install needed) and **unsigned**, so the OS warns the first time you open one:
 
 - **macOS** — right-click the app and choose **Open** (or run `xattr -dr com.apple.quarantine /Applications/DayNote.app`).
 - **Windows** — on the SmartScreen prompt, click **More info → Run anyway**.
