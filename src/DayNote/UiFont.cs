@@ -14,6 +14,15 @@ namespace DayNote;
 /// </summary>
 public static class UiFont
 {
+    /// <summary>
+    /// The bundled Inter as the font manager reaches it. A bare "Inter" does NOT resolve
+    /// to the embedded collection `.WithInterFont()` registers — with no system Inter
+    /// installed it silently falls back to the platform default (Helvetica on macOS),
+    /// whose ascent barely clears its cap height, so every label sits visibly high.
+    /// The display name stays "Inter"; this URI is what actually loads it.
+    /// </summary>
+    public const string BundledUiFontUri = "fonts:Inter#Inter";
+
     /// <summary>Splits a comma-separated family string into trimmed, unquoted names.</summary>
     public static IEnumerable<string> ParseFamilies(string? value)
     {
@@ -45,7 +54,7 @@ public static class UiFont
             }
         }
 
-        return new FontFamily(AppConfig.DefaultUiFontFamily);
+        return new FontFamily(BundledUiFontUri);
     }
 
     private static bool IsInstalled(string name)
