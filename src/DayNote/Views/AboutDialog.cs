@@ -1,3 +1,5 @@
+using Shapes = Avalonia.Controls.Shapes;
+using Avalonia.Data;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -47,7 +49,7 @@ public sealed class AboutDialog : DialogBase
                     Orientation = Orientation.Horizontal,
                     Spacing = 12,
                     Margin = new Thickness(0, 0, 0, 16),
-                    Children = { LinkButton("GitHub ↗", GitHubUrl), LinkButton("Report Issue ↗", GitHubUrl + "/issues") },
+                    Children = { LinkButton("GitHub", GitHubUrl), LinkButton("Report Issue", GitHubUrl + "/issues") },
                 },
                 new TextBlock
                 {
@@ -65,7 +67,7 @@ public sealed class AboutDialog : DialogBase
 
     private Button LinkButton(string label, string url)
     {
-        var button = new Button { Content = label };
+        var button = new Button { Content = ExternalLinkLabel(label) };
         button.Classes.Add("utility");
         button.Click += async (_, _) =>
         {
@@ -85,4 +87,44 @@ public sealed class AboutDialog : DialogBase
     }
 
     private static IBrush Secondary => PaletteBrush.Resolve("TextSecondaryBrush", Brushes.Gray);
+
+    /// <summary>
+    /// A button label with a trailing external-link mark drawn as a vector rather than
+    /// the ↗ glyph, whose weight and size vary by font. The mark binds to the button's
+    /// own foreground, so it follows theme and hover exactly as the text does.
+    /// Coordinates are written at the target pixel size — Avalonia's house pattern here
+    /// — so the stroke keeps a constant weight instead of being scaled by a Stretch.
+    /// </summary>
+    private static Control ExternalLinkLabel(string text) =>
+        new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center },
+                ExternalLinkMark(),
+            },
+        };
+
+    private static Shapes.Path ExternalLinkMark()
+    {
+        var mark = new Shapes.Path
+        {
+            Width = 11,
+            Height = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            StrokeThickness = 1.3,
+            StrokeLineCap = PenLineCap.Round,
+            StrokeJoin = PenLineJoin.Round,
+            UseLayoutRounding = true,
+            Data = Geometry.Parse("M7.8,6.1 V10.35 H0.65 V3.2 H5.0 M6.3,0.65 H10.35 V4.7 M10.35,0.65 L5.2,5.8"),
+        };
+        mark.Bind(
+            Shapes.Shape.StrokeProperty,
+            new Binding("Foreground") { RelativeSource = new RelativeSource { AncestorType = typeof(Button) } });
+        return mark;
+    }
+
 }
