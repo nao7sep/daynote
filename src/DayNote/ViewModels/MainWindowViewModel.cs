@@ -452,7 +452,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var directory = BinderStore.NoteAssetsDirectory(_current.Path, note.Id);
-        Directory.CreateDirectory(directory);
+        try
+        {
+            Directory.CreateDirectory(directory);
+        }
+        catch (Exception ex)
+        {
+            // A binder can live on a read-only, disconnected, or otherwise unavailable volume.
+            // Attachment setup is an edge failure, not a reason for a file drop to escape into the
+            // UI event loop and terminate the app.
+            _log.Error("Failed to prepare attachment directory", new { noteId = note.Id, path = directory }, ex);
+            ShowToast(ToastKind.Error, "Could not add attachments: " + ex.Message);
+            return;
+        }
 
         // Hash the note's current attachments so a file whose content the note already has is not
         // copied again; a later identical file in the same batch dedups against earlier ones too.

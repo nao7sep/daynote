@@ -92,28 +92,38 @@ public static class BackupStore
     {
         lock (Gate)
         {
-            var connection = EnsureOpen();
-            if (connection is null)
-            {
-                return; // open failed earlier; disabled for the session (already warned once)
-            }
-
             try
             {
+                // The save has already landed before Record is called, so the never-breaks-a-save
+                // boundary covers opening and path resolution too — not just the SQL operations.
+                var connection = EnsureOpen();
+                if (connection is null)
+                {
+                    return; // open failed earlier; disabled for the session (already warned once)
+                }
+
                 var hash = Sha256Hex(bytes);
+
+                // Reserve SQLite's cross-process write lane before reading the predecessor. WAL
+                // serializes eventual writes, but without this immediate transaction two processes
+                // can both read the same predecessor and later append the same successor.
+                using var transaction = connection.BeginTransaction(deferred: false);
 
                 using (var latest = connection.CreateCommand())
                 {
+                    latest.Transaction = transaction;
                     latest.CommandText =
                         "SELECT content_sha256 FROM backups WHERE path = $path ORDER BY id DESC LIMIT 1";
                     latest.Parameters.AddWithValue("$path", absolutePath);
                     if (latest.ExecuteScalar() is string previousHash && previousHash == hash)
                     {
+                        transaction.Commit();
                         return; // unchanged since the last recorded version — dedup skip
                     }
                 }
 
                 using var insert = connection.CreateCommand();
+                insert.Transaction = transaction;
                 insert.CommandText =
                     "INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc) " +
                     "VALUES ($path, $content, $hash, $size, $writtenAt)";
@@ -123,10 +133,11 @@ public static class BackupStore
                 insert.Parameters.AddWithValue("$size", bytes.LongLength);
                 insert.Parameters.AddWithValue("$writtenAt", DayNoteTime.ToIso(DateTimeOffset.UtcNow));
                 insert.ExecuteNonQuery();
+                transaction.Commit();
             }
             catch (Exception ex)
             {
-                _warn?.Invoke("backup store: failed to record a managed write", absolutePath, ex);
+                WarnSafely("backup store: failed to record a managed write", absolutePath, ex);
             }
         }
     }
@@ -134,9 +145,9 @@ public static class BackupStore
     /// <summary>
     /// Open and initialize the store once (create the table if absent, switch on WAL and a busy timeout).
     /// Best-effort: on any failure it logs ONE warn, leaves recording disabled for the session, and never
-    /// throws. WAL is what lets the tolerated two-instance case (two DayNote windows writing at once)
-    /// serialize safely without a cross-process lock; the busy timeout makes a contended writer wait for
-    /// the write lock rather than immediately failing and dropping that record.
+    /// throws. WAL plus the immediate record transaction let the tolerated two-instance case (two DayNote
+    /// windows writing at once) serialize without a separate cross-process lock; the busy timeout makes a
+    /// contended writer wait rather than immediately failing and dropping that record.
     /// </summary>
     private static SqliteConnection? EnsureOpen()
     {
@@ -146,9 +157,10 @@ public static class BackupStore
         }
 
         _initialized = true;
-        var file = new AppPaths().BackupStoreFile;
+        var file = "(unresolved)";
         try
         {
+            file = new AppPaths().BackupStoreFile;
             // The first writer under the root does the mkdir -p (storage-path convention); the store may
             // be the first thing written on a fresh root.
             // not recorded: backups.sqlite3 is the store itself — binary, and written by this backup layer,
@@ -180,11 +192,25 @@ public static class BackupStore
         }
         catch (Exception ex)
         {
-            _warn?.Invoke("backup store: could not open; recording disabled for this session", file, ex);
+            WarnSafely("backup store: could not open; recording disabled for this session", file, ex);
             _connection = null;
         }
 
         return _connection;
+    }
+
+    // The warn sink is itself an edge dependency. A broken sink cannot be allowed to undo the
+    // backup layer's absolute never-breaks-a-save guarantee.
+    private static void WarnSafely(string message, string path, Exception error)
+    {
+        try
+        {
+            _warn?.Invoke(message, path, error);
+        }
+        catch
+        {
+            // Nothing else is available at this logger-independent layer; the save still succeeds.
+        }
     }
 
     /// <summary>

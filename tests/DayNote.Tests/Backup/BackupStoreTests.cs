@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using DayNote.Core.Backup;
 using DayNote.Core.Identity;
 using DayNote.Core.Storage;
+using DayNote.Core.Time;
 using DayNote.Tests.Storage;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -146,6 +149,61 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task A_concurrent_writer_committing_the_same_successor_is_deduped_across_connections()
+    {
+        var before = Encoding.UTF8.GetBytes("before");
+        var successor = Encoding.UTF8.GetBytes("successor");
+        BackupStore.Record(TargetPath, before);
+
+        // Model a second DayNote process with its own connection. It has inserted the same successor
+        // but has not committed while this process begins Record. Reading the predecessor before
+        // acquiring SQLite's write reservation lets both processes observe `before` and eventually
+        // append `successor`; taking the reservation first makes this process wait, then dedup against
+        // the row the other process committed.
+        using var other = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = _paths.BackupStoreFile,
+            Mode = SqliteOpenMode.ReadWrite,
+            Pooling = false,
+        }.ToString());
+        other.Open();
+        using var otherTransaction = other.BeginTransaction(deferred: false);
+        using (var insert = other.CreateCommand())
+        {
+            insert.Transaction = otherTransaction;
+            insert.CommandText =
+                "INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc) " +
+                "VALUES ($path, $content, $hash, $size, $writtenAt)";
+            insert.Parameters.AddWithValue("$path", Path.GetFullPath(TargetPath));
+            insert.Parameters.AddWithValue("$content", successor);
+            insert.Parameters.AddWithValue(
+                "$hash",
+                Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(successor)));
+            insert.Parameters.AddWithValue("$size", successor.LongLength);
+            insert.Parameters.AddWithValue("$writtenAt", DayNoteTime.ToIso(DateTimeOffset.UtcNow));
+            insert.ExecuteNonQuery();
+        }
+
+        using var started = new ManualResetEventSlim();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var competingRecord = Task.Run(() =>
+        {
+            started.Set();
+            BackupStore.Record(TargetPath, (byte[])successor.Clone());
+        }, cancellationToken);
+        Assert.True(started.Wait(TimeSpan.FromSeconds(2), cancellationToken));
+
+        await Task.Delay(100, cancellationToken);
+        Assert.False(competingRecord.IsCompleted);
+
+        otherTransaction.Commit();
+        await competingRecord.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+
+        Assert.Equal(2, RowCount(TargetPath));
+        Assert.Equal(successor, LatestRow(TargetPath)!.Content);
+    }
+
+    [Fact]
     public void A_changed_save_inserts_a_new_row()
     {
         AtomicFile.WriteAllText(TargetPath, "version one");
@@ -201,6 +259,44 @@ public sealed class BackupStoreTests : IDisposable
         AtomicFile.WriteAllText(TargetPath, "and a second save too");
         Assert.Equal("and a second save too", File.ReadAllText(TargetPath));
         Assert.Single(warnings); // still one — no re-log of the broken open
+    }
+
+    [Fact]
+    public void A_throwing_warn_sink_cannot_break_an_already_landed_save()
+    {
+        Directory.CreateDirectory(_paths.BackupStoreFile);
+        BackupStore.ConfigureWarn((_, _, _) => throw new InvalidOperationException("broken warn sink"));
+
+        var exception = Record.Exception(() => AtomicFile.WriteAllText(TargetPath, "the save must survive"));
+
+        Assert.Null(exception);
+        Assert.Equal("the save must survive", File.ReadAllText(TargetPath));
+    }
+
+    [Fact]
+    public void A_storage_root_resolution_failure_does_not_throw_and_the_save_still_lands()
+    {
+        const string missingVariable = "DAYNOTE_BACKUP_TEST_MISSING_ROOT";
+        var previousMissingValue = Environment.GetEnvironmentVariable(missingVariable);
+        Environment.SetEnvironmentVariable(missingVariable, null);
+        BackupStore.Close();
+        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "$" + missingVariable);
+        var warnings = new List<string>();
+        BackupStore.ConfigureWarn((message, _, _) => warnings.Add(message));
+
+        try
+        {
+            var exception = Record.Exception(() => AtomicFile.WriteAllText(TargetPath, "the save must survive"));
+
+            Assert.Null(exception);
+            Assert.Equal("the save must survive", File.ReadAllText(TargetPath));
+            Assert.Single(warnings);
+            Assert.Contains("recording disabled", warnings[0]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(missingVariable, previousMissingValue);
+        }
     }
 
     // ----- Reading the store ---------------------------------------------------------------------

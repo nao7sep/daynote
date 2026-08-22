@@ -277,6 +277,24 @@ public sealed class BinderTomlTests
         Assert.Equal(ids.Count, ids.Distinct().Count()); // regenerated ids stay unique within the binder
     }
 
+    [Fact]
+    public void Reader_regenerates_duplicate_note_ids_case_insensitively()
+    {
+        // Note ids are attachment-directory names. Duplicate ids — including names that differ only
+        // in case on the fleet's default macOS/Windows filesystems — would make two notes share files
+        // and would also make selection and dirty tracking ambiguous.
+        const string text =
+            "id = \"nb1\"\n\n" +
+            "[[note]]\nid = \"same-id\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"same-id\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"SAME-ID\"\nbody = ''\n";
+
+        var ids = BinderTomlReader.Read(text).Notes.Select(n => n.Id).ToList();
+
+        Assert.Equal("same-id", ids[0]);
+        Assert.Equal(ids.Count, ids.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
     [Theory]
     [InlineData(NoteStatus.Draft, "draft")]
     [InlineData(NoteStatus.Ready, "ready")]

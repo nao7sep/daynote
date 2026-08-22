@@ -244,6 +244,28 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Adding_an_attachment_when_the_assets_directory_cannot_be_created_is_recoverable()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+
+        var source = Path.Combine(_home, "source.txt");
+        File.WriteAllText(source, "attachment content");
+        // Occupy the assets-directory path with a file so Directory.CreateDirectory must fail.
+        File.WriteAllText(BinderStore.AssetsDirectory(BinderPath), "blocked");
+
+        var exception = Record.Exception(() => vm.AddDroppedFiles(new[] { source }));
+
+        Assert.Null(exception);
+        Assert.Empty(note.Attachments);
+        Assert.Single(vm.Toasts);
+        Assert.Contains("Could not add", vm.Toasts[0].Message);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Every_shortcut_action_routes_to_a_command_or_the_view()
     {
         // Guards against the old `default: return false` silently no-oping a newly-added

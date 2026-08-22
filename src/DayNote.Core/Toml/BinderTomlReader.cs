@@ -114,12 +114,16 @@ public static class BinderTomlReader
     /// directory name (<c>&lt;basename&gt;-assets/&lt;note-id&gt;/</c>), so an id carrying a path
     /// separator or a <c>.</c>/<c>..</c> traversal segment — which the app never writes, but a
     /// hand-edited or hostile binder could — would resolve attachment writes/deletes <em>outside</em>
-    /// that directory. The app only ever assigns generated bare ids, so any non-bare (or empty) id is
-    /// malformed and is replaced with a fresh id unique within the binder rather than reaching the
-    /// storage layer. This mirrors the attachment-name guard in <see cref="IsBareFileName"/>.
+    /// that directory. The app only ever assigns unique generated bare ids, so any non-bare, empty,
+    /// duplicate, or case-only-colliding id is malformed and is replaced with a fresh id unique within
+    /// the binder rather than reaching the storage layer. Case-insensitive uniqueness matches the
+    /// default macOS and Windows filesystems. This mirrors the attachment-name guard in
+    /// <see cref="IsBareFileName"/>.
     /// </summary>
     private static string SafeNoteId(string? id, IReadOnlyCollection<string> existingIds) =>
-        IsBareFileName(id) ? id! : IdGenerator.NewUnique(existingIds);
+        IsBareFileName(id) && !existingIds.Contains(id!, StringComparer.OrdinalIgnoreCase)
+            ? id!
+            : IdGenerator.NewUnique(existingIds);
 
     private static DateTimeOffset ParseTimestamp(string? text, DateTimeOffset fallback) =>
         !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : fallback;
