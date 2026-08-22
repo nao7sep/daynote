@@ -1,4 +1,5 @@
 using System;
+using Avalonia.Input;
 
 namespace DayNote.Views;
 
@@ -8,6 +9,31 @@ namespace DayNote.Views;
 /// </summary>
 public static class AttachmentReorder
 {
+    /// <summary>
+    /// Returns the one-row move requested by a scoped attachment-reorder chord. Bare arrows remain
+    /// owned by the listbox; exact Cmd/Ctrl+Shift+Up/Down chords are the separate command layer.
+    /// </summary>
+    public static int KeyboardOffset(Key key, KeyModifiers modifiers)
+    {
+        var command = modifiers == (KeyModifiers.Meta | KeyModifiers.Shift)
+            || modifiers == (KeyModifiers.Control | KeyModifiers.Shift);
+        if (!command)
+        {
+            return 0;
+        }
+
+        return key switch
+        {
+            Key.Up => -1,
+            Key.Down => 1,
+            _ => 0,
+        };
+    }
+
+    /// <summary>The platform-labelled help text for the scoped keyboard reorder command.</summary>
+    public static string KeyboardLabel(string commandModifierLabel) =>
+        $"{commandModifierLabel}+Shift+Up/Down";
+
     /// <summary>
     /// The slot a dragged row should land in: its start index shifted by however many whole
     /// rows the cursor has travelled (<paramref name="delta"/> pixels over a

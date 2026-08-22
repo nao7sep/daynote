@@ -403,15 +403,37 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// the visible list only (no persistence). The order is committed once on release via
     /// <see cref="CommitAttachmentOrder"/>.
     /// </summary>
-    public void MoveAttachment(AttachmentItemViewModel item, int newIndex)
+    public bool MoveAttachment(AttachmentItemViewModel item, int newIndex)
     {
         var oldIndex = Attachments.IndexOf(item);
         if (oldIndex < 0 || newIndex < 0 || newIndex >= Attachments.Count || newIndex == oldIndex)
         {
-            return;
+            return false;
         }
 
         Attachments.Move(oldIndex, newIndex);
+        return true;
+    }
+
+    /// <summary>
+    /// Cancels a live reorder by restoring the exact item objects captured at drag start. Returns
+    /// false when the visible list was replaced or structurally changed in the meantime; the caller
+    /// can then explicitly commit the current list so rendered and durable order still agree.
+    /// </summary>
+    public bool RestoreAttachmentOrder(IReadOnlyList<AttachmentItemViewModel> startingOrder)
+    {
+        if (startingOrder.Count != Attachments.Count
+            || startingOrder.Any(start => !Attachments.Any(current => ReferenceEquals(current, start))))
+        {
+            return false;
+        }
+
+        for (var index = 0; index < startingOrder.Count; index++)
+        {
+            MoveAttachment(startingOrder[index], index);
+        }
+
+        return true;
     }
 
     /// <summary>Persists the current attachment order to the note (called when a reorder drag ends).</summary>

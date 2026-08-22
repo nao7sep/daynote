@@ -1,8 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Microsoft.Data.Sqlite;
 using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
@@ -266,6 +273,113 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Cancelling_a_live_attachment_reorder_restores_stable_items_and_the_durable_order()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        AddThreeAttachments(vm);
+        var startingItems = vm.Attachments.ToArray();
+        var startingNames = note.Attachments.ToArray();
+
+        Assert.True(vm.MoveAttachment(startingItems[0], 2));
+        Assert.NotEqual(startingNames, vm.Attachments.Select(item => item.FileName));
+        Assert.Equal(startingNames, note.Attachments); // preview has not committed
+
+        Assert.True(vm.RestoreAttachmentOrder(startingItems));
+        Assert.Equal(startingItems, vm.Attachments);
+        Assert.Equal(startingNames, note.Attachments);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Pointer_capture_loss_cancels_the_live_preview_instead_of_leaving_split_orders()
+    {
+        var (vm, window, list) = await OpenWindowWithThreeAttachmentsAsync();
+        var note = vm.SelectedNote!.Note;
+        var startingItems = vm.Attachments.ToArray();
+        var startingNames = note.Attachments.ToArray();
+        IPointer? pointer = null;
+        list.AddHandler(
+            InputElement.PointerMovedEvent,
+            (_, e) => pointer = e.Pointer,
+            RoutingStrategies.Bubble,
+            handledEventsToo: true);
+
+        list.UpdateLayout();
+        var first = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(0));
+        var third = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(2));
+        var start = first.TranslatePoint(new Point(20, first.Bounds.Height / 2), window)!.Value;
+        var end = third.TranslatePoint(new Point(20, third.Bounds.Height / 2), window)!.Value;
+
+        window.MouseDown(start, MouseButton.Left, RawInputModifiers.LeftMouseButton);
+        window.MouseMove(end, RawInputModifiers.LeftMouseButton);
+        Dispatcher.UIThread.RunJobs();
+        Assert.NotEqual(startingItems, vm.Attachments);
+        Assert.Equal(startingNames, note.Attachments); // pointer motion is still only a preview
+
+        Assert.NotNull(pointer);
+        pointer.Capture(null); // models the OS or another control taking capture
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(startingItems, vm.Attachments);
+        Assert.Equal(startingNames, note.Attachments);
+        Assert.Same(startingItems[0], list.SelectedItem);
+        Assert.True(list.IsKeyboardFocusWithin);
+        await CloseTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task Pointer_release_commits_the_preview_without_capture_loss_rolling_it_back()
+    {
+        var (vm, window, list) = await OpenWindowWithThreeAttachmentsAsync();
+        var note = vm.SelectedNote!.Note;
+        var moved = vm.Attachments[0];
+        list.UpdateLayout();
+        var first = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(0));
+        var third = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(2));
+        var start = first.TranslatePoint(new Point(20, first.Bounds.Height / 2), window)!.Value;
+        var end = third.TranslatePoint(new Point(20, third.Bounds.Height / 2), window)!.Value;
+
+        window.MouseDown(start, MouseButton.Left, RawInputModifiers.LeftMouseButton);
+        window.MouseMove(end, RawInputModifiers.LeftMouseButton);
+        window.MouseUp(end, MouseButton.Left, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Same(moved, vm.Attachments[2]);
+        Assert.Same(moved, list.SelectedItem);
+        Assert.True(list.IsKeyboardFocusWithin);
+        Assert.Equal(vm.Attachments.Select(item => item.FileName), note.Attachments);
+        await CloseTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task Keyboard_attachment_move_commits_once_and_follows_the_selected_item()
+    {
+        var (vm, window, list) = await OpenWindowWithThreeAttachmentsAsync();
+        var note = vm.SelectedNote!.Note;
+        var moved = vm.Attachments[1];
+        list.SelectedItem = moved;
+        Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(1)).Focus();
+        var command = ShortcutCatalog.CommandModifier(window) == KeyModifiers.Meta
+            ? RawInputModifiers.Meta
+            : RawInputModifiers.Control;
+
+        window.KeyPress(Key.Up, command | RawInputModifiers.Shift, PhysicalKey.ArrowUp, null);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Same(moved, vm.Attachments[0]);
+        Assert.Same(moved, list.SelectedItem);
+        Assert.True(list.IsKeyboardFocusWithin);
+        Assert.Equal(vm.Attachments.Select(item => item.FileName), note.Attachments);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(note.Attachments, new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
+
+        await CloseTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
     public async Task Every_shortcut_action_routes_to_a_command_or_the_view()
     {
         // Guards against the old `default: return false` silently no-oping a newly-added
@@ -295,6 +409,47 @@ public sealed class MainWindowViewModelTests : IDisposable
         // The store records the full absolute path (AtomicFile GetFullPath's before recording), so match it.
         command.Parameters.AddWithValue("$path", Path.GetFullPath(path));
         return Convert.ToInt32(command.ExecuteScalar());
+    }
+
+    private void AddThreeAttachments(MainWindowViewModel vm)
+    {
+        var sources = Path.Combine(_home, "reorder-sources");
+        Directory.CreateDirectory(sources);
+        var files = Enumerable.Range(1, 3)
+            .Select(index => Path.Combine(sources, $"attachment-{index}.txt"))
+            .ToArray();
+        foreach (var file in files)
+        {
+            File.WriteAllText(file, Path.GetFileName(file));
+        }
+
+        vm.AddDroppedFiles(files);
+        Assert.Equal(3, vm.Attachments.Count);
+    }
+
+    private async Task<(MainWindowViewModel Vm, MainWindow Window, ListBox List)> OpenWindowWithThreeAttachmentsAsync()
+    {
+        var vm = NewViewModel();
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        AddThreeAttachments(vm);
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+
+        return (vm, window, Assert.IsType<ListBox>(window.FindControl<ListBox>("AttachList")));
+    }
+
+    private static async Task CloseTestWindowAsync(MainWindowViewModel vm, MainWindow window)
+    {
+        await vm.ShutdownAsync();
+        window.DataContext = null;
+        window.Close();
+        Dispatcher.UIThread.RunJobs();
     }
 
     public void Dispose()

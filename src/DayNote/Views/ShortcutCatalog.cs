@@ -109,6 +109,10 @@ public static class ShortcutCatalog
 
             // Navigation — move within the binders and notes lists (selecting a row opens it).
             Display(ShortcutGroup.Navigation, "Move the selection up or down a list", "Up / Down"),
+            Display(
+                ShortcutGroup.Navigation,
+                "Move the selected attachment up or down",
+                AttachmentReorder.KeyboardLabel(cmdLabel)),
 
             // Editor — the open note.
             Command(ShortcutGroup.Editor, "Cycle text style", cmd, cmdLabel, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),

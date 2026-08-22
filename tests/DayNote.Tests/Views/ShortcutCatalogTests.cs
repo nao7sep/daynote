@@ -70,4 +70,16 @@ public sealed class ShortcutCatalogTests
             Assert.Equal(item.Gesture.KeyModifiers.HasFlag(KeyModifiers.Shift), item.Label.Contains("Shift+"));
         }
     }
+
+    [AvaloniaFact]
+    public void Scoped_attachment_reorder_is_listed_with_the_platform_command_word()
+    {
+        var (items, cmd) = BuildCatalog();
+        var item = Assert.Single(items, item => item.Description == "Move the selected attachment up or down");
+        var commandLabel = cmd == KeyModifiers.Meta ? "Cmd" : "Ctrl";
+
+        Assert.Equal($"{commandLabel}+Shift+Up/Down", item.Label);
+        Assert.Null(item.Gesture); // list-scoped, not dispatched as a window accelerator
+        Assert.Null(item.Action);
+    }
 }

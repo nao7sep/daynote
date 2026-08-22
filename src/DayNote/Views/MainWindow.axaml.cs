@@ -30,6 +30,8 @@ public partial class MainWindow : Window
     // item). External file drops below still use OS DnD, since the OS supplies that drag session.
     private AttachmentItemViewModel? _attachDragItem;
     private Point? _attachDragOrigin;
+    private IReadOnlyList<AttachmentItemViewModel>? _attachStartOrder;
+    private IPointer? _attachCapturedPointer;
     private bool _attachReordering;
     private Control? _attachDragContainer;
     private int _attachStartIndex;
@@ -50,6 +52,9 @@ public partial class MainWindow : Window
         AttachList.AddHandler(PointerPressedEvent, OnAttachItemPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
         AttachList.AddHandler(PointerMovedEvent, OnAttachItemPointerMoved);
         AttachList.AddHandler(PointerReleasedEvent, OnAttachItemPointerReleased, handledEventsToo: true);
+        AttachList.PointerCaptureLost += OnAttachPointerCaptureLost;
+        AttachList.DetachedFromVisualTree += OnAttachListDetachedFromVisualTree;
+        AttachList.AddHandler(KeyDownEvent, OnAttachListKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     private void OnAttachDragOver(object? sender, DragEventArgs e)
@@ -105,6 +110,10 @@ public partial class MainWindow : Window
         if (e.GetCurrentPoint(AttachList).Properties.IsLeftButtonPressed
             && (e.Source as Control)?.DataContext is AttachmentItemViewModel item)
         {
+            // The grabbed item is the active item for the whole transaction. Set this explicitly so
+            // a drag that crosses the platform's selection threshold still follows stable identity.
+            AttachList.SelectedItem = item;
+            (AttachList.ContainerFromIndex(AttachList.Items.IndexOf(item)) as Control)?.Focus();
             _attachDragItem = item;
             _attachDragOrigin = e.GetPosition(AttachList);
         }
@@ -120,7 +129,7 @@ public partial class MainWindow : Window
 
         if (!e.GetCurrentPoint(AttachList).Properties.IsLeftButtonPressed)
         {
-            ClearAttachDrag();
+            CancelAttachDrag();
             return;
         }
 
@@ -134,6 +143,7 @@ public partial class MainWindow : Window
 
             _attachReordering = true;
             _attachStartIndex = vm.Attachments.IndexOf(item);
+            _attachStartOrder = vm.Attachments.ToArray();
             _attachDragContainer = AttachList.ContainerFromIndex(_attachStartIndex) as Control;
             _attachRowStep = MeasureRowStep();
             if (_attachDragContainer is not null)
@@ -142,6 +152,7 @@ public partial class MainWindow : Window
             }
 
             e.Pointer.Capture(AttachList); // keep receiving moves even if the pointer leaves a row
+            _attachCapturedPointer = e.Pointer;
 
             // Show the move cursor for the duration of the reorder — the "grabbing" affordance
             // (Avalonia has no closed-hand shape; SizeAll is its move cursor). Set on the window so it
@@ -163,8 +174,9 @@ public partial class MainWindow : Window
             var current = vm.Attachments.IndexOf(item);
             if (target != current)
             {
+                var keepFocus = AttachList.IsKeyboardFocusWithin;
                 vm.MoveAttachment(item, target);
-                AttachList.UpdateLayout(); // settle the reflow so the transform below stays glued to the cursor
+                FollowAttachment(item, keepFocus); // collection moves can clear native selection
                 current = target;
             }
 
@@ -182,14 +194,108 @@ public partial class MainWindow : Window
 
     private void OnAttachItemPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        // The collection was reordered live during the drag; just persist the final order.
-        if (_attachReordering && DataContext is MainWindowViewModel vm)
+        if (_attachReordering)
         {
-            vm.CommitAttachmentOrder();
-            e.Pointer.Capture(null);
+            FinishAttachDrag(commit: true);
+            e.Handled = true;
+            return;
         }
 
         ClearAttachDrag();
+    }
+
+    private void OnAttachPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        // Capture can be taken by the OS or another control without a release event. That is a
+        // cancellation, so restore the rendered preview to its durable starting order.
+        FinishAttachDrag(commit: false, releaseCapture: false);
+    }
+
+    private void OnAttachListDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e) =>
+        FinishAttachDrag(commit: false);
+
+    private void OnAttachListKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_attachReordering && e.Key == Key.Escape)
+        {
+            CancelAttachDrag();
+            e.Handled = true;
+            return;
+        }
+
+        if (_attachReordering || ComposingTextBox.IsFocusedElementComposing(this)
+            || DataContext is not MainWindowViewModel vm
+            || AttachList.SelectedItem is not AttachmentItemViewModel item)
+        {
+            return;
+        }
+
+        var offset = AttachmentReorder.KeyboardOffset(e.Key, e.KeyModifiers);
+        var oldIndex = vm.Attachments.IndexOf(item);
+        if (offset == 0 || !vm.MoveAttachment(item, oldIndex + offset))
+        {
+            return;
+        }
+
+        // Keyboard reorder is one complete transaction: the same move operation as pointer preview,
+        // followed by one commit. The stable item remains selected and, because the list owns focus,
+        // follows its new container without adding a tab stop or stealing focus from another control.
+        vm.CommitAttachmentOrder();
+        FollowAttachment(item, AttachList.IsKeyboardFocusWithin);
+        e.Handled = true;
+    }
+
+    private void CancelAttachDrag() => FinishAttachDrag(commit: false);
+
+    private void FinishAttachDrag(bool commit, bool releaseCapture = true)
+    {
+        var pointer = _attachCapturedPointer;
+        var activeItem = _attachDragItem;
+        var keepFocus = AttachList.IsKeyboardFocusWithin;
+        if (_attachReordering && DataContext is MainWindowViewModel vm)
+        {
+            if (commit)
+            {
+                vm.CommitAttachmentOrder();
+            }
+            else if (_attachStartOrder is { } startingOrder && !vm.RestoreAttachmentOrder(startingOrder))
+            {
+                // The list changed while captured (for example, a note reload). The snapshot no
+                // longer describes this rendered list, so explicitly commit its current order rather
+                // than applying stale item identities or leaving display and storage divergent.
+                vm.CommitAttachmentOrder();
+            }
+        }
+
+        // Clear state before releasing capture: Capture(null) raises PointerCaptureLost, whose handler
+        // must observe an already-finished transaction rather than cancelling a committed release.
+        ClearAttachDrag();
+        if (activeItem is not null)
+        {
+            FollowAttachment(activeItem, keepFocus);
+        }
+
+        if (releaseCapture)
+        {
+            pointer?.Capture(null);
+        }
+    }
+
+    private void FollowAttachment(AttachmentItemViewModel item, bool restoreFocus)
+    {
+        var index = AttachList.Items.IndexOf(item);
+        if (index < 0)
+        {
+            return;
+        }
+
+        AttachList.SelectedItem = item;
+        AttachList.ScrollIntoView(item);
+        AttachList.UpdateLayout();
+        if (restoreFocus)
+        {
+            (AttachList.ContainerFromIndex(index) as Control)?.Focus();
+        }
     }
 
     private void ClearAttachDrag()
@@ -203,6 +309,8 @@ public partial class MainWindow : Window
 
         _attachDragItem = null;
         _attachDragOrigin = null;
+        _attachStartOrder = null;
+        _attachCapturedPointer = null;
         _attachReordering = false;
         Cursor = null; // back to the inherited default arrow (no-op if a drag never started)
     }
