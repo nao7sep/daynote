@@ -492,6 +492,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
                 var existing = Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName)!;
                 var name = UniqueFileName.Pick(existing!, Path.GetFileName(source));
+                // not recorded: attachments are copied binary content; the binder text records the
+                // durable attachment reference, while binary writes stay outside the text history.
                 File.Copy(source, Path.Combine(directory, name));
                 note.Attachments.Add(name);
                 hashes[hash] = name;
