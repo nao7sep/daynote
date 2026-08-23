@@ -24,8 +24,8 @@ dotnet publish "$PROJECT" -c Release -r osx-arm64 --self-contained true -o publi
 APP="publish/$APP_NAME.app"
 [ -d "$APP" ] || { echo "expected $APP was not produced by publish" >&2; exit 1; }
 
-# Portable: a zip of the .app (ditto preserves symlinks + the ad-hoc signature).
-ditto -c -k --keepParent "$APP" "dist/$APP_NAME-$VERSION-mac.zip"
+# Portable: a zip of the .app without AppleDouble resource-fork sidecars.
+ditto -c -k --norsrc --keepParent "$APP" "dist/$APP_NAME-$VERSION-mac.zip"
 
 # Installer: a compressed .dmg holding the .app plus an /Applications alias so the
 # user can drag-install. hdiutil is built into macOS — no extra tool to install.
