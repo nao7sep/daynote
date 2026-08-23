@@ -9,6 +9,23 @@ namespace DayNote.Views;
 /// </summary>
 public static class AttachmentReorder
 {
+    public static double EdgeScrollDelta(double pointerY, double viewportHeight, double rowStep)
+    {
+        if (viewportHeight <= 0 || rowStep <= 0)
+        {
+            return 0;
+        }
+
+        var edge = Math.Clamp(rowStep, 24, 48);
+        var step = Math.Clamp(rowStep / 3, 6, 18);
+        if (pointerY < edge)
+        {
+            return -step;
+        }
+
+        return pointerY > viewportHeight - edge ? step : 0;
+    }
+
     /// <summary>
     /// Returns the one-row move requested by a scoped attachment-reorder chord. Bare arrows remain
     /// owned by the listbox; exact Cmd/Ctrl+Shift+Up/Down chords are the separate command layer.

@@ -7,6 +7,21 @@ namespace DayNote.Tests.Views;
 public sealed class AttachmentReorderTests
 {
     [Theory]
+    [InlineData(10, 200, 30, -10)]
+    [InlineData(100, 200, 30, 0)]
+    [InlineData(195, 200, 30, 10)]
+    [InlineData(10, 0, 30, 0)]
+    [InlineData(10, 200, 0, 0)]
+    public void EdgeScrollDelta_is_bounded_to_the_visible_edges(
+        double pointerY,
+        double viewportHeight,
+        double rowStep,
+        double expected)
+    {
+        Assert.Equal(expected, AttachmentReorder.EdgeScrollDelta(pointerY, viewportHeight, rowStep));
+    }
+
+    [Theory]
     [InlineData(0, 0.0, 5)] // no travel -> stays put
     [InlineData(0, 60.0, 3)] // 60px over 20px rows = 3 rows down, clamped to last (2)
     [InlineData(2, -40.0, 5)] // two rows up

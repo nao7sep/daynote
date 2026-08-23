@@ -36,6 +36,11 @@ public partial class MainWindow : Window
     private Control? _attachDragContainer;
     private int _attachStartIndex;
     private double _attachRowStep;
+    private Point? _attachLastPosition;
+    private ScrollViewer? _attachScrollViewer;
+    private double _attachStartScrollOffset;
+    private readonly DispatcherTimer _attachAutoScrollTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
+    private readonly DispatcherTimer _attachDropLeaseTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainWindow()
     {
@@ -55,6 +60,8 @@ public partial class MainWindow : Window
         AttachList.PointerCaptureLost += OnAttachPointerCaptureLost;
         AttachList.DetachedFromVisualTree += OnAttachListDetachedFromVisualTree;
         AttachList.AddHandler(KeyDownEvent, OnAttachListKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+        _attachAutoScrollTimer.Tick += OnAttachAutoScrollTick;
+        _attachDropLeaseTimer.Tick += (_, _) => ClearAttachDropHighlight();
     }
 
     private void OnAttachDragOver(object? sender, DragEventArgs e)
@@ -65,16 +72,22 @@ public partial class MainWindow : Window
         {
             vm.IsAttachmentDropActive = accept;
         }
+        if (accept)
+        {
+            _attachDropLeaseTimer.Stop();
+            _attachDropLeaseTimer.Start();
+        }
+        else
+        {
+            ClearAttachDropHighlight();
+        }
 
         e.Handled = true;
     }
 
     private void OnAttachDragLeave(object? sender, DragEventArgs e)
     {
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.IsAttachmentDropActive = false;
-        }
+        ClearAttachDropHighlight();
     }
 
     private void OnAttachDrop(object? sender, DragEventArgs e)
@@ -84,7 +97,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        vm.IsAttachmentDropActive = false;
+        ClearAttachDropHighlight();
         var paths = e.DataTransfer.TryGetFiles()?
             .OfType<IStorageFile>()
             .Select(f => f.TryGetLocalPath())
@@ -146,6 +159,10 @@ public partial class MainWindow : Window
             _attachStartOrder = vm.Attachments.ToArray();
             _attachDragContainer = AttachList.ContainerFromIndex(_attachStartIndex) as Control;
             _attachRowStep = MeasureRowStep();
+            _attachScrollViewer = AttachList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+            _attachStartScrollOffset = _attachScrollViewer?.Offset.Y ?? 0;
+            _attachLastPosition = pos;
+            _attachAutoScrollTimer.Start();
             if (_attachDragContainer is not null)
             {
                 _attachDragContainer.ZIndex = 1000; // float the grabbed row above its siblings
@@ -165,7 +182,25 @@ public partial class MainWindow : Window
             return;
         }
 
-        var delta = pos.Y - origin.Y;
+        _attachLastPosition = pos;
+        UpdateAttachDrag(item, origin, pos, vm);
+        e.Handled = true;
+    }
+
+    private void UpdateAttachDrag(
+        AttachmentItemViewModel item,
+        Point origin,
+        Point pos,
+        MainWindowViewModel vm)
+    {
+        if (_attachDragContainer is not { } dragContainer)
+        {
+            return;
+        }
+
+        var scrollDelta = (_attachScrollViewer?.Offset.Y ?? _attachStartScrollOffset)
+            - _attachStartScrollOffset;
+        var delta = pos.Y - origin.Y + scrollDelta;
         if (_attachRowStep > 0)
         {
             // Reflow: shift the other rows to open a gap where the dragged row will land. The target
@@ -181,15 +216,44 @@ public partial class MainWindow : Window
             }
 
             // Keep the dragged row under the cursor by cancelling the layout shift its reorder caused.
-            _attachDragContainer.RenderTransform =
+            dragContainer.RenderTransform =
                 new TranslateTransform(0, delta - ((current - _attachStartIndex) * _attachRowStep));
         }
         else
         {
-            _attachDragContainer.RenderTransform = new TranslateTransform(0, delta);
+            dragContainer.RenderTransform = new TranslateTransform(0, delta);
         }
 
-        e.Handled = true;
+    }
+
+    private void OnAttachAutoScrollTick(object? sender, EventArgs e)
+    {
+        if (!_attachReordering || _attachLastPosition is not { } position
+            || _attachScrollViewer is not { } scroll
+            || _attachDragItem is not { } item || _attachDragOrigin is not { } origin
+            || DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        var delta = AttachmentReorder.EdgeScrollDelta(
+            position.Y,
+            AttachList.Bounds.Height,
+            _attachRowStep);
+        if (delta == 0)
+        {
+            return;
+        }
+
+        var maximum = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
+        var next = Math.Clamp(scroll.Offset.Y + delta, 0, maximum);
+        if (Math.Abs(next - scroll.Offset.Y) < 0.01)
+        {
+            return;
+        }
+
+        scroll.Offset = new Vector(scroll.Offset.X, next);
+        UpdateAttachDrag(item, origin, position, vm);
     }
 
     private void OnAttachItemPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -211,8 +275,11 @@ public partial class MainWindow : Window
         FinishAttachDrag(commit: false, releaseCapture: false);
     }
 
-    private void OnAttachListDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e) =>
+    private void OnAttachListDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
         FinishAttachDrag(commit: false);
+        ClearAttachDropHighlight();
+    }
 
     private void OnAttachListKeyDown(object? sender, KeyEventArgs e)
     {
@@ -300,6 +367,7 @@ public partial class MainWindow : Window
 
     private void ClearAttachDrag()
     {
+        _attachAutoScrollTimer.Stop();
         if (_attachDragContainer is not null)
         {
             _attachDragContainer.RenderTransform = null;
@@ -311,8 +379,19 @@ public partial class MainWindow : Window
         _attachDragOrigin = null;
         _attachStartOrder = null;
         _attachCapturedPointer = null;
+        _attachLastPosition = null;
+        _attachScrollViewer = null;
         _attachReordering = false;
         Cursor = null; // back to the inherited default arrow (no-op if a drag never started)
+    }
+
+    private void ClearAttachDropHighlight()
+    {
+        _attachDropLeaseTimer.Stop();
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.IsAttachmentDropActive = false;
+        }
     }
 
     // The vertical distance between consecutive attachment rows (they are uniform), measured from the
