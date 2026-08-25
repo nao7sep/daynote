@@ -1,6 +1,8 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using DayNote.Services;
 using DayNote.ViewModels;
 using DayNote.Views;
@@ -23,6 +25,7 @@ public partial class App : Application
             dialogs.Owner = window;
 
             desktop.MainWindow = window;
+            RegisterOwnerActivation(window);
 
             // Report material recovery once the main window can own the dialog.
             window.Opened += async (_, _) =>
@@ -48,5 +51,17 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static void RegisterOwnerActivation(Window window)
+    {
+        SingleInstanceLease.RegisterOwnerActivationHandler(() => Dispatcher.UIThread.Post(() =>
+        {
+            if (window.WindowState == WindowState.Minimized)
+                window.WindowState = WindowState.Normal;
+            if (!window.IsVisible)
+                window.Show();
+            window.Activate();
+        }));
     }
 }

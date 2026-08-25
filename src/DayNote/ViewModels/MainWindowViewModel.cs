@@ -20,10 +20,10 @@ namespace DayNote.ViewModels;
 /// <summary>
 /// Orchestrates the main window: the four panes (binders, notes, editor, attachments),
 /// load-gated configuration and state, opening/closing binders, autosave with per-note dirty
-/// tracking, external-modification detection, and the known-binders list. Multiple instances may
-/// open the same binder concurrently — there is no lock; external-change detection reconciles
-/// concurrent edits. Side-effecting file work is delegated to the Core storage layer; dialogs and
-/// the native file picker go through <see cref="IDialogService"/>.
+/// tracking, external-modification detection, and the known-binders list. One GUI process owns a
+/// storage root at a time; external-change detection still reconciles edits from other tools and
+/// sync clients. Side-effecting file work is delegated to the Core storage layer; dialogs and the
+/// native file picker go through <see cref="IDialogService"/>.
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
@@ -907,7 +907,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         catch (Exception ex)
         {
             // A transient read failure during polling (the file briefly locked by a sync client,
-            // antivirus, or another instance) must not crash the app; skip this tick and retry.
+            // antivirus, or an external editor) must not crash the app; skip this tick and retry.
             _log.Debug("External-change check skipped", new { path = _current?.Path }, ex);
         }
         finally

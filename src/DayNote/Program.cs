@@ -3,6 +3,7 @@ using Avalonia;
 using DayNote.Core.Backup;
 using DayNote.Core.Storage;
 using DayNote.Logging;
+using DayNote.Services;
 
 namespace DayNote;
 
@@ -35,6 +36,24 @@ internal static class Program
             return 1;
         }
 
+        try
+        {
+            paths.EnsureCreated();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                "DayNote cannot start: its storage location could not be created. " + ex.Message);
+            return 1;
+        }
+
+        if (!SingleInstanceLease.TryAcquire(paths.Root, out var instanceLease))
+        {
+            Console.Error.WriteLine("DayNote is already running; activated the existing window.");
+            return 0;
+        }
+        using var ownedInstance = instanceLease;
+
         // One log file per launch, named with a UTC timestamp; the logger creates the logs directory
         // itself, so it is the first thing up and can record every later failure.
         var logger = JsonLinesLogger.Open(paths.LogsDirectory, DebugEnabled());
@@ -47,23 +66,6 @@ internal static class Program
         // as a delegate installed here. Installed before any managed save so the very first record's
         // failure (should one occur) is logged. The store logs ONLY failures; success is silent.
         BackupStore.ConfigureWarn((message, path, error) => logger.Warn(message, new { file = path }, error));
-
-        try
-        {
-            paths.EnsureCreated();
-        }
-        catch (Exception ex)
-        {
-            // An unusable DAYNOTE_HOME (or an unwritable home) is a startup error we report and STOP
-            // on — never a silent fallback that lets the app run unable to persist. The logger is
-            // already up, so record it there and on stderr, then exit non-zero before any UI loads.
-            logger.Error("DayNote cannot start: its storage location could not be created",
-                new { root = paths.Root }, ex);
-            Console.Error.WriteLine(
-                "DayNote cannot start: its storage location could not be created. " + ex.Message);
-            logger.Dispose();
-            return 1;
-        }
 
         logger.Info("DayNote starting", new
         {
