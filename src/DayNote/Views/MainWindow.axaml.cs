@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -45,6 +46,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        if (OperatingSystem.IsWindows())
+        {
+            using var iconStream = AssetLoader.Open(new Uri("avares://DayNote/Assets/icon-win.png"));
+            Icon = new WindowIcon(iconStream);
+        }
+
         Loaded += OnLoaded;
 
         // The attachments pane accepts external file drops (add).
