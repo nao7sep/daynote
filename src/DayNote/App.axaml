@@ -85,6 +85,7 @@
              controls. The editor body overrides it with its own text-style preset (content font). -->
         <Style Selector="Window">
             <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}"/>
+            <Setter Property="FontSize" Value="13"/>
         </Style>
 
         <Style Selector="Button.accent">
