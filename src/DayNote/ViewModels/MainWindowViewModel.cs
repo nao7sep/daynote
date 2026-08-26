@@ -68,6 +68,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Editor = new EditorViewModel(_config.DisplayTimeZone);
         Editor.Edited += OnEditorEdited;
 
+        // Empty-state text is derived from the live collections. Collection notifications keep the
+        // mandatory pane overlays in sync without maintaining parallel counts or visibility flags.
+        Binders.CollectionChanged += (_, _) => OnPropertyChanged(nameof(BindersEmptyStateText));
+        Notes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(NotesEmptyStateText));
+        Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(AttachmentsEmptyStateText));
+
         _autosaveTimer = new DispatcherTimer();
         _autosaveTimer.Tick += async (_, _) =>
         {
@@ -121,8 +127,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasBinder;
 
-    [ObservableProperty]
-    private bool _showAttachmentsEmptyHint;
+    public string BindersEmptyStateText =>
+        MainWindowEmptyStates.Binders(_allBinders.Count, Binders.Count, BindersFilter);
+
+    public string NotesEmptyStateText =>
+        MainWindowEmptyStates.Notes(HasBinder, _allNotes.Count, Notes.Count, NotesFilter);
+
+    public string AttachmentsEmptyStateText =>
+        MainWindowEmptyStates.Attachments(SelectedNote is not null, Attachments.Count);
 
     /// <summary>True while files are being dragged over the attachments pane (drives the drop highlight).</summary>
     [ObservableProperty]
@@ -1146,7 +1158,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Attachments.Clear();
         if (note is null || _current is null)
         {
-            ShowAttachmentsEmptyHint = false;
             return;
         }
 
@@ -1154,8 +1165,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             Attachments.Add(new AttachmentItemViewModel(attachment, _log));
         }
-
-        ShowAttachmentsEmptyHint = Attachments.Count == 0;
     }
 
     private void DisposeAttachments()
@@ -1217,14 +1226,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         timer.Start();
     }
 
-    partial void OnNotesFilterChanged(string value) => RebuildNotes();
+    partial void OnNotesFilterChanged(string value)
+    {
+        RebuildNotes();
+        OnPropertyChanged(nameof(NotesEmptyStateText));
+    }
 
-    partial void OnBindersFilterChanged(string value) => ApplyBinderFilter();
+    partial void OnBindersFilterChanged(string value)
+    {
+        ApplyBinderFilter();
+        OnPropertyChanged(nameof(BindersEmptyStateText));
+    }
+
+    partial void OnHasBinderChanged(bool value) => OnPropertyChanged(nameof(NotesEmptyStateText));
 
     partial void OnSelectedNoteChanged(NoteListItemViewModel? value)
     {
         Editor.Load(value?.Note);
         LoadAttachments(value?.Note);
+        OnPropertyChanged(nameof(AttachmentsEmptyStateText));
         _state.CurrentNoteId = value?.Note.Id;
         UpdateBinderStatus();
     }

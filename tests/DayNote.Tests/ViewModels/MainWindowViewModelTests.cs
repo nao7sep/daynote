@@ -63,6 +63,31 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Mandatory_panes_explain_prerequisites_and_ordinary_empty_states()
+    {
+        var vm = NewViewModel();
+        Assert.Equal("No binders yet. Create or open one.", vm.BindersEmptyStateText);
+        Assert.Equal("Open or create a binder to add notes.", vm.NotesEmptyStateText);
+        Assert.Equal("Select or create a note to add attachments.", vm.AttachmentsEmptyStateText);
+
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        Assert.Equal(string.Empty, vm.BindersEmptyStateText);
+        Assert.Equal("No notes yet. Create one to get started.", vm.NotesEmptyStateText);
+
+        vm.NewNoteCommand.Execute(null);
+        Assert.Equal(string.Empty, vm.NotesEmptyStateText);
+        Assert.Equal("No attachments yet.", vm.AttachmentsEmptyStateText);
+
+        await vm.CloseBinderCommand.ExecuteAsync(null);
+        Assert.Equal("No binders yet. Create or open one.", vm.BindersEmptyStateText);
+        Assert.Equal("Open or create a binder to add notes.", vm.NotesEmptyStateText);
+        Assert.Equal("Select or create a note to add attachments.", vm.AttachmentsEmptyStateText);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public void First_run_creates_config_json_but_not_state_json()
     {
         var configFile = Path.Combine(_home, "config.json");
