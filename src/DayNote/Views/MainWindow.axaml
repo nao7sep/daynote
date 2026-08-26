@@ -161,11 +161,12 @@
                     </Border>
                     <DockPanel Margin="10">
                         <ctl:ComposingTextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
-                        <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
-                        <ListBox ItemsSource="{Binding Binders}"
-                                 SelectedItem="{Binding SelectedBinder}">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="vm:BinderListItemViewModel">
+                        <Panel>
+                            <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
+                            <ListBox ItemsSource="{Binding Binders}"
+                                     SelectedItem="{Binding SelectedBinder}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="vm:BinderListItemViewModel">
                                     <!-- Primary label is the binder title (capitalized, human-friendly); the path
                                          below shows the lowercase file. Double-tap the row to rename the title. -->
                                     <Grid ColumnDefinitions="*,Auto" Background="Transparent" DoubleTapped="BinderRow_DoubleTapped">
@@ -190,9 +191,15 @@
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
                                         </Button>
                                     </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="{Binding BindersEmptyStateText}"
+                                       IsVisible="{Binding BindersEmptyStateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       IsHitTestVisible="False" Margin="16" TextAlignment="Center" TextWrapping="Wrap"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </Panel>
                     </DockPanel>
                 </DockPanel>
             </Border>
@@ -211,10 +218,11 @@
                     </Border>
                     <DockPanel Margin="10">
                         <ctl:ComposingTextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
-                        <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
-                                 KeyDown="NotesList_KeyDown">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate DataType="vm:NoteListItemViewModel">
+                        <Panel>
+                            <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
+                                     KeyDown="NotesList_KeyDown">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="vm:NoteListItemViewModel">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                         <!-- A status-colored stripe makes each row read by lifecycle state at a glance. -->
                                         <Border Width="3" CornerRadius="1.5" VerticalAlignment="Stretch"
@@ -234,9 +242,15 @@
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
                                         </Button>
                                     </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="{Binding NotesEmptyStateText}"
+                                       IsVisible="{Binding NotesEmptyStateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       IsHitTestVisible="False" Margin="16" TextAlignment="Center" TextWrapping="Wrap"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </Panel>
                     </DockPanel>
                 </DockPanel>
             </Border>
@@ -333,8 +347,11 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <TextBlock Text="No attachments yet." HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}" IsVisible="{Binding ShowAttachmentsEmptyHint}"/>
+                        <TextBlock Text="{Binding AttachmentsEmptyStateText}"
+                                   IsVisible="{Binding AttachmentsEmptyStateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   IsHitTestVisible="False" Margin="16" TextAlignment="Center" TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
                         <!-- Drag-and-drop hover affordance, shown while files are dragged over the pane. -->
                         <Border IsVisible="{Binding IsAttachmentDropActive}" IsHitTestVisible="False"
                                 Background="{StaticResource SurfaceBrush}" Opacity="0.92"
