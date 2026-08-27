@@ -107,7 +107,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<BinderListItemViewModel> Binders { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
 
-    /// <summary>Active toast notifications, rendered as a top-right overlay; each auto-dismisses.</summary>
+    /// <summary>Active in-window results, rendered as a top-right overlay.</summary>
     public ObservableCollection<ToastViewModel> Toasts { get; } = new();
 
     [ObservableProperty]
@@ -408,7 +408,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>Adds files dropped onto the attachments pane (same path as the Add button).</summary>
-    public void AddDroppedFiles(IReadOnlyList<string> files) => AddAttachmentFiles(files);
+    public void AddDroppedFiles(IReadOnlyList<string> files, int unavailable = 0) =>
+        AddAttachmentFiles(files, Math.Max(0, unavailable));
 
     /// <summary>
     /// Live reorder step during a drag: moves <paramref name="item"/> to <paramref name="newIndex"/> in
@@ -472,7 +473,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _log.Info("Reordered attachments", new { noteId = note.Id });
     }
 
-    private void AddAttachmentFiles(IReadOnlyList<string> files)
+    private void AddAttachmentFiles(IReadOnlyList<string> files, int unavailable = 0)
     {
         if (!IsReady || _current is null || SelectedNote is null)
         {
@@ -480,8 +481,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var note = SelectedNote.Note;
-        if (files.Count == 0 || !IsLiveNote(note))
+        if (!IsLiveNote(note))
         {
+            return;
+        }
+
+        if (files.Count == 0)
+        {
+            if (unavailable > 0)
+            {
+                ShowToast(
+                    ToastKind.Warning,
+                    unavailable == 1
+                        ? "That item is not a readable local file."
+                        : $"{unavailable} items are not readable local files.",
+                    persistent: true);
+            }
             return;
         }
 
@@ -496,7 +511,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             // Attachment setup is an edge failure, not a reason for a file drop to escape into the
             // UI event loop and terminate the app.
             _log.Error("Failed to prepare attachment directory", new { noteId = note.Id, path = directory }, ex);
-            ShowToast(ToastKind.Error, "Could not add attachments: " + ex.Message);
+            ShowToast(ToastKind.Error, "Could not add attachments: " + ex.Message, persistent: true);
             return;
         }
 
@@ -524,7 +539,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _log.Info("Adding attachments", new { noteId = note.Id, requested = files.Count });
         var added = 0;
         var duplicates = 0;
-        var failed = 0;
+        var failures = new List<(string FileName, string Reason)>();
         foreach (var source in files)
         {
             try
@@ -547,18 +562,40 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                failed++;
                 _log.Error("Failed to add attachment", new { noteId = note.Id, source }, ex);
-                ShowToast(ToastKind.Error, "Could not add " + Path.GetFileName(source));
+                failures.Add((Path.GetFileName(source), ex.Message));
             }
         }
 
-        _log.Info("Attachments added", new { noteId = note.Id, added, duplicates, failed });
-        if (duplicates > 0)
+        _log.Info("Attachments added", new { noteId = note.Id, added, duplicates, failed = failures.Count });
+        if (failures.Count > 0)
+        {
+            var addedText = added > 0 ? $"Added {added} attachment{(added == 1 ? "" : "s")}; " : string.Empty;
+            var duplicateText = duplicates > 0 ? $"{duplicates} already attached; " : string.Empty;
+            var unavailableText = unavailable > 0 ? $"{unavailable} not readable local files; " : string.Empty;
+            var details = string.Join("; ", failures.Select(failure => $"{failure.FileName}: {failure.Reason}"));
+            ShowToast(
+                ToastKind.Error,
+                $"{addedText}{duplicateText}{unavailableText}could not add {failures.Count}: {details}",
+                persistent: true);
+        }
+        else if (unavailable > 0)
+        {
+            var addedText = added > 0 ? $"Added {added} attachment{(added == 1 ? "" : "s")}; " : string.Empty;
+            var duplicateText = duplicates > 0 ? $"{duplicates} already attached; " : string.Empty;
+            ShowToast(
+                ToastKind.Warning,
+                unavailable == 1
+                    ? $"{addedText}{duplicateText}1 item is not a readable local file."
+                    : $"{addedText}{duplicateText}{unavailable} items are not readable local files.",
+                persistent: true);
+        }
+        else if (duplicates > 0)
         {
             ShowToast(ToastKind.Info, duplicates == 1
-                ? "Skipped a file already attached to this note."
-                : $"Skipped {duplicates} files already attached to this note.");
+                ? "That file is already attached to this note."
+                : $"{duplicates} files are already attached to this note.",
+                persistent: true);
         }
 
         if (added > 0)
@@ -1208,13 +1245,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private const int MaxToasts = 4;
     private static readonly TimeSpan ToastLifetime = TimeSpan.FromSeconds(4);
 
-    private void ShowToast(ToastKind kind, string message)
+    public void DismissToast(ToastViewModel toast) => Toasts.Remove(toast);
+
+    private void ShowToast(ToastKind kind, string message, bool persistent = false)
     {
-        var toast = new ToastViewModel(kind, message);
+        if (persistent)
+        {
+            foreach (var existing in Toasts.Where(result => result.IsPersistent).ToArray())
+            {
+                Toasts.Remove(existing);
+            }
+        }
+
+        var toast = new ToastViewModel(kind, message, persistent);
         Toasts.Add(toast);
         while (Toasts.Count > MaxToasts)
         {
-            Toasts.RemoveAt(0);
+            var transient = Toasts.FirstOrDefault(result => !result.IsPersistent);
+            Toasts.Remove(transient ?? Toasts[0]);
+        }
+
+        if (persistent)
+        {
+            return;
         }
 
         var timer = new DispatcherTimer { Interval = ToastLifetime };

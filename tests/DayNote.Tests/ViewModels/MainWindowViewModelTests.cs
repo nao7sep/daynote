@@ -265,12 +265,22 @@ public sealed class MainWindowViewModelTests : IDisposable
         // Within one batch, the second identical file dedups against the first.
         vm.AddDroppedFiles(new[] { a, aCopy, b });
         Assert.Equal(2, note.Attachments.Count);
+        var firstResult = Assert.Single(vm.Toasts);
+        Assert.Equal(ToastKind.Info, firstResult.Kind);
+        Assert.True(firstResult.IsPersistent);
+        Assert.Contains("already attached", firstResult.Message);
 
         // A later file whose content the note already holds is not copied again.
         var c = Path.Combine(sources, "c.txt");
         File.WriteAllText(c, "same content");
         vm.AddDroppedFiles(new[] { c });
         Assert.Equal(2, note.Attachments.Count);
+        var replacement = Assert.Single(vm.Toasts);
+        Assert.True(replacement.IsPersistent);
+        Assert.DoesNotContain(firstResult, vm.Toasts);
+
+        vm.DismissToast(replacement);
+        Assert.Empty(vm.Toasts);
 
         await vm.ShutdownAsync();
     }
@@ -293,6 +303,23 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(note.Attachments);
         Assert.Single(vm.Toasts);
         Assert.Contains("Could not add", vm.Toasts[0].Message);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Unavailable_drop_items_are_accounted_for_without_mutating_attachments()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+
+        vm.AddDroppedFiles([], unavailable: 2);
+
+        Assert.Empty(vm.Attachments);
+        var result = Assert.Single(vm.Toasts);
+        Assert.Equal(ToastKind.Warning, result.Kind);
+        Assert.True(result.IsPersistent);
+        Assert.Equal("2 items are not readable local files.", result.Message);
 
         await vm.ShutdownAsync();
     }

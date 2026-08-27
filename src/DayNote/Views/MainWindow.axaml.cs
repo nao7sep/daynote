@@ -68,6 +68,11 @@ public partial class MainWindow : Window
         AttachList.PointerCaptureLost += OnAttachPointerCaptureLost;
         AttachList.DetachedFromVisualTree += OnAttachListDetachedFromVisualTree;
         AttachList.AddHandler(KeyDownEvent, OnAttachListKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+        Deactivated += (_, _) =>
+        {
+            FinishAttachDrag(commit: false);
+            ClearAttachDropHighlight();
+        };
         _attachAutoScrollTimer.Tick += OnAttachAutoScrollTick;
         _attachDropLeaseTimer.Tick += (_, _) => ClearAttachDropHighlight();
     }
@@ -106,15 +111,16 @@ public partial class MainWindow : Window
         }
 
         ClearAttachDropHighlight();
-        var paths = e.DataTransfer.TryGetFiles()?
+        var deliveredItems = e.DataTransfer.TryGetFiles()?.ToArray() ?? [];
+        var paths = deliveredItems
             .OfType<IStorageFile>()
             .Select(f => f.TryGetLocalPath())
             .Where(p => !string.IsNullOrEmpty(p))
             .Select(p => p!)
             .ToList();
-        if (paths is { Count: > 0 })
+        if (deliveredItems.Length > 0)
         {
-            vm.AddDroppedFiles(paths);
+            vm.AddDroppedFiles(paths, deliveredItems.Length - paths.Count);
         }
 
         e.Handled = true;
@@ -399,6 +405,15 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.IsAttachmentDropActive = false;
+        }
+    }
+
+    private void DismissToast_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm
+            && sender is Control { DataContext: ToastViewModel toast })
+        {
+            vm.DismissToast(toast);
         }
     }
 

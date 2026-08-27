@@ -365,7 +365,7 @@
         </Grid>
     </Grid>
 
-    <!-- Toast overlay: top-right, below the toolbar; auto-dismissing cards from the Toasts collection. -->
+    <!-- Result overlay: top-right, below the toolbar. Committed non-successes stay dismissible. -->
     <ItemsControl ItemsSource="{Binding Toasts}"
                   HorizontalAlignment="Right" VerticalAlignment="Top"
                   Margin="0,24,24,0" Width="400" ZIndex="100">
@@ -373,11 +373,15 @@
             <DataTemplate DataType="vm:ToastViewModel">
                 <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
                         BorderThickness="1" CornerRadius="8" Margin="0,0,0,8" BoxShadow="0 6 20 0 #50000000">
-                    <Grid ColumnDefinitions="4,*">
+                    <Grid ColumnDefinitions="4,*,Auto">
                         <Border Background="{Binding Accent}" CornerRadius="8,0,0,8"/>
                         <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap"
                                    Margin="12" VerticalAlignment="Center"
                                    Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <Button Grid.Column="2" Content="×" Classes="rowAction"
+                                Margin="4" Padding="8,4" VerticalAlignment="Center"
+                                IsVisible="{Binding IsPersistent}" Click="DismissToast_Click"
+                                ToolTip.Tip="Dismiss" AutomationProperties.Name="Dismiss message"/>
                     </Grid>
                 </Border>
             </DataTemplate>

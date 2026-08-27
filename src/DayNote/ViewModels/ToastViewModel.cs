@@ -4,16 +4,17 @@ using DayNote.Services;
 namespace DayNote.ViewModels;
 
 /// <summary>
-/// One transient toast in the top-right overlay. The kind selects the left accent stripe's color
-/// (matching the app palette); the message is plain text. Toasts are added and auto-removed by
-/// <see cref="MainWindowViewModel"/>.
+/// One in-window result. The kind selects the left accent stripe's color (matching the app
+/// palette); committed non-successful operations remain until dismissed while ordinary notices
+/// may still expire.
 /// </summary>
 public sealed class ToastViewModel
 {
-    public ToastViewModel(ToastKind kind, string message)
+    public ToastViewModel(ToastKind kind, string message, bool isPersistent = false)
     {
         Kind = kind;
         Message = message;
+        IsPersistent = isPersistent;
         Accent = kind switch
         {
             ToastKind.Warning => PaletteBrush.Resolve("WarningBrush"),
@@ -27,4 +28,6 @@ public sealed class ToastViewModel
     public string Message { get; }
 
     public IBrush Accent { get; }
+
+    public bool IsPersistent { get; }
 }
