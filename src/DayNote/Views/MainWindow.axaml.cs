@@ -36,7 +36,6 @@ public partial class MainWindow : Window
     private IReadOnlyList<AttachmentItemViewModel>? _attachStartOrder;
     private bool _attachReordering;
     private string? _attachDragToken;
-    private readonly DispatcherTimer _attachDropLeaseTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainWindow()
     {
@@ -74,7 +73,6 @@ public partial class MainWindow : Window
             CancelAttachDragIntent();
             ClearAttachDropHighlight();
         };
-        _attachDropLeaseTimer.Tick += (_, _) => ClearAttachDropHighlight();
     }
 
     private void OnAttachDragOver(object? sender, DragEventArgs e)
@@ -84,15 +82,6 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.IsAttachmentDropActive = accept;
-        }
-        if (accept)
-        {
-            _attachDropLeaseTimer.Stop();
-            _attachDropLeaseTimer.Start();
-        }
-        else
-        {
-            ClearAttachDropHighlight();
         }
 
         e.Handled = true;
@@ -349,7 +338,6 @@ public partial class MainWindow : Window
 
     private void ClearAttachDropHighlight()
     {
-        _attachDropLeaseTimer.Stop();
         if (DataContext is MainWindowViewModel vm)
         {
             vm.IsAttachmentDropActive = false;
