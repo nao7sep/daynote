@@ -3,12 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
-using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Microsoft.Data.Sqlite;
 using DayNote.Core.Backup;
@@ -346,63 +344,12 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Pointer_capture_loss_cancels_the_live_preview_instead_of_leaving_split_orders()
+    public async Task Attachment_list_registers_as_the_native_reorder_receiver()
     {
         var (vm, window, list) = await OpenWindowWithThreeAttachmentsAsync();
-        var note = vm.SelectedNote!.Note;
-        var startingItems = vm.Attachments.ToArray();
-        var startingNames = note.Attachments.ToArray();
-        IPointer? pointer = null;
-        list.AddHandler(
-            InputElement.PointerMovedEvent,
-            (_, e) => pointer = e.Pointer,
-            RoutingStrategies.Bubble,
-            handledEventsToo: true);
 
-        list.UpdateLayout();
-        var first = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(0));
-        var third = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(2));
-        var start = first.TranslatePoint(new Point(20, first.Bounds.Height / 2), window)!.Value;
-        var end = third.TranslatePoint(new Point(20, third.Bounds.Height / 2), window)!.Value;
+        Assert.True(DragDrop.GetAllowDrop(list));
 
-        window.MouseDown(start, MouseButton.Left, RawInputModifiers.LeftMouseButton);
-        window.MouseMove(end, RawInputModifiers.LeftMouseButton);
-        Dispatcher.UIThread.RunJobs();
-        Assert.NotEqual(startingItems, vm.Attachments);
-        Assert.Equal(startingNames, note.Attachments); // pointer motion is still only a preview
-
-        Assert.NotNull(pointer);
-        pointer.Capture(null); // models the OS or another control taking capture
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.Equal(startingItems, vm.Attachments);
-        Assert.Equal(startingNames, note.Attachments);
-        Assert.Same(startingItems[0], list.SelectedItem);
-        Assert.True(list.IsKeyboardFocusWithin);
-        await CloseTestWindowAsync(vm, window);
-    }
-
-    [AvaloniaFact]
-    public async Task Pointer_release_commits_the_preview_without_capture_loss_rolling_it_back()
-    {
-        var (vm, window, list) = await OpenWindowWithThreeAttachmentsAsync();
-        var note = vm.SelectedNote!.Note;
-        var moved = vm.Attachments[0];
-        list.UpdateLayout();
-        var first = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(0));
-        var third = Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(2));
-        var start = first.TranslatePoint(new Point(20, first.Bounds.Height / 2), window)!.Value;
-        var end = third.TranslatePoint(new Point(20, third.Bounds.Height / 2), window)!.Value;
-
-        window.MouseDown(start, MouseButton.Left, RawInputModifiers.LeftMouseButton);
-        window.MouseMove(end, RawInputModifiers.LeftMouseButton);
-        window.MouseUp(end, MouseButton.Left, RawInputModifiers.None);
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.Same(moved, vm.Attachments[2]);
-        Assert.Same(moved, list.SelectedItem);
-        Assert.True(list.IsKeyboardFocusWithin);
-        Assert.Equal(vm.Attachments.Select(item => item.FileName), note.Attachments);
         await CloseTestWindowAsync(vm, window);
     }
 

@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -26,21 +25,17 @@ public partial class MainWindow : Window
     private double? _notesWidthIntent;
     private double? _attachmentsWidthIntent;
 
-    // Attachment reorder is done with manual pointer capture, NOT OS drag-and-drop: initiating a native
-    // drag with an in-app-only payload crashes the macOS backend (NSDraggingSession needs a pasteboard
-    // item). External file drops below still use OS DnD, since the OS supplies that drag session.
+    // Avalonia owns the attachment drag session. A serializable application format gives macOS a real
+    // pasteboard item; using an in-process-only object here previously crashed NSDraggingSession.
+    private static readonly DataFormat<string> AttachmentReorderFormat =
+        DataFormat.CreateStringApplicationFormat("com.nao7sep.daynote.attachment-reorder");
+
+    private TaskCompletionSource<bool>? _attachDragIntent;
     private AttachmentItemViewModel? _attachDragItem;
     private Point? _attachDragOrigin;
     private IReadOnlyList<AttachmentItemViewModel>? _attachStartOrder;
-    private IPointer? _attachCapturedPointer;
     private bool _attachReordering;
-    private Control? _attachDragContainer;
-    private int _attachStartIndex;
-    private double _attachRowStep;
-    private Point? _attachLastPosition;
-    private ScrollViewer? _attachScrollViewer;
-    private double _attachStartScrollOffset;
-    private readonly DispatcherTimer _attachAutoScrollTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
+    private string? _attachDragToken;
     private readonly DispatcherTimer _attachDropLeaseTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
     public MainWindow()
@@ -60,20 +55,25 @@ public partial class MainWindow : Window
         AttachPane.AddHandler(DragDrop.DragLeaveEvent, OnAttachDragLeave);
         AttachPane.AddHandler(DragDrop.DropEvent, OnAttachDrop);
 
-        // Press-and-drag a row to reorder it. handledEventsToo so the press is seen even if the ListBox
-        // consumed it for selection; the press is ignored when it lands on a button (the ✕).
+        // Keep only the click-versus-drag intention threshold here. Once it is crossed, Avalonia owns
+        // pointer capture, cursor feedback, target routing, cancellation, and terminal cleanup.
         AttachList.AddHandler(PointerPressedEvent, OnAttachItemPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
         AttachList.AddHandler(PointerMovedEvent, OnAttachItemPointerMoved);
         AttachList.AddHandler(PointerReleasedEvent, OnAttachItemPointerReleased, handledEventsToo: true);
-        AttachList.PointerCaptureLost += OnAttachPointerCaptureLost;
-        AttachList.DetachedFromVisualTree += OnAttachListDetachedFromVisualTree;
+        AttachList.PointerCaptureLost += (_, _) => CancelAttachDragIntent();
+        AttachList.DetachedFromVisualTree += (_, _) =>
+        {
+            CancelAttachDragIntent();
+            ClearAttachDropHighlight();
+        };
+        AttachList.AddHandler(DragDrop.DragOverEvent, OnAttachReorderDragOver);
+        AttachList.AddHandler(DragDrop.DropEvent, OnAttachReorderDrop);
         AttachList.AddHandler(KeyDownEvent, OnAttachListKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
         Deactivated += (_, _) =>
         {
-            FinishAttachDrag(commit: false);
+            CancelAttachDragIntent();
             ClearAttachDropHighlight();
         };
-        _attachAutoScrollTimer.Tick += OnAttachAutoScrollTick;
         _attachDropLeaseTimer.Tick += (_, _) => ClearAttachDropHighlight();
     }
 
@@ -126,7 +126,7 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void OnAttachItemPointerPressed(object? sender, PointerPressedEventArgs e)
+    private async void OnAttachItemPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         // Ignore presses on a button (the row's ✕) so they click rather than start a drag.
         if (e.Source is Visual v && (v is Button || v.GetVisualAncestors().OfType<Button>().Any()))
@@ -134,176 +134,131 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (e.GetCurrentPoint(AttachList).Properties.IsLeftButtonPressed
-            && (e.Source as Control)?.DataContext is AttachmentItemViewModel item)
+        if (_attachReordering || _attachDragIntent is not null
+            || !e.GetCurrentPoint(AttachList).Properties.IsLeftButtonPressed
+            || (e.Source as Control)?.DataContext is not AttachmentItemViewModel item)
         {
-            // The grabbed item is the active item for the whole transaction. Set this explicitly so
-            // a drag that crosses the platform's selection threshold still follows stable identity.
-            AttachList.SelectedItem = item;
-            (AttachList.ContainerFromIndex(AttachList.Items.IndexOf(item)) as Control)?.Focus();
-            _attachDragItem = item;
-            _attachDragOrigin = e.GetPosition(AttachList);
+            return;
         }
+
+        // The grabbed item is the active item for the whole transaction. Set this explicitly so a
+        // drag that crosses the platform's selection threshold still follows stable identity.
+        AttachList.SelectedItem = item;
+        (AttachList.ContainerFromIndex(AttachList.Items.IndexOf(item)) as Control)?.Focus();
+        _attachDragItem = item;
+        _attachDragOrigin = e.GetPosition(AttachList);
+        var intent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _attachDragIntent = intent;
+
+        var intended = await intent.Task;
+        if (!ReferenceEquals(_attachDragIntent, intent))
+        {
+            return;
+        }
+
+        _attachDragIntent = null;
+        _attachDragOrigin = null;
+        if (!intended || _attachDragItem is not { } activeItem)
+        {
+            _attachDragItem = null;
+            return;
+        }
+
+        await RunAttachmentReorderAsync(e, activeItem);
     }
 
     private void OnAttachItemPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_attachDragItem is not { } item || _attachDragOrigin is not { } origin
-            || DataContext is not MainWindowViewModel vm)
+        if (_attachDragIntent is not { } intent || _attachDragOrigin is not { } origin)
         {
             return;
         }
 
         if (!e.GetCurrentPoint(AttachList).Properties.IsLeftButtonPressed)
         {
-            CancelAttachDrag();
+            CancelAttachDragIntent();
             return;
         }
 
-        var pos = e.GetPosition(AttachList);
-        if (!_attachReordering)
+        if (AttachmentReorder.ExceedsDragThreshold(origin, e.GetPosition(AttachList)))
         {
-            if (Math.Abs(pos.X - origin.X) < 3 && Math.Abs(pos.Y - origin.Y) < 3)
-            {
-                return; // tiny threshold so a plain click is not treated as a drag
-            }
-
-            _attachReordering = true;
-            _attachStartIndex = vm.Attachments.IndexOf(item);
-            _attachStartOrder = vm.Attachments.ToArray();
-            _attachDragContainer = AttachList.ContainerFromIndex(_attachStartIndex) as Control;
-            _attachRowStep = MeasureRowStep();
-            _attachScrollViewer = AttachList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
-            _attachStartScrollOffset = _attachScrollViewer?.Offset.Y ?? 0;
-            _attachLastPosition = pos;
-            _attachAutoScrollTimer.Start();
-            if (_attachDragContainer is not null)
-            {
-                _attachDragContainer.ZIndex = 1000; // float the grabbed row above its siblings
-            }
-
-            e.Pointer.Capture(AttachList); // keep receiving moves even if the pointer leaves a row
-            _attachCapturedPointer = e.Pointer;
-
-            // Show the move cursor for the duration of the reorder — the "grabbing" affordance
-            // (Avalonia has no closed-hand shape; SizeAll is its move cursor). Set on the window so it
-            // holds as the pointer roams during the captured drag; reset in ClearAttachDrag.
-            Cursor = new Cursor(StandardCursorType.SizeAll);
+            intent.TrySetResult(true);
         }
+    }
 
-        if (_attachDragContainer is null)
+    private void OnAttachItemPointerReleased(object? sender, PointerReleasedEventArgs e) =>
+        CancelAttachDragIntent();
+
+    private async Task RunAttachmentReorderAsync(
+        PointerPressedEventArgs trigger,
+        AttachmentItemViewModel item)
+    {
+        if (DataContext is not MainWindowViewModel vm || vm.Attachments.IndexOf(item) < 0)
         {
+            _attachDragItem = null;
             return;
         }
 
-        _attachLastPosition = pos;
-        UpdateAttachDrag(item, origin, pos, vm);
+        _attachReordering = true;
+        _attachStartOrder = vm.Attachments.ToArray();
+        _attachDragToken = Guid.NewGuid().ToString("N");
+        using var transfer = new DataTransfer();
+        transfer.Add(DataTransferItem.Create(AttachmentReorderFormat, _attachDragToken));
+
+        var result = DragDropEffects.None;
+        try
+        {
+            result = await DragDrop.DoDragDropAsync(trigger, transfer, DragDropEffects.Move);
+        }
+        finally
+        {
+            FinishAttachDrag(commit: result == DragDropEffects.Move);
+        }
+    }
+
+    private void OnAttachReorderDragOver(object? sender, DragEventArgs e)
+    {
+        PreviewAttachmentReorder(e);
+    }
+
+    private void OnAttachReorderDrop(object? sender, DragEventArgs e)
+    {
+        PreviewAttachmentReorder(e);
+    }
+
+    private void PreviewAttachmentReorder(DragEventArgs e)
+    {
+        var isCurrentReorder = _attachReordering
+            && _attachDragToken is { } token
+            && e.DataTransfer.TryGetValue(AttachmentReorderFormat) == token;
+        if (!isCurrentReorder)
+        {
+            return; // external file delivery continues bubbling to AttachPane
+        }
+
         e.Handled = true;
-    }
-
-    private void UpdateAttachDrag(
-        AttachmentItemViewModel item,
-        Point origin,
-        Point pos,
-        MainWindowViewModel vm)
-    {
-        if (_attachDragContainer is not { } dragContainer)
+        e.DragEffects = DragDropEffects.None;
+        if (DataContext is not MainWindowViewModel vm
+            || _attachDragItem is not { } item
+            || (e.Source as Control)?.DataContext is not AttachmentItemViewModel target)
         {
             return;
         }
 
-        var scrollDelta = (_attachScrollViewer?.Offset.Y ?? _attachStartScrollOffset)
-            - _attachStartScrollOffset;
-        var delta = pos.Y - origin.Y + scrollDelta;
-        if (_attachRowStep > 0)
-        {
-            // Reflow: shift the other rows to open a gap where the dragged row will land. The target
-            // slot is the start index moved by however many whole rows the cursor has travelled.
-            var target = AttachmentReorder.TargetIndex(_attachStartIndex, delta, _attachRowStep, vm.Attachments.Count);
-            var current = vm.Attachments.IndexOf(item);
-            if (target != current)
-            {
-                var keepFocus = AttachList.IsKeyboardFocusWithin;
-                vm.MoveAttachment(item, target);
-                FollowAttachment(item, keepFocus); // collection moves can clear native selection
-                current = target;
-            }
-
-            // Keep the dragged row under the cursor by cancelling the layout shift its reorder caused.
-            dragContainer.RenderTransform =
-                new TranslateTransform(0, delta - ((current - _attachStartIndex) * _attachRowStep));
-        }
-        else
-        {
-            dragContainer.RenderTransform = new TranslateTransform(0, delta);
-        }
-
-    }
-
-    private void OnAttachAutoScrollTick(object? sender, EventArgs e)
-    {
-        if (!_attachReordering || _attachLastPosition is not { } position
-            || _attachScrollViewer is not { } scroll
-            || _attachDragItem is not { } item || _attachDragOrigin is not { } origin
-            || DataContext is not MainWindowViewModel vm)
+        var targetIndex = vm.Attachments.IndexOf(target);
+        if (targetIndex < 0)
         {
             return;
         }
 
-        var delta = AttachmentReorder.EdgeScrollDelta(
-            position.Y,
-            AttachList.Bounds.Height,
-            _attachRowStep);
-        if (delta == 0)
-        {
-            return;
-        }
-
-        var maximum = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
-        var next = Math.Clamp(scroll.Offset.Y + delta, 0, maximum);
-        if (Math.Abs(next - scroll.Offset.Y) < 0.01)
-        {
-            return;
-        }
-
-        scroll.Offset = new Vector(scroll.Offset.X, next);
-        UpdateAttachDrag(item, origin, position, vm);
-    }
-
-    private void OnAttachItemPointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        if (_attachReordering)
-        {
-            FinishAttachDrag(commit: true);
-            e.Handled = true;
-            return;
-        }
-
-        ClearAttachDrag();
-    }
-
-    private void OnAttachPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
-    {
-        // Capture can be taken by the OS or another control without a release event. That is a
-        // cancellation, so restore the rendered preview to its durable starting order.
-        FinishAttachDrag(commit: false, releaseCapture: false);
-    }
-
-    private void OnAttachListDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
-    {
-        FinishAttachDrag(commit: false);
-        ClearAttachDropHighlight();
+        var keepFocus = AttachList.IsKeyboardFocusWithin;
+        vm.MoveAttachment(item, targetIndex);
+        FollowAttachment(item, keepFocus);
+        e.DragEffects = DragDropEffects.Move;
     }
 
     private void OnAttachListKeyDown(object? sender, KeyEventArgs e)
     {
-        if (_attachReordering && e.Key == Key.Escape)
-        {
-            CancelAttachDrag();
-            e.Handled = true;
-            return;
-        }
-
         if (_attachReordering || ComposingTextBox.IsFocusedElementComposing(this)
             || DataContext is not MainWindowViewModel vm
             || AttachList.SelectedItem is not AttachmentItemViewModel item)
@@ -326,11 +281,8 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void CancelAttachDrag() => FinishAttachDrag(commit: false);
-
-    private void FinishAttachDrag(bool commit, bool releaseCapture = true)
+    private void FinishAttachDrag(bool commit)
     {
-        var pointer = _attachCapturedPointer;
         var activeItem = _attachDragItem;
         var keepFocus = AttachList.IsKeyboardFocusWithin;
         if (_attachReordering && DataContext is MainWindowViewModel vm)
@@ -348,17 +300,10 @@ public partial class MainWindow : Window
             }
         }
 
-        // Clear state before releasing capture: Capture(null) raises PointerCaptureLost, whose handler
-        // must observe an already-finished transaction rather than cancelling a committed release.
         ClearAttachDrag();
         if (activeItem is not null)
         {
             FollowAttachment(activeItem, keepFocus);
-        }
-
-        if (releaseCapture)
-        {
-            pointer?.Capture(null);
         }
     }
 
@@ -381,22 +326,25 @@ public partial class MainWindow : Window
 
     private void ClearAttachDrag()
     {
-        _attachAutoScrollTimer.Stop();
-        if (_attachDragContainer is not null)
-        {
-            _attachDragContainer.RenderTransform = null;
-            _attachDragContainer.ZIndex = 0;
-            _attachDragContainer = null;
-        }
-
         _attachDragItem = null;
         _attachDragOrigin = null;
         _attachStartOrder = null;
-        _attachCapturedPointer = null;
-        _attachLastPosition = null;
-        _attachScrollViewer = null;
+        _attachDragToken = null;
         _attachReordering = false;
-        Cursor = null; // back to the inherited default arrow (no-op if a drag never started)
+    }
+
+    private void CancelAttachDragIntent()
+    {
+        var intent = _attachDragIntent;
+        if (intent is null)
+        {
+            return;
+        }
+
+        _attachDragIntent = null;
+        _attachDragItem = null;
+        _attachDragOrigin = null;
+        intent.TrySetResult(false);
     }
 
     private void ClearAttachDropHighlight()
@@ -415,23 +363,6 @@ public partial class MainWindow : Window
         {
             vm.DismissToast(toast);
         }
-    }
-
-    // The vertical distance between consecutive attachment rows (they are uniform), measured from the
-    // first two containers so any inter-row spacing is included; falls back to the dragged row's height.
-    private double MeasureRowStep()
-    {
-        if (AttachList.ItemCount > 1
-            && AttachList.ContainerFromIndex(0) is Control a
-            && AttachList.ContainerFromIndex(1) is Control b
-            && a.TranslatePoint(default, AttachList) is { } pa
-            && b.TranslatePoint(default, AttachList) is { } pb
-            && Math.Abs(pb.Y - pa.Y) > 0)
-        {
-            return Math.Abs(pb.Y - pa.Y);
-        }
-
-        return _attachDragContainer?.Bounds.Height ?? 0;
     }
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
