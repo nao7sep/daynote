@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Input.Raw;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.Data.Sqlite;
 using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
@@ -349,6 +352,45 @@ public sealed class MainWindowViewModelTests : IDisposable
         var (vm, window, list) = await OpenWindowWithThreeAttachmentsAsync();
 
         Assert.True(DragDrop.GetAllowDrop(list));
+
+        await CloseTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task Attachment_pane_routes_external_files_and_neighboring_dead_space_denies()
+    {
+        var (vm, window, _) = await OpenWindowWithThreeAttachmentsAsync();
+        var pane = Assert.IsType<Border>(window.FindControl<Border>("AttachPane"));
+        var toolbar = Assert.IsType<Border>(window.GetVisualDescendants()
+            .OfType<Border>()
+            .First(control => control.GetValue(Grid.RowProperty) == 0));
+        var source = Path.Combine(_home, "headless-drop.txt");
+        File.WriteAllText(source, "delivered");
+        var storageFile = await window.StorageProvider.TryGetFileFromPathAsync(new Uri(source));
+        Assert.NotNull(storageFile);
+        using var transfer = new DataTransfer();
+        transfer.Add(DataTransferItem.CreateFile(storageFile));
+        Assert.True(vm.Editor.HasNote);
+        Assert.True(((IDataTransfer)transfer).Contains(DataFormat.File));
+        var panePoint = pane.TranslatePoint(new Point(10, 10), window);
+        var toolbarPoint = toolbar.TranslatePoint(new Point(10, 10), window);
+        Assert.NotNull(panePoint);
+        Assert.NotNull(toolbarPoint);
+
+        window.DragDrop(panePoint.Value, RawDragEventType.DragEnter, transfer, DragDropEffects.Copy, RawInputModifiers.None);
+        window.DragDrop(panePoint.Value, RawDragEventType.DragOver, transfer, DragDropEffects.Copy, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(vm.IsAttachmentDropActive);
+
+        window.DragDrop(panePoint.Value, RawDragEventType.Drop, transfer, DragDropEffects.Copy, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(vm.IsAttachmentDropActive);
+        Assert.Contains(vm.Attachments, attachment => attachment.FileName == "headless-drop.txt");
+
+        var count = vm.Attachments.Count;
+        window.DragDrop(toolbarPoint.Value, RawDragEventType.Drop, transfer, DragDropEffects.Copy, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(count, vm.Attachments.Count);
 
         await CloseTestWindowAsync(vm, window);
     }
