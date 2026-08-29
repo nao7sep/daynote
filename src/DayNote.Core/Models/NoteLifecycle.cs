@@ -1,7 +1,7 @@
 namespace DayNote.Core.Models;
 
 /// <summary>
-/// Applies the content-lifecycle timestamp rules when a note's status changes.
+/// Applies DayNote's lifecycle timestamp rules when a note's status changes.
 /// Timestamps are set-if-absent on forward moves and cleared only on return to draft.
 /// </summary>
 public static class NoteLifecycle
