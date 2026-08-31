@@ -11,11 +11,16 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed class ToastViewModel
 {
-    public ToastViewModel(ToastKind kind, string message, bool isPersistent = false)
+    public ToastViewModel(
+        ToastKind kind,
+        string message,
+        bool isPersistent = false,
+        string? resultKey = null)
     {
         Kind = kind;
         Message = message;
         IsPersistent = isPersistent;
+        ResultKey = resultKey;
         SeverityLabel = kind switch
         {
             ToastKind.Warning => "Warning",
@@ -47,4 +52,9 @@ public sealed class ToastViewModel
     public IBrush Accent { get; }
 
     public bool IsPersistent { get; }
+
+    /// <summary>
+    /// Identity of one still-active operational result. Null means each report is independent.
+    /// </summary>
+    public string? ResultKey { get; }
 }

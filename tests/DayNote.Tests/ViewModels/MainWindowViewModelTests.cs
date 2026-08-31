@@ -328,6 +328,54 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Repeated_save_failure_coalesces_and_recovery_resolves_only_that_result()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+
+        // Build three independent committed results through their real public operations.
+        vm.AddDroppedFiles([], unavailable: 1);
+
+        var source = Path.Combine(_home, "source.txt");
+        File.WriteAllText(source, "attachment content");
+        var noteAssets = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
+        Directory.CreateDirectory(Path.GetDirectoryName(noteAssets)!);
+        File.WriteAllText(noteAssets, "blocks the attachment directory");
+        vm.AddDroppedFiles(new[] { source });
+
+        File.Delete(noteAssets);
+        vm.AddDroppedFiles(new[] { source });
+        vm.AddDroppedFiles(new[] { source });
+        Assert.Equal(3, vm.Toasts.Count);
+
+        // A directory at the binder-file path makes the real atomic save fail on every retry.
+        File.Delete(BinderPath);
+        Directory.CreateDirectory(BinderPath);
+        vm.Editor.Title = "Unsaved title";
+
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(4, vm.Toasts.Count);
+        var firstFailure = Assert.Single(vm.Toasts, result => result.ResultKey is not null);
+        Assert.Equal(ToastKind.Error, firstFailure.Kind);
+        Assert.StartsWith("Save failed:", firstFailure.Message);
+
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(4, vm.Toasts.Count);
+        Assert.Single(vm.Toasts, result => result.ResultKey == firstFailure.ResultKey);
+
+        Directory.Delete(BinderPath);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, vm.Toasts.Count);
+        Assert.DoesNotContain(vm.Toasts, result => result.ResultKey is not null);
+        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.True(File.Exists(BinderPath));
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Adding_an_attachment_when_the_assets_directory_cannot_be_created_is_recoverable()
     {
         var vm = await OpenNewBinderAsync();

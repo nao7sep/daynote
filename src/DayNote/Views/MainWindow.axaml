@@ -44,10 +44,10 @@
     </Window.Styles>
 
     <Panel>
-    <!-- Three reserved tracks (toolbar / panes / status bar) so the fixed chrome bars each own an
-         auto-sized row and the star-sized pane row can never grow past its track and overlap the
-         status bar (a DockPanel fill child can — see the window-chrome conventions). The window's
-         minimum height (set in code-behind from WindowMetrics) reserves all three. -->
+    <!-- Three reserved tracks (toolbar / pane track / status bar) so the fixed chrome bars each own
+         an auto-sized row and the star-sized middle track can never overlap the status bar (a
+         DockPanel fill child can — see the window-chrome conventions). The pane track contains the
+         optional bounded results row plus the four panes; WindowMetrics reserves both maxima. -->
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}"
@@ -125,6 +125,10 @@
             </Grid>
         </Border>
 
+        <!-- Results and panes share the middle track but never share layout space. The optional
+             result row pushes the panes down instead of covering their controls; the window
+             minimum reserves the row's maximum so every pane still keeps its real minimum. -->
+        <Grid x:Name="PaneTrack" Grid.Row="1" RowDefinitions="Auto,*">
         <!-- Four panes -->
         <Grid x:Name="PaneGrid" Grid.Row="1" Margin="4">
             <Grid.ColumnDefinitions>
@@ -364,12 +368,12 @@
             </Border>
         </Grid>
 
-        <!-- Results belong to the pane track, never the fixed toolbar or status rows. The viewport
-             takes only its content height up to the pane's live height; additional persistent
-             results scroll locally instead of covering fixed chrome or becoming unreachable. -->
-        <ScrollViewer Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Top"
-                      Margin="0,12,20,12" Width="400" ZIndex="100" ClipToBounds="True"
-                      MaxHeight="{Binding Bounds.Height, ElementName=PaneGrid}"
+        <!-- Results use a dedicated bounded row inside the pane track, never an overlay. The row
+             collapses when empty, grows only to the viewport maximum, and then scrolls locally. -->
+        <ScrollViewer x:Name="ResultsViewport" Grid.Row="0"
+                      HorizontalAlignment="Right" VerticalAlignment="Top"
+                      Margin="0,8,20,8" Width="400" MaxHeight="180" ClipToBounds="True"
+                      IsVisible="{Binding HasResults}"
                       HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{Binding Toasts}">
                 <ItemsControl.ItemTemplate>
@@ -400,6 +404,7 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
+        </Grid>
     </Grid>
     </Panel>
 </Window>

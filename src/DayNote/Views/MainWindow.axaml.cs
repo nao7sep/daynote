@@ -363,7 +363,9 @@ public partial class MainWindow : Window
         }
 
         MinWidth = WindowMetrics.MinWidthFor(PaneGrid.ColumnDefinitions.Select(c => c.MinWidth));
-        MinHeight = WindowMetrics.MinHeightFor(EditorPaneContentMinHeight());
+        MinHeight = WindowMetrics.MinHeightFor(
+            EditorPaneContentMinHeight(),
+            ResultsViewport.MaxHeight + ResultsViewport.Margin.Top + ResultsViewport.Margin.Bottom);
 
         ClampPanesToWindow();
 

@@ -27,6 +27,8 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
+    private const string SaveFailureResultKey = "binder-save-failure";
+
     private readonly AppPaths _paths;
     private readonly BinderStore _binderStore = new();
     private readonly JsonStore<AppConfig> _configStore;
@@ -73,6 +75,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Binders.CollectionChanged += (_, _) => OnPropertyChanged(nameof(BindersEmptyStateText));
         Notes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(NotesEmptyStateText));
         Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(AttachmentsEmptyStateText));
+        Toasts.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasResults));
 
         _autosaveTimer = new DispatcherTimer();
         _autosaveTimer.Tick += async (_, _) =>
@@ -107,8 +110,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<BinderListItemViewModel> Binders { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
 
-    /// <summary>Active in-window results, rendered as a top-right overlay.</summary>
+    /// <summary>Active in-window results, rendered in their own bounded pane-track row.</summary>
     public ObservableCollection<ToastViewModel> Toasts { get; } = new();
+
+    public bool HasResults => Toasts.Count > 0;
 
     [ObservableProperty]
     private bool _isReady;
@@ -893,6 +898,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Editor.RefreshMetadata();
             RefreshSelectedListItem();
             SetSaveState(SaveState.Saved);
+            ResolveResult(SaveFailureResultKey);
             _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
             return true;
         }
@@ -900,7 +906,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             _log.Error("Failed to save binder", new { path = _current?.Path }, ex);
             SetSaveState(SaveState.Error);
-            ShowToast(ToastKind.Error, "Save failed: " + ex.Message);
+            ShowToast(
+                ToastKind.Error,
+                "Save failed: " + ex.Message,
+                resultKey: SaveFailureResultKey);
             return false;
         }
     }
@@ -1247,12 +1256,39 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public void DismissToast(ToastViewModel toast) => Toasts.Remove(toast);
 
-    private void ShowToast(ToastKind kind, string message, bool persistent = false)
+    private void ShowToast(
+        ToastKind kind,
+        string message,
+        bool persistent = false,
+        string? resultKey = null)
     {
         // Warnings and errors require attention, so elapsed time never clears them. Persistent
         // information is a single replaceable channel (for example a repeated duplicate result),
         // but it cannot evict an independent unresolved warning or error.
         var isPersistent = persistent || kind is ToastKind.Warning or ToastKind.Error;
+        if (resultKey is not null)
+        {
+            var existing = Toasts.FirstOrDefault(result => result.ResultKey == resultKey);
+            if (existing is not null)
+            {
+                if (existing.Kind == kind
+                    && existing.Message == message
+                    && existing.IsPersistent == isPersistent)
+                {
+                    return;
+                }
+
+                // Preserve the result's position while publishing the most useful current
+                // message. ObservableCollection replacement gives the view one coherent update.
+                Toasts[Toasts.IndexOf(existing)] = new ToastViewModel(
+                    kind,
+                    message,
+                    isPersistent,
+                    resultKey);
+                return;
+            }
+        }
+
         if (isPersistent && kind == ToastKind.Info)
         {
             foreach (var existing in Toasts
@@ -1263,7 +1299,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         }
 
-        var toast = new ToastViewModel(kind, message, isPersistent);
+        var toast = new ToastViewModel(kind, message, isPersistent, resultKey);
         Toasts.Add(toast);
         while (Toasts.Count > MaxToasts)
         {
@@ -1289,6 +1325,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Toasts.Remove(toast);
         };
         timer.Start();
+    }
+
+    private void ResolveResult(string resultKey)
+    {
+        foreach (var result in Toasts.Where(result => result.ResultKey == resultKey).ToArray())
+        {
+            Toasts.Remove(result);
+        }
     }
 
     partial void OnNotesFilterChanged(string value)

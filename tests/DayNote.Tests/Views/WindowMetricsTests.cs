@@ -12,11 +12,11 @@ namespace DayNote.Tests.Views;
 /// <summary>
 /// The window's minimum size is derived, not guessed (per the window-chrome conventions):
 /// <see cref="WindowMetrics"/> sums the live pane-Grid column minimums plus the splitters, grid
-/// margin, and fixed chrome so the window can never shrink small enough to hide a pane, the
-/// toolbar, or the status bar. These tests pin the derivation math directly (no Avalonia headless
-/// harness, matching the suite's pure-helper style) and guard that every content column declares a
-/// non-zero minimum width — so a future column added without one fails here rather than silently
-/// letting the window under-size.
+/// margin, bounded result viewport, and fixed chrome so the window can never shrink small enough to
+/// hide a pane, result action, toolbar, or status bar. These tests pin the derivation math directly
+/// (no Avalonia headless harness, matching the suite's pure-helper style) and guard that every
+/// content column declares a non-zero minimum width — so a future column added without one fails
+/// here rather than silently letting the window under-size.
 /// </summary>
 public sealed class WindowMetricsTests
 {
@@ -32,6 +32,7 @@ public sealed class WindowMetricsTests
 
     // The editor pane is the tallest; its content MinHeight in the XAML drives the height.
     private const double TallestPaneMinHeight = 300;
+    private const double ResultViewportReserveHeight = 180 + 8 + 8;
 
     [Fact]
     public void MinWidth_EqualsColumnMinimumsPlusChrome()
@@ -51,13 +52,15 @@ public sealed class WindowMetricsTests
     }
 
     [Fact]
-    public void MinHeight_EqualsChromePlusTallestPaneMinimum()
+    public void MinHeight_EqualsChromePlusResultsAndTallestPaneMinimum()
     {
         // Toolbar (52) + status bar (33) + pane vertical margins (16) + the tallest pane's content
-        // minimum. Mirrors the private constants in WindowMetrics; if those change, this changes
-        // with them deliberately.
+        // minimum + the bounded result viewport and its vertical margins. Mirrors the private
+        // constants/live XAML values; if those change, this changes with them deliberately.
         const double chromeHeight = 52 + 33 + 16;
-        Assert.Equal(chromeHeight + TallestPaneMinHeight, WindowMetrics.MinHeightFor(TallestPaneMinHeight));
+        Assert.Equal(
+            chromeHeight + TallestPaneMinHeight + ResultViewportReserveHeight,
+            WindowMetrics.MinHeightFor(TallestPaneMinHeight, ResultViewportReserveHeight));
     }
 
     [Fact]
@@ -65,8 +68,10 @@ public sealed class WindowMetricsTests
     {
         // Raising the tallest pane's content minimum must raise the window minimum by the same
         // amount — the height counterpart to the width-tracking property above.
-        var baseHeight = WindowMetrics.MinHeightFor(TallestPaneMinHeight);
-        Assert.Equal(baseHeight + 50, WindowMetrics.MinHeightFor(TallestPaneMinHeight + 50));
+        var baseHeight = WindowMetrics.MinHeightFor(TallestPaneMinHeight, ResultViewportReserveHeight);
+        Assert.Equal(
+            baseHeight + 50,
+            WindowMetrics.MinHeightFor(TallestPaneMinHeight + 50, ResultViewportReserveHeight));
     }
 
     [Fact]
@@ -92,12 +97,15 @@ public sealed class WindowMetricsTests
     }
 
     [Fact]
-    public void ResultViewport_IsBoundedToThePaneTrackAndScrollsLocally()
+    public void ResultViewport_HasItsOwnBoundedPaneTrackRowAndScrollsLocally()
     {
         var axaml = ReadMainWindowAxaml();
 
-        Assert.Contains("<ScrollViewer Grid.Row=\"1\"", axaml);
-        Assert.Contains("MaxHeight=\"{Binding Bounds.Height, ElementName=PaneGrid}\"", axaml);
+        Assert.Contains("<Grid x:Name=\"PaneTrack\" Grid.Row=\"1\" RowDefinitions=\"Auto,*\">", axaml);
+        Assert.Contains("<Grid x:Name=\"PaneGrid\" Grid.Row=\"1\"", axaml);
+        Assert.Contains("<ScrollViewer x:Name=\"ResultsViewport\" Grid.Row=\"0\"", axaml);
+        Assert.Contains("MaxHeight=\"180\"", axaml);
+        Assert.Contains("IsVisible=\"{Binding HasResults}\"", axaml);
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", axaml);
         Assert.Contains("<ItemsControl ItemsSource=\"{Binding Toasts}\">", axaml);
     }
