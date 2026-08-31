@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -282,6 +283,46 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         vm.DismissToast(replacement);
         Assert.Empty(vm.Toasts);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Persistent_information_does_not_replace_an_unresolved_error()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+
+        var source = Path.Combine(_home, "source.txt");
+        File.WriteAllText(source, "attachment content");
+        var assetsDirectory = BinderStore.AssetsDirectory(BinderPath);
+        File.WriteAllText(assetsDirectory, "blocked");
+
+        vm.AddDroppedFiles(new[] { source });
+
+        var error = Assert.Single(vm.Toasts);
+        Assert.Equal(ToastKind.Error, error.Kind);
+        Assert.True(error.IsPersistent);
+        Assert.Equal("Error", error.SeverityLabel);
+        Assert.Equal(AutomationLiveSetting.Assertive, error.LiveSetting);
+
+        File.Delete(assetsDirectory);
+        vm.AddDroppedFiles(new[] { source });
+        vm.AddDroppedFiles(new[] { source });
+
+        Assert.Collection(
+            vm.Toasts,
+            remaining => Assert.Same(error, remaining),
+            information =>
+            {
+                Assert.Equal(ToastKind.Info, information.Kind);
+                Assert.True(information.IsPersistent);
+                Assert.Equal("Information", information.SeverityLabel);
+                Assert.Equal(AutomationLiveSetting.Polite, information.LiveSetting);
+            });
+
+        vm.DismissToast(error);
+        Assert.Single(vm.Toasts);
 
         await vm.ShutdownAsync();
     }

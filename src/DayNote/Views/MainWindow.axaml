@@ -372,12 +372,17 @@
         <ItemsControl.ItemTemplate>
             <DataTemplate DataType="vm:ToastViewModel">
                 <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="1" CornerRadius="8" Margin="0,0,0,8" BoxShadow="0 6 20 0 #50000000">
+                        BorderThickness="1" CornerRadius="8" Margin="0,0,0,8" BoxShadow="0 6 20 0 #50000000"
+                        AutomationProperties.Name="{Binding AccessibleMessage}"
+                        AutomationProperties.LiveSetting="{Binding LiveSetting}">
                     <Grid ColumnDefinitions="4,*,Auto">
                         <Border Background="{Binding Accent}" CornerRadius="8,0,0,8"/>
-                        <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap"
-                                   Margin="12" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <StackPanel Grid.Column="1" Margin="12" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding SeverityLabel}" FontWeight="SemiBold"
+                                       Foreground="{Binding Accent}"/>
+                            <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                        </StackPanel>
                         <Button Grid.Column="2" Content="×" Classes="rowAction"
                                 Margin="4" Padding="8,4" VerticalAlignment="Center"
                                 IsVisible="{Binding IsPersistent}" Click="DismissToast_Click"

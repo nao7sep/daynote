@@ -1249,23 +1249,35 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void ShowToast(ToastKind kind, string message, bool persistent = false)
     {
-        if (persistent)
+        // Warnings and errors require attention, so elapsed time never clears them. Persistent
+        // information is a single replaceable channel (for example a repeated duplicate result),
+        // but it cannot evict an independent unresolved warning or error.
+        var isPersistent = persistent || kind is ToastKind.Warning or ToastKind.Error;
+        if (isPersistent && kind == ToastKind.Info)
         {
-            foreach (var existing in Toasts.Where(result => result.IsPersistent).ToArray())
+            foreach (var existing in Toasts
+                         .Where(result => result.IsPersistent && result.Kind == ToastKind.Info)
+                         .ToArray())
             {
                 Toasts.Remove(existing);
             }
         }
 
-        var toast = new ToastViewModel(kind, message, persistent);
+        var toast = new ToastViewModel(kind, message, isPersistent);
         Toasts.Add(toast);
         while (Toasts.Count > MaxToasts)
         {
             var transient = Toasts.FirstOrDefault(result => !result.IsPersistent);
-            Toasts.Remove(transient ?? Toasts[0]);
+            if (transient is null)
+            {
+                // A display-count cap cannot discard a problem that still requires attention.
+                break;
+            }
+
+            Toasts.Remove(transient);
         }
 
-        if (persistent)
+        if (isPersistent)
         {
             return;
         }
