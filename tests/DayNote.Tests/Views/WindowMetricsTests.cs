@@ -91,6 +91,17 @@ public sealed class WindowMetricsTests
         Assert.Equal(ContentColumnMinWidths, fromXaml);
     }
 
+    [Fact]
+    public void ResultViewport_IsBoundedToThePaneTrackAndScrollsLocally()
+    {
+        var axaml = ReadMainWindowAxaml();
+
+        Assert.Contains("<ScrollViewer Grid.Row=\"1\"", axaml);
+        Assert.Contains("MaxHeight=\"{Binding Bounds.Height, ElementName=PaneGrid}\"", axaml);
+        Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", axaml);
+        Assert.Contains("<ItemsControl ItemsSource=\"{Binding Toasts}\">", axaml);
+    }
+
     private static IReadOnlyList<double> ColumnMinWidths(string axaml) =>
         Regex.Matches(axaml, "<ColumnDefinition\\b[^>]*?MinWidth=\"(?<min>\\d+(?:\\.\\d+)?)\"")
             .Select(m => double.Parse(m.Groups["min"].Value, CultureInfo.InvariantCulture))
