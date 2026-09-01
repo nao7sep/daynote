@@ -97,10 +97,9 @@ public sealed class DialogService : IDialogService
         await dialog.ShowDialog(owner);
     }
 
-    public async Task<bool> ShowSettingsAsync(AppConfig config)
+    public async Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
     {
-        // The dialog edits the working copy in place, so Save just means "keep it"; Cancel discards it.
-        var dialog = new SettingsDialog(config);
+        var dialog = new SettingsDialog(config, trySave);
         await dialog.ShowDialog(RequireOwner());
         return dialog.Applied;
     }

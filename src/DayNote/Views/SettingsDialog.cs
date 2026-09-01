@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -25,11 +26,14 @@ public sealed class SettingsDialog : DialogBase
     private readonly NumericUpDown _autosave;
     private readonly TextBox _timeZone;
     private readonly Button _saveButton;
+    private readonly TextBlock _saveError;
+    private readonly Func<AppConfig, bool> _trySave;
     private EditorTextStyle? _defaultStyle;
 
-    public SettingsDialog(AppConfig config)
+    public SettingsDialog(AppConfig config, Func<AppConfig, bool> trySave)
     {
         _config = config;
+        _trySave = trySave;
         Title = "Settings";
         Width = 600;
 
@@ -81,6 +85,15 @@ public sealed class SettingsDialog : DialogBase
         panel.Children.Add(_autosave);
         panel.Children.Add(Label("Display time zone (IANA id, e.g. Asia/Tokyo)"));
         panel.Children.Add(_timeZone);
+        _saveError = new TextBlock
+        {
+            Foreground = PaletteBrush.Resolve("DangerTextBrush"),
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = false,
+        };
+        AutomationProperties.SetLiveSetting(_saveError, AutomationLiveSetting.Assertive);
+        panel.Children.Add(_saveError);
 
         SetContent(panel);
         var buttons = SetButtons([new DialogButton("Cancel", "cancel"), new DialogButton("Save", "ok", DialogButtonKind.Primary)]);
@@ -121,6 +134,25 @@ public sealed class SettingsDialog : DialogBase
     }
 
     public bool Applied => ResultTag == "ok";
+
+    protected override bool TryCommit(string tag)
+    {
+        if (tag != "ok")
+        {
+            return true;
+        }
+
+        _saveError.IsVisible = false;
+        _saveError.Text = string.Empty;
+        if (_trySave(_config))
+        {
+            return true;
+        }
+
+        _saveError.Text = "Settings could not be saved. Your changes are still here; try again.";
+        _saveError.IsVisible = true;
+        return false;
+    }
 
     private Border BuildStyleCard(EditorTextStyle style)
     {

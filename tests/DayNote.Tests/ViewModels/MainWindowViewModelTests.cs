@@ -614,7 +614,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task ShowErrorAsync(string title, string message) => Task.CompletedTask;
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
-        public Task<bool> ShowSettingsAsync(AppConfig config) => Task.FromResult(SettingsApplied);
+        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave) =>
+            Task.FromResult(SettingsApplied && trySave(config));
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName) => Task.FromResult(ExternalChoice);
         public Task OpenPathExternallyAsync(string path) => Task.CompletedTask;
     }

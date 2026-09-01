@@ -32,8 +32,8 @@ public interface IDialogService
     /// <summary>The custom keyboard-shortcuts dialog.</summary>
     Task ShowShortcutsAsync();
 
-    /// <summary>The custom settings dialog; mutates <paramref name="config"/> and returns true if applied.</summary>
-    Task<bool> ShowSettingsAsync(AppConfig config);
+    /// <summary>The custom settings dialog; keeps a failed save inline and returns true only after persistence succeeds.</summary>
+    Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave);
 
     /// <summary>Asks how to handle an external modification detected against unsaved edits.</summary>
     Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName);

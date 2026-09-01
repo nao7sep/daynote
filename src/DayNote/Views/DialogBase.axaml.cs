@@ -62,6 +62,9 @@ public partial class DialogBase : Window
 
     protected void SetInitialFocus(Control control) => _initialFocusControl = control;
 
+    /// <summary>Allows a feature dialog to finish its commit before the shell closes.</summary>
+    protected virtual bool TryCommit(string tag) => true;
+
     private void OnOpened(object? sender, EventArgs e)
     {
         if (_initialFocusControl is not null)
@@ -82,7 +85,13 @@ public partial class DialogBase : Window
     {
         if (sender is Button button)
         {
-            ResultTag = button.Tag as string;
+            var tag = button.Tag as string;
+            if (tag is null || !TryCommit(tag))
+            {
+                return;
+            }
+
+            ResultTag = tag;
             Close();
         }
     }

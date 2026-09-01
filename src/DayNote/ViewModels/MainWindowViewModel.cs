@@ -678,21 +678,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var working = _config.Copy();
-        if (!await _dialogs.ShowSettingsAsync(working))
+        if (!await _dialogs.ShowSettingsAsync(working, candidate =>
+            {
+                if (!TrySaveConfig(candidate))
+                {
+                    return false;
+                }
+
+                _log.Info("Settings saved", ConfigSummary(candidate));
+                return true;
+            }))
         {
             return;
         }
 
         _config = working;
-        if (TrySaveConfig())
-        {
-            _log.Info("Settings saved", ConfigSummary(_config));
-        }
-        else
-        {
-            ShowToast(ToastKind.Error, "Could not save settings.");
-        }
-
         ApplyConfig();
         foreach (var note in _allNotes)
         {
@@ -1389,11 +1389,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     // ----- Configuration / state -----------------------------------------------------------------
 
     /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
-    private bool TrySaveConfig()
+    private bool TrySaveConfig() => TrySaveConfig(_config);
+
+    private bool TrySaveConfig(AppConfig config)
     {
         try
         {
-            _configStore.Save(_config);
+            _configStore.Save(config);
             return true;
         }
         catch (Exception ex)
