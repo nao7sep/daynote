@@ -33,8 +33,9 @@ public sealed class SettingsDialogTests
         Assert.Equal(1, attempts);
         Assert.False(dialog.Applied);
         Assert.Equal("Menlo", font.Text);
-        Assert.Contains(dialog.GetLogicalDescendants().OfType<TextBlock>(), block =>
+        var error = dialog.GetLogicalDescendants().OfType<TextBlock>().Single(block =>
             block.IsVisible && block.Text?.Contains("could not be saved") == true);
+        Assert.True(error.Foreground?.Opacity > 0);
     }
 
     [AvaloniaFact]

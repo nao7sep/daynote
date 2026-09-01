@@ -87,7 +87,7 @@ public sealed class SettingsDialog : DialogBase
         panel.Children.Add(_timeZone);
         _saveError = new TextBlock
         {
-            Foreground = PaletteBrush.Resolve("DangerTextBrush"),
+            Foreground = PaletteBrush.Resolve("DangerBrush"),
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             IsVisible = false,
