@@ -25,7 +25,15 @@
                     HorizontalAlignment="Right"
                     Margin="0,20,0,0"/>
 
-        <ContentPresenter x:Name="DialogContent"/>
+        <!-- The shell grows naturally until OnOpened bounds it to the current
+             screen. Only the body scrolls at that cap, so the authored header
+             and every footer action remain available for long messages and
+             large user fonts. -->
+        <ScrollViewer x:Name="DialogScroll"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <ContentPresenter x:Name="DialogContent"/>
+        </ScrollViewer>
     </DockPanel>
 
 </Window>

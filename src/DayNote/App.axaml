@@ -102,6 +102,10 @@
             <Setter Property="Background" Value="{StaticResource AccentHover}"/>
             <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
         </Style>
+        <Style Selector="Button.accent:focus /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentHover}"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
+        </Style>
 
         <!-- A button states everything it requires of its label: that the content is
              centred, and that the padding around it is symmetric. Avalonia's stock button
@@ -141,6 +145,10 @@
             <Setter Property="Background" Value="{StaticResource UtilityHover}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
         </Style>
+        <Style Selector="Button.utility:focus /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource UtilityHover}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        </Style>
 
         <Style Selector="Button.destructive">
             <Setter Property="Background" Value="{StaticResource Danger}"/>
@@ -149,6 +157,10 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <Style Selector="Button.destructive:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource DangerHover}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.destructive:focus /template/ ContentPresenter">
             <Setter Property="Background" Value="{StaticResource DangerHover}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>

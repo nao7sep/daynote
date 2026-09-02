@@ -67,10 +67,25 @@ public partial class DialogBase : Window
 
     private void OnOpened(object? sender, EventArgs e)
     {
+        ClampHeightToScreen();
+
         if (_initialFocusControl is not null)
         {
             Dispatcher.UIThread.Post(() => _initialFocusControl.Focus());
         }
+    }
+
+    /// <summary>Keep SizeToContent from pushing fixed dialog chrome off-screen.</summary>
+    private void ClampHeightToScreen()
+    {
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen is null)
+        {
+            return;
+        }
+
+        // WorkingArea is physical pixels while MaxHeight is logical units.
+        MaxHeight = screen.WorkingArea.Height / screen.Scaling * 0.9;
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
