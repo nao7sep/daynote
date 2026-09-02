@@ -206,9 +206,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             await _dialogs.ShowErrorAsync(
                 "Load failed",
-                "DayNote could not read its configuration or state files, so saving is disabled to avoid " +
-                "overwriting good data. Fix or remove the files in " + _paths.Root + " and restart.\n\n" +
-                _loadError.Message);
+                FailurePresentation.StartupData());
             return;
         }
 
@@ -841,7 +839,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         catch (Exception ex)
         {
             _log.Error("Failed to open binder", new { path }, ex);
-            await _dialogs.ShowErrorAsync("Could not open binder", ex.Message);
+            await _dialogs.ShowErrorAsync("Could not open binder", FailurePresentation.OpenBinder(ex));
             return;
         }
 
@@ -963,7 +961,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             SetSaveState(SaveState.Error);
             ShowResult(
                 OperationResultKind.Error,
-                "Save failed: " + ex.Message,
+                FailurePresentation.SaveBinder(ex),
                 resultKey: SaveFailureResultKey);
             return false;
         }

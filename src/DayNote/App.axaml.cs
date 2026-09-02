@@ -37,15 +37,8 @@ public partial class App : Application
                     var lostBinderList = quarantined.Any(
                         path => System.IO.Path.GetFileName(path).StartsWith("state-", StringComparison.Ordinal));
                     await dialogs.ShowErrorAsync(
-                        "A settings file was reset",
-                        "A file was unreadable and has been set aside so nothing is lost:\n\n" +
-                        string.Join("\n", quarantined) +
-                        (lostBinderList
-                            ? "\n\nDayNote started with an empty binder list. Your binder FILES are untouched on disk, "
-                              + "but the list of which binders you had open — and any titles you set for them — is only "
-                              + "in the file above. Re-open your binders, or recover the list from it, before quitting: "
-                              + "quitting writes the empty list back."
-                            : "\n\nDayNote started with defaults for it. Your binders and notes are untouched."));
+                        lostBinderList ? "The binder list was reset" : "A settings file was reset",
+                        FailurePresentation.RecoveredData(lostBinderList));
                 }
             };
         }

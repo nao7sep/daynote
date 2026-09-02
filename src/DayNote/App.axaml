@@ -205,6 +205,23 @@
             <Setter Property="Background" Value="{StaticResource Utility}"/>
         </Style>
 
+        <!-- Persistent results keep a quiet, always-present close affordance at their upper end. -->
+        <Style Selector="Button.resultClose">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="6"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="Button.resultClose:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="Button.resultClose:focus /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        </Style>
+
         <!-- Text-style preset cards are uniform; the default one is marked by its "Default" pill,
              not a whole-card highlight (that read as a selection). -->
         <Style Selector="Border.stylePreset">

@@ -20,13 +20,7 @@ public sealed class OperationResultViewModel
         Message = message;
         IsPersistent = isPersistent;
         ResultKey = resultKey;
-        SeverityLabel = kind switch
-        {
-            OperationResultKind.Warning => "Warning",
-            OperationResultKind.Error => "Error",
-            _ => "Information",
-        };
-        AccessibleMessage = $"{SeverityLabel}: {message}";
+        AccessibleMessage = message;
         LiveSetting = kind == OperationResultKind.Error
             ? AutomationLiveSetting.Assertive
             : AutomationLiveSetting.Polite;
@@ -41,8 +35,6 @@ public sealed class OperationResultViewModel
     public OperationResultKind Kind { get; }
 
     public string Message { get; }
-
-    public string SeverityLabel { get; }
 
     public string AccessibleMessage { get; }
 

@@ -304,7 +304,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var error = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Error, error.Kind);
         Assert.True(error.IsPersistent);
-        Assert.Equal("Error", error.SeverityLabel);
+        Assert.Equal(error.Message, error.AccessibleMessage);
         Assert.Equal(AutomationLiveSetting.Assertive, error.LiveSetting);
 
         File.Delete(assetsDirectory);
@@ -314,7 +314,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var information = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Info, information.Kind);
         Assert.True(information.IsPersistent);
-        Assert.Equal("Information", information.SeverityLabel);
+        Assert.Equal(information.Message, information.AccessibleMessage);
         Assert.Equal(AutomationLiveSetting.Polite, information.LiveSetting);
         Assert.Empty(vm.Results);
 
@@ -352,7 +352,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.SaveNowCommand.ExecuteAsync(null);
         var firstFailure = Assert.Single(vm.Results, result => result.ResultKey is not null);
         Assert.Equal(OperationResultKind.Error, firstFailure.Kind);
-        Assert.StartsWith("Save failed:", firstFailure.Message);
+        Assert.StartsWith("Your changes are still in DayNote", firstFailure.Message);
 
         await vm.SaveNowCommand.ExecuteAsync(null);
         Assert.Single(vm.Results, result => result.ResultKey == firstFailure.ResultKey);
