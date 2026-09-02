@@ -22,9 +22,11 @@ public sealed class FailurePresentationTests
         var reload = FailurePresentation.ReloadBinder(error);
         var link = FailurePresentation.OpenExternalLink(error);
         var startup = FailurePresentation.StartupData();
+        var startupStorage = FailurePresentation.StartupStorage();
         var recovery = FailurePresentation.RecoveredData(binderListWasReset: true);
 
         Assert.DoesNotContain(Hostile, startup, StringComparison.Ordinal);
+        Assert.DoesNotContain(Hostile, startupStorage, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, recovery, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, open, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, save, StringComparison.Ordinal);

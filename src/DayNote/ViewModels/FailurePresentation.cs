@@ -5,6 +5,9 @@ namespace DayNote.ViewModels;
 /// <summary>Maps diagnostic exceptions to deliberately authored, user-safe DayNote copy.</summary>
 public static class FailurePresentation
 {
+    public static string StartupStorage() =>
+        "DayNote could not open its storage location. Check that the location exists and is writable, then restart DayNote.";
+
     public static string StartupData() =>
         "DayNote could not read its configuration or state files, so saving is disabled to avoid " +
         "overwriting good data. Check the session log, repair or remove the affected data file, and restart.";

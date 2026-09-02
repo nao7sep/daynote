@@ -4,6 +4,7 @@ using DayNote.Core.Backup;
 using DayNote.Core.Storage;
 using DayNote.Logging;
 using DayNote.Services;
+using DayNote.ViewModels;
 
 namespace DayNote;
 
@@ -33,6 +34,8 @@ internal static class Program
             // channel; exit non-zero before any UI loads.
             Console.Error.WriteLine(
                 "DayNote cannot start: its storage location could not be resolved. " + ex.Message);
+            App.StartupFailureMessage = FailurePresentation.StartupStorage();
+            _ = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
             return 1;
         }
 
@@ -44,6 +47,8 @@ internal static class Program
         {
             Console.Error.WriteLine(
                 "DayNote cannot start: its storage location could not be created. " + ex.Message);
+            App.StartupFailureMessage = FailurePresentation.StartupStorage();
+            _ = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
             return 1;
         }
 

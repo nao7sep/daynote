@@ -11,12 +11,24 @@ namespace DayNote;
 
 public partial class App : Application
 {
+    internal static string? StartupFailureMessage { get; set; }
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            if (StartupFailureMessage is { } startupFailure)
+            {
+                desktop.MainWindow = new MessageDialog(
+                    "DayNote could not start",
+                    startupFailure,
+                    [new DialogButton("Close", "close", DialogButtonKind.Primary)]);
+                base.OnFrameworkInitializationCompleted();
+                return;
+            }
+
             // The view model owns its stores and gates all startup I/O (directory creation, reading
             // config/state) so a failure becomes an in-app error rather than a pre-UI crash.
             var dialogs = new DialogService(Program.Log);
