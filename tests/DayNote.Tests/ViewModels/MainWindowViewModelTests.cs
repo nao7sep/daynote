@@ -48,11 +48,35 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     private string BinderPath => Path.Combine(_home, "test.daynote");
 
-    private MainWindowViewModel NewViewModel()
+    private MainWindowViewModel NewViewModel(Action<string>? deleteFile = null)
     {
-        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger(), deleteFile);
         Assert.True(vm.IsReady);
         return vm;
+    }
+
+    [AvaloniaFact]
+    public async Task Attachment_remove_failure_keeps_the_item_and_authors_hostile_diagnostics()
+    {
+        var hostile = new IOException("EACCES IPC /private/tmp/DAYNOTE-REMOVE-SENTINEL");
+        var vm = NewViewModel(_ => throw hostile);
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var source = Path.Combine(_home, "remove-me.txt");
+        File.WriteAllText(source, "attachment content");
+        vm.AddDroppedFiles(new[] { source });
+        var item = Assert.Single(vm.Attachments);
+
+        await vm.RemoveAttachmentCommand.ExecuteAsync(item);
+
+        Assert.Contains(item.FileName, vm.SelectedNote!.Note.Attachments);
+        Assert.True(File.Exists(item.FullPath));
+        var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
+        Assert.Contains("remains attached", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("DAYNOTE-REMOVE-SENTINEL", result.Message, StringComparison.Ordinal);
+        Assert.Empty(vm.Results);
+        await vm.ShutdownAsync();
     }
 
     private async Task<MainWindowViewModel> OpenNewBinderAsync()

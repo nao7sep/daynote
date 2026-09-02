@@ -39,6 +39,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly JsonStore<AppState> _stateStore;
     private readonly IDialogService _dialogs;
     private readonly IAppLogger _log;
+    private readonly Action<string> _deleteFile;
 
     private readonly DispatcherTimer _autosaveTimer;
     private readonly DispatcherTimer _externalTimer;
@@ -59,11 +60,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _externalCheckInProgress;
     private SaveState _saveState = SaveState.Saved;
 
-    public MainWindowViewModel(AppPaths paths, IDialogService dialogs, IAppLogger log)
+    public MainWindowViewModel(AppPaths paths, IDialogService dialogs, IAppLogger log, Action<string>? deleteFile = null)
     {
         _paths = paths;
         _dialogs = dialogs;
         _log = log;
+        _deleteFile = deleteFile ?? File.Delete;
         _configStore = new JsonStore<AppConfig>(paths.ConfigFile);
         _stateStore = new JsonStore<AppState>(paths.StateFile);
 
@@ -733,19 +735,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         _log.Info("Removing attachment", new { noteId = note.Id, file = item.FileName });
-        note.Attachments.Remove(item.FileName);
         try
         {
             if (File.Exists(item.FullPath))
             {
-                File.Delete(item.FullPath);
+                _deleteFile(item.FullPath);
             }
         }
         catch (Exception ex)
         {
             _log.Error("Failed to delete attachment", new { noteId = note.Id, path = item.FullPath }, ex);
+            AttachmentResult = new OperationResultViewModel(
+                OperationResultKind.Error,
+                "The attachment could not be removed. It remains attached and its file is unchanged; try again.",
+                isPersistent: true,
+                resultKey: $"remove-attachment:{note.Id}:{item.FileName}");
+            return;
         }
 
+        note.Attachments.Remove(item.FileName);
+        if (AttachmentResult?.ResultKey == $"remove-attachment:{note.Id}:{item.FileName}")
+        {
+            AttachmentResult = null;
+        }
         LoadAttachments(note);
         MarkDirty(note.Id);
     }
