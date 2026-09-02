@@ -14,9 +14,10 @@ namespace DayNote.ViewModels;
 public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposable
 {
     private const int ThumbnailWidth = 240;
+    private const string UnavailableMessage = "This attachment is unavailable on disk.";
 
     private readonly IAppLogger _log;
-    private readonly string _sizeText;
+    private string _sizeText;
     private bool _disposed;
 
     public AttachmentItemViewModel(Attachment attachment, IAppLogger log)
@@ -29,7 +30,16 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         Exists = File.Exists(attachment.FullPath);
         _sizeText = FormatSize(FileSize(attachment.FullPath));
         // Until/unless image dimensions load, the details line is just the file size.
-        DetailsText = _sizeText;
+        DetailsText = Exists ? _sizeText : "Unavailable";
+
+        if (!Exists)
+        {
+            _log.Warn("Attachment is unavailable", new { path = FullPath });
+            Result = new OperationResultViewModel(
+                OperationResultKind.Warning,
+                UnavailableMessage,
+                isPersistent: true);
+        }
 
         if (IsImage && Exists)
         {
@@ -55,6 +65,11 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     [ObservableProperty]
     private Bitmap? _thumbnail;
 
+    [ObservableProperty]
+    private OperationResultViewModel? _result;
+
+    public bool HasResult => Result is not null;
+
     public bool HasThumbnail => Thumbnail is not null;
 
     public bool ShowFilePlaceholder => Thumbnail is null;
@@ -63,6 +78,48 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     {
         OnPropertyChanged(nameof(HasThumbnail));
         OnPropertyChanged(nameof(ShowFilePlaceholder));
+    }
+
+    partial void OnResultChanged(OperationResultViewModel? value) =>
+        OnPropertyChanged(nameof(HasResult));
+
+    public void ShowOpenFailure() =>
+        Result = new OperationResultViewModel(
+            OperationResultKind.Error,
+            "Could not open this attachment. Double-click to try again.",
+            isPersistent: true);
+
+    public void ShowUnavailable()
+    {
+        Exists = false;
+        Thumbnail?.Dispose();
+        Thumbnail = null;
+        DetailsText = "Unavailable";
+        if (Result is { Kind: OperationResultKind.Warning, Message: UnavailableMessage })
+        {
+            return;
+        }
+
+        Result = new OperationResultViewModel(
+            OperationResultKind.Warning,
+            UnavailableMessage,
+            isPersistent: true);
+    }
+
+    public void ClearOpenResult()
+    {
+        Exists = true;
+        _sizeText = FormatSize(FileSize(FullPath));
+        DetailsText = _sizeText;
+        if (Result?.Kind is OperationResultKind.Warning or OperationResultKind.Error)
+        {
+            Result = null;
+        }
+
+        if (IsImage && Thumbnail is null)
+        {
+            _ = LoadThumbnailAsync();
+        }
     }
 
     private async Task LoadThumbnailAsync()

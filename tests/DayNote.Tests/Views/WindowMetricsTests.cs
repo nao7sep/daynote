@@ -107,7 +107,21 @@ public sealed class WindowMetricsTests
         Assert.Contains("MaxHeight=\"180\"", axaml);
         Assert.Contains("IsVisible=\"{Binding HasResults}\"", axaml);
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", axaml);
-        Assert.Contains("<ItemsControl ItemsSource=\"{Binding Toasts}\">", axaml);
+        Assert.Contains("<ItemsControl ItemsSource=\"{Binding Results}\">", axaml);
+    }
+
+    [Fact]
+    public void Attachment_results_are_rendered_inside_the_attachment_pane_and_rows()
+    {
+        var axaml = ReadMainWindowAxaml();
+        var paneStart = axaml.IndexOf("<Border x:Name=\"AttachPane\"", System.StringComparison.Ordinal);
+        var paneEnd = axaml.IndexOf("</Grid>\n\n        <!-- Results use", paneStart, System.StringComparison.Ordinal);
+        var attachmentPane = axaml[paneStart..paneEnd];
+
+        Assert.Contains("IsVisible=\"{Binding HasAttachmentResult}\"", attachmentPane);
+        Assert.Contains("AutomationProperties.LiveSetting=\"{Binding AttachmentResult.LiveSetting}\"", attachmentPane);
+        Assert.Contains("IsVisible=\"{Binding HasResult}\"", attachmentPane);
+        Assert.Contains("AutomationProperties.LiveSetting=\"{Binding Result.LiveSetting}\"", attachmentPane);
     }
 
     private static IReadOnlyList<double> ColumnMinWidths(string axaml) =>

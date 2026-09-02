@@ -42,6 +42,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly List<NoteListItemViewModel> _allNotes = new();
     private readonly List<BinderListItemViewModel> _allBinders = new();
     private readonly HashSet<string> _dirtyNoteIds = new();
+    private string? _attachmentNoteId;
 
     private AppConfig _config = new();
     private AppState _state = new();
@@ -75,7 +76,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Binders.CollectionChanged += (_, _) => OnPropertyChanged(nameof(BindersEmptyStateText));
         Notes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(NotesEmptyStateText));
         Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(AttachmentsEmptyStateText));
-        Toasts.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasResults));
+        Results.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasResults));
 
         _autosaveTimer = new DispatcherTimer();
         _autosaveTimer.Tick += async (_, _) =>
@@ -111,9 +112,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
 
     /// <summary>Active in-window results, rendered in their own bounded pane-track row.</summary>
-    public ObservableCollection<ToastViewModel> Toasts { get; } = new();
+    public ObservableCollection<OperationResultViewModel> Results { get; } = new();
 
-    public bool HasResults => Toasts.Count > 0;
+    public bool HasResults => Results.Count > 0;
+
+    [ObservableProperty]
+    private OperationResultViewModel? _attachmentResult;
+
+    public bool HasAttachmentResult => AttachmentResult is not null;
+
+    partial void OnAttachmentResultChanged(OperationResultViewModel? value) =>
+        OnPropertyChanged(nameof(HasAttachmentResult));
+
+    public void DismissAttachmentResult() => AttachmentResult = null;
 
     [ObservableProperty]
     private bool _isReady;
@@ -279,7 +290,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             item.IsMissing = true;
             _log.Warn("Known binder is missing from disk", new { path = item.Path });
-            ShowToast(ToastKind.Warning, "That binder is no longer at " + item.Path);
+            ShowResult(OperationResultKind.Warning, "That binder is no longer at " + item.Path);
             return;
         }
 
@@ -495,12 +506,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             if (unavailable > 0)
             {
-                ShowToast(
-                    ToastKind.Warning,
+                _log.Warn("Attachment admission contained unreadable items", new { noteId = note.Id, unavailable });
+                AttachmentResult = new OperationResultViewModel(
+                    OperationResultKind.Warning,
                     unavailable == 1
                         ? "That item is not a readable local file."
                         : $"{unavailable} items are not readable local files.",
-                    persistent: true);
+                    isPersistent: true);
             }
             return;
         }
@@ -516,7 +528,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             // Attachment setup is an edge failure, not a reason for a file drop to escape into the
             // UI event loop and terminate the app.
             _log.Error("Failed to prepare attachment directory", new { noteId = note.Id, path = directory }, ex);
-            ShowToast(ToastKind.Error, "Could not add attachments: " + ex.Message, persistent: true);
+            AttachmentResult = new OperationResultViewModel(
+                OperationResultKind.Error,
+                "Could not prepare the attachment folder. Check that the binder location is writable, then try again.",
+                isPersistent: true);
             return;
         }
 
@@ -543,8 +558,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         _log.Info("Adding attachments", new { noteId = note.Id, requested = files.Count });
         var added = 0;
-        var duplicates = 0;
-        var failures = new List<(string FileName, string Reason)>();
+        var duplicateNames = new List<string>();
+        var failures = new List<string>();
         foreach (var source in files)
         {
             try
@@ -552,7 +567,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 var hash = ContentHash.Sha256HexFile(source);
                 if (hashes.ContainsKey(hash))
                 {
-                    duplicates++;
+                    duplicateNames.Add(Path.GetFileName(source));
                     continue;
                 }
 
@@ -568,39 +583,61 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             catch (Exception ex)
             {
                 _log.Error("Failed to add attachment", new { noteId = note.Id, source }, ex);
-                failures.Add((Path.GetFileName(source), ex.Message));
+                failures.Add(Path.GetFileName(source));
             }
         }
 
-        _log.Info("Attachments added", new { noteId = note.Id, added, duplicates, failed = failures.Count });
+        _log.Info("Attachments added", new
+        {
+            noteId = note.Id,
+            added,
+            duplicates = duplicateNames.Count,
+            unavailable,
+            failed = failures.Count,
+        });
+        if (unavailable > 0)
+        {
+            _log.Warn("Attachment admission contained unreadable items", new { noteId = note.Id, unavailable });
+        }
+
+        var addedText = added > 0
+            ? $"Added {added} attachment{(added == 1 ? ". " : "s. ")}"
+            : string.Empty;
+        var duplicateText = duplicateNames.Count > 0
+            ? $"Already attached: {SummarizeFileNames(duplicateNames)}. "
+            : string.Empty;
+        var unavailableText = unavailable > 0
+            ? unavailable == 1
+                ? "One item is not a readable local file. "
+                : $"{unavailable} items are not readable local files. "
+            : string.Empty;
+
         if (failures.Count > 0)
         {
-            var addedText = added > 0 ? $"Added {added} attachment{(added == 1 ? "" : "s")}; " : string.Empty;
-            var duplicateText = duplicates > 0 ? $"{duplicates} already attached; " : string.Empty;
-            var unavailableText = unavailable > 0 ? $"{unavailable} not readable local files; " : string.Empty;
-            var details = string.Join("; ", failures.Select(failure => $"{failure.FileName}: {failure.Reason}"));
-            ShowToast(
-                ToastKind.Error,
-                $"{addedText}{duplicateText}{unavailableText}could not add {failures.Count}: {details}",
-                persistent: true);
+            var failedNames = SummarizeFileNames(failures);
+            AttachmentResult = new OperationResultViewModel(
+                OperationResultKind.Error,
+                $"{addedText}{duplicateText}{unavailableText}Could not add: {failedNames}. " +
+                "Check that the files and binder folder are available, then try again.",
+                isPersistent: true);
         }
         else if (unavailable > 0)
         {
-            var addedText = added > 0 ? $"Added {added} attachment{(added == 1 ? "" : "s")}; " : string.Empty;
-            var duplicateText = duplicates > 0 ? $"{duplicates} already attached; " : string.Empty;
-            ShowToast(
-                ToastKind.Warning,
-                unavailable == 1
-                    ? $"{addedText}{duplicateText}1 item is not a readable local file."
-                    : $"{addedText}{duplicateText}{unavailable} items are not readable local files.",
-                persistent: true);
+            AttachmentResult = new OperationResultViewModel(
+                OperationResultKind.Warning,
+                (addedText + duplicateText + unavailableText).TrimEnd(),
+                isPersistent: true);
         }
-        else if (duplicates > 0)
+        else if (duplicateNames.Count > 0)
         {
-            ShowToast(ToastKind.Info, duplicates == 1
-                ? "That file is already attached to this note."
-                : $"{duplicates} files are already attached to this note.",
-                persistent: true);
+            AttachmentResult = new OperationResultViewModel(
+                OperationResultKind.Info,
+                (addedText + duplicateText).TrimEnd(),
+                isPersistent: true);
+        }
+        else
+        {
+            AttachmentResult = null;
         }
 
         if (added > 0)
@@ -608,6 +645,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             LoadAttachments(note);
             MarkDirty(note.Id);
         }
+    }
+
+    private static string SummarizeFileNames(IEnumerable<string> fileNames)
+    {
+        const int visibleLimit = 3;
+        var names = fileNames.Where(name => !string.IsNullOrWhiteSpace(name)).ToArray();
+        if (names.Length == 0)
+        {
+            return "the selected files";
+        }
+
+        var visible = string.Join(", ", names.Take(visibleLimit));
+        return names.Length > visibleLimit
+            ? $"{visible}, and {names.Length - visibleLimit} more"
+            : visible;
     }
 
     [RelayCommand]
@@ -654,6 +706,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         if (!File.Exists(item.FullPath))
         {
+            _log.Warn("Could not open unavailable attachment", new { path = item.FullPath });
+            item.ShowUnavailable();
             return;
         }
 
@@ -661,11 +715,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         try
         {
             await _dialogs.OpenPathExternallyAsync(item.FullPath);
+            item.ClearOpenResult();
         }
         catch (Exception ex)
         {
             _log.Error("Failed to open attachment externally", new { path = item.FullPath }, ex);
-            ShowToast(ToastKind.Error, "Could not open " + item.FileName);
+            item.ShowOpenFailure();
         }
     }
 
@@ -737,7 +792,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             TrySaveConfig();
         }
 
-        ShowToast(ToastKind.Info, "Text style: " + next.Name);
+        ShowResult(OperationResultKind.Info, "Text style: " + next.Name);
     }
 
     // ----- Binder open / close / save ----------------------------------------------------------
@@ -898,7 +953,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             Editor.RefreshMetadata();
             RefreshSelectedListItem();
             SetSaveState(SaveState.Saved);
-            ResolveResult(SaveFailureResultKey);
+            ResolveShellResult(SaveFailureResultKey);
             _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
             return true;
         }
@@ -906,8 +961,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             _log.Error("Failed to save binder", new { path = _current?.Path }, ex);
             SetSaveState(SaveState.Error);
-            ShowToast(
-                ToastKind.Error,
+            ShowResult(
+                OperationResultKind.Error,
                 "Save failed: " + ex.Message,
                 resultKey: SaveFailureResultKey);
             return false;
@@ -934,13 +989,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 case ExternalChange.Deleted:
                     _externalChangeAcknowledged = true;
                     _log.Warn("Binder file was deleted on disk", new { path = _current.Path });
-                    ShowToast(ToastKind.Warning, "The binder file was deleted. Your edits remain; saving will recreate it.");
+                    ShowResult(OperationResultKind.Warning, "The binder file was deleted. Your edits remain; saving will recreate it.");
                     return;
 
                 case ExternalChange.Modified when !_dirty:
                     _log.Info("Binder changed on disk; reloading", new { path = _current.Path });
                     ReloadFromDisk();
-                    ShowToast(ToastKind.Info, "Reloaded after an external change.");
+                    ShowResult(OperationResultKind.Info, "Reloaded after an external change.");
                     return;
 
                 case ExternalChange.Modified:
@@ -1200,17 +1255,42 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void LoadAttachments(Note? note)
     {
-        DisposeAttachments();
+        var canReuseRows = note is not null
+            && string.Equals(_attachmentNoteId, note.Id, StringComparison.Ordinal);
+        var reusable = canReuseRows
+            ? Attachments.ToDictionary(item => item.FileName, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, AttachmentItemViewModel>(StringComparer.OrdinalIgnoreCase);
+
+        if (!canReuseRows)
+        {
+            DisposeAttachments();
+        }
+
         Attachments.Clear();
         if (note is null || _current is null)
         {
+            _attachmentNoteId = null;
             return;
         }
 
         foreach (var attachment in BinderStore.ResolveAttachments(_current.Path, note))
         {
-            Attachments.Add(new AttachmentItemViewModel(attachment, _log));
+            if (reusable.Remove(attachment.FileName, out var existing))
+            {
+                Attachments.Add(existing);
+            }
+            else
+            {
+                Attachments.Add(new AttachmentItemViewModel(attachment, _log));
+            }
         }
+
+        foreach (var removed in reusable.Values)
+        {
+            removed.Dispose();
+        }
+
+        _attachmentNoteId = note.Id;
     }
 
     private void DisposeAttachments()
@@ -1251,24 +1331,24 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void RefreshSelectedListItem() => SelectedNote?.Refresh();
 
-    private const int MaxToasts = 4;
-    private static readonly TimeSpan ToastLifetime = TimeSpan.FromSeconds(4);
+    private const int MaxShellResults = 4;
+    private static readonly TimeSpan TransientResultLifetime = TimeSpan.FromSeconds(4);
 
-    public void DismissToast(ToastViewModel toast) => Toasts.Remove(toast);
+    public void DismissResult(OperationResultViewModel result) => Results.Remove(result);
 
-    private void ShowToast(
-        ToastKind kind,
+    private void ShowResult(
+        OperationResultKind kind,
         string message,
         bool persistent = false,
         string? resultKey = null)
     {
         // Warnings and errors require attention, so elapsed time never clears them. Persistent
-        // information is a single replaceable channel (for example a repeated duplicate result),
-        // but it cannot evict an independent unresolved warning or error.
-        var isPersistent = persistent || kind is ToastKind.Warning or ToastKind.Error;
+        // shell information uses one replaceable channel, but it cannot evict an independent
+        // unresolved warning or error.
+        var isPersistent = persistent || kind is OperationResultKind.Warning or OperationResultKind.Error;
         if (resultKey is not null)
         {
-            var existing = Toasts.FirstOrDefault(result => result.ResultKey == resultKey);
+            var existing = Results.FirstOrDefault(result => result.ResultKey == resultKey);
             if (existing is not null)
             {
                 if (existing.Kind == kind
@@ -1280,7 +1360,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
                 // Preserve the result's position while publishing the most useful current
                 // message. ObservableCollection replacement gives the view one coherent update.
-                Toasts[Toasts.IndexOf(existing)] = new ToastViewModel(
+                Results[Results.IndexOf(existing)] = new OperationResultViewModel(
                     kind,
                     message,
                     isPersistent,
@@ -1289,28 +1369,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         }
 
-        if (isPersistent && kind == ToastKind.Info)
+        if (isPersistent && kind == OperationResultKind.Info)
         {
-            foreach (var existing in Toasts
-                         .Where(result => result.IsPersistent && result.Kind == ToastKind.Info)
+            foreach (var existing in Results
+                         .Where(result => result.IsPersistent && result.Kind == OperationResultKind.Info)
                          .ToArray())
             {
-                Toasts.Remove(existing);
+                Results.Remove(existing);
             }
         }
 
-        var toast = new ToastViewModel(kind, message, isPersistent, resultKey);
-        Toasts.Add(toast);
-        while (Toasts.Count > MaxToasts)
+        var result = new OperationResultViewModel(kind, message, isPersistent, resultKey);
+        Results.Add(result);
+        while (Results.Count > MaxShellResults)
         {
-            var transient = Toasts.FirstOrDefault(result => !result.IsPersistent);
+            var transient = Results.FirstOrDefault(existing => !existing.IsPersistent);
             if (transient is null)
             {
                 // A display-count cap cannot discard a problem that still requires attention.
                 break;
             }
 
-            Toasts.Remove(transient);
+            Results.Remove(transient);
         }
 
         if (isPersistent)
@@ -1318,20 +1398,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var timer = new DispatcherTimer { Interval = ToastLifetime };
+        var timer = new DispatcherTimer { Interval = TransientResultLifetime };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            Toasts.Remove(toast);
+            Results.Remove(result);
         };
         timer.Start();
     }
 
-    private void ResolveResult(string resultKey)
+    private void ResolveShellResult(string resultKey)
     {
-        foreach (var result in Toasts.Where(result => result.ResultKey == resultKey).ToArray())
+        foreach (var result in Results.Where(result => result.ResultKey == resultKey).ToArray())
         {
-            Toasts.Remove(result);
+            Results.Remove(result);
         }
     }
 
@@ -1351,6 +1431,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     partial void OnSelectedNoteChanged(NoteListItemViewModel? value)
     {
+        AttachmentResult = null;
         Editor.Load(value?.Note);
         LoadAttachments(value?.Note);
         OnPropertyChanged(nameof(AttachmentsEmptyStateText));

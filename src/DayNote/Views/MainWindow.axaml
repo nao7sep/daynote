@@ -320,13 +320,36 @@
                                     Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding Editor.HasNote}"/>
                         </Grid>
                     </Border>
+                    <Border DockPanel.Dock="Top" Margin="10,10,10,0" Padding="10,8"
+                            Background="{StaticResource AppBackgroundBrush}"
+                            BorderBrush="{Binding AttachmentResult.Accent}" BorderThickness="1"
+                            CornerRadius="6" IsVisible="{Binding HasAttachmentResult}"
+                            AutomationProperties.Name="{Binding AttachmentResult.AccessibleMessage}"
+                            AutomationProperties.LiveSetting="{Binding AttachmentResult.LiveSetting}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding AttachmentResult.SeverityLabel}" FontWeight="SemiBold"
+                                           Foreground="{Binding AttachmentResult.Accent}"/>
+                                <TextBlock Text="{Binding AttachmentResult.Message}" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="rowAction" Padding="6,4" VerticalAlignment="Center"
+                                    Click="DismissAttachmentResult_Click" ToolTip.Tip="Dismiss"
+                                    AutomationProperties.Name="Dismiss attachment result">
+                                <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
+                                      StrokeThickness="1.6" StrokeLineCap="Round"
+                                      Data="M1,1 L9,9 M9,1 L1,9"/>
+                            </Button>
+                        </Grid>
+                    </Border>
                     <Panel Margin="10">
                         <!-- A bordered list like the binders/notes lists; rows have no inner border.
                              Rows can be dragged to reorder (wired in code-behind). -->
                         <ListBox x:Name="AttachList" ItemsSource="{Binding Attachments}" DragDrop.AllowDrop="True">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="vm:AttachmentItemViewModel">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" DoubleTapped="Attachment_DoubleTapped">
+                                    <StackPanel Spacing="6" DoubleTapped="Attachment_DoubleTapped">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                                         <Border Width="44" Height="44" CornerRadius="4" ClipToBounds="True"
                                                 Background="{StaticResource AppBackgroundBrush}">
                                             <Panel>
@@ -348,6 +371,19 @@
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
                                         </Button>
                                     </Grid>
+                                    <Border Padding="8,6" Background="{StaticResource AppBackgroundBrush}"
+                                            BorderBrush="{Binding Result.Accent}" BorderThickness="1" CornerRadius="5"
+                                            IsVisible="{Binding HasResult}"
+                                            AutomationProperties.Name="{Binding Result.AccessibleMessage}"
+                                            AutomationProperties.LiveSetting="{Binding Result.LiveSetting}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding Result.SeverityLabel}" FontWeight="SemiBold"
+                                                       Foreground="{Binding Result.Accent}"/>
+                                            <TextBlock Text="{Binding Result.Message}" TextWrapping="Wrap"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        </StackPanel>
+                                    </Border>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -375,9 +411,9 @@
                       Margin="0,8,20,8" Width="400" MaxHeight="180" ClipToBounds="True"
                       IsVisible="{Binding HasResults}"
                       HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Toasts}">
+            <ItemsControl ItemsSource="{Binding Results}">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="vm:ToastViewModel">
+                    <DataTemplate DataType="vm:OperationResultViewModel">
                         <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="8" Margin="0,0,0,8" BoxShadow="0 6 20 0 #50000000"
                                 AutomationProperties.Name="{Binding AccessibleMessage}"
@@ -392,7 +428,7 @@
                                 </StackPanel>
                                 <Button Grid.Column="2" Classes="rowAction"
                                         Margin="4" Padding="8,4" VerticalAlignment="Center"
-                                        IsVisible="{Binding IsPersistent}" Click="DismissToast_Click"
+                                        IsVisible="{Binding IsPersistent}" Click="DismissResult_Click"
                                         ToolTip.Tip="Dismiss" AutomationProperties.Name="Dismiss message">
                                     <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
                                           StrokeThickness="1.6" StrokeLineCap="Round"

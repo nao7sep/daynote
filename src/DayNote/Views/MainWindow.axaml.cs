@@ -344,14 +344,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private void DismissToast_Click(object? sender, RoutedEventArgs e)
+    private void DismissResult_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainWindowViewModel vm
-            && sender is Control { DataContext: ToastViewModel toast })
+            && sender is Control { DataContext: OperationResultViewModel result })
         {
-            vm.DismissToast(toast);
+            vm.DismissResult(result);
         }
     }
+
+    private void DismissAttachmentResult_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.DismissAttachmentResult();
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
     {

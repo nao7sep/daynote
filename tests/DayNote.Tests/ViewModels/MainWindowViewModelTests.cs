@@ -267,28 +267,29 @@ public sealed class MainWindowViewModelTests : IDisposable
         // Within one batch, the second identical file dedups against the first.
         vm.AddDroppedFiles(new[] { a, aCopy, b });
         Assert.Equal(2, note.Attachments.Count);
-        var firstResult = Assert.Single(vm.Toasts);
-        Assert.Equal(ToastKind.Info, firstResult.Kind);
+        var firstResult = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
+        Assert.Equal(OperationResultKind.Info, firstResult.Kind);
         Assert.True(firstResult.IsPersistent);
-        Assert.Contains("already attached", firstResult.Message);
+        Assert.Contains("Already attached", firstResult.Message);
+        Assert.Empty(vm.Results);
 
         // A later file whose content the note already holds is not copied again.
         var c = Path.Combine(sources, "c.txt");
         File.WriteAllText(c, "same content");
         vm.AddDroppedFiles(new[] { c });
         Assert.Equal(2, note.Attachments.Count);
-        var replacement = Assert.Single(vm.Toasts);
+        var replacement = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.True(replacement.IsPersistent);
-        Assert.DoesNotContain(firstResult, vm.Toasts);
+        Assert.NotSame(firstResult, replacement);
 
-        vm.DismissToast(replacement);
-        Assert.Empty(vm.Toasts);
+        vm.DismissAttachmentResult();
+        Assert.Null(vm.AttachmentResult);
 
         await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]
-    public async Task Persistent_information_does_not_replace_an_unresolved_error()
+    public async Task Attachment_results_do_not_escape_to_the_shell_result_host()
     {
         var vm = await OpenNewBinderAsync();
         vm.NewNoteCommand.Execute(null);
@@ -300,8 +301,8 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         vm.AddDroppedFiles(new[] { source });
 
-        var error = Assert.Single(vm.Toasts);
-        Assert.Equal(ToastKind.Error, error.Kind);
+        var error = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
+        Assert.Equal(OperationResultKind.Error, error.Kind);
         Assert.True(error.IsPersistent);
         Assert.Equal("Error", error.SeverityLabel);
         Assert.Equal(AutomationLiveSetting.Assertive, error.LiveSetting);
@@ -310,19 +311,12 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.AddDroppedFiles(new[] { source });
         vm.AddDroppedFiles(new[] { source });
 
-        Assert.Collection(
-            vm.Toasts,
-            remaining => Assert.Same(error, remaining),
-            information =>
-            {
-                Assert.Equal(ToastKind.Info, information.Kind);
-                Assert.True(information.IsPersistent);
-                Assert.Equal("Information", information.SeverityLabel);
-                Assert.Equal(AutomationLiveSetting.Polite, information.LiveSetting);
-            });
-
-        vm.DismissToast(error);
-        Assert.Single(vm.Toasts);
+        var information = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
+        Assert.Equal(OperationResultKind.Info, information.Kind);
+        Assert.True(information.IsPersistent);
+        Assert.Equal("Information", information.SeverityLabel);
+        Assert.Equal(AutomationLiveSetting.Polite, information.LiveSetting);
+        Assert.Empty(vm.Results);
 
         await vm.ShutdownAsync();
     }
@@ -334,7 +328,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.NewNoteCommand.Execute(null);
         var note = vm.SelectedNote!.Note;
 
-        // Build three independent committed results through their real public operations.
+        // Establish a pane-owned attachment result alongside the independent shell save result.
         vm.AddDroppedFiles([], unavailable: 1);
 
         var source = Path.Combine(_home, "source.txt");
@@ -347,7 +341,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         File.Delete(noteAssets);
         vm.AddDroppedFiles(new[] { source });
         vm.AddDroppedFiles(new[] { source });
-        Assert.Equal(3, vm.Toasts.Count);
+        Assert.NotNull(vm.AttachmentResult);
+        Assert.Empty(vm.Results);
 
         // A directory at the binder-file path makes the real atomic save fail on every retry.
         File.Delete(BinderPath);
@@ -355,20 +350,18 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Title = "Unsaved title";
 
         await vm.SaveNowCommand.ExecuteAsync(null);
-        Assert.Equal(4, vm.Toasts.Count);
-        var firstFailure = Assert.Single(vm.Toasts, result => result.ResultKey is not null);
-        Assert.Equal(ToastKind.Error, firstFailure.Kind);
+        var firstFailure = Assert.Single(vm.Results, result => result.ResultKey is not null);
+        Assert.Equal(OperationResultKind.Error, firstFailure.Kind);
         Assert.StartsWith("Save failed:", firstFailure.Message);
 
         await vm.SaveNowCommand.ExecuteAsync(null);
-        Assert.Equal(4, vm.Toasts.Count);
-        Assert.Single(vm.Toasts, result => result.ResultKey == firstFailure.ResultKey);
+        Assert.Single(vm.Results, result => result.ResultKey == firstFailure.ResultKey);
 
         Directory.Delete(BinderPath);
         await vm.SaveNowCommand.ExecuteAsync(null);
 
-        Assert.Equal(3, vm.Toasts.Count);
-        Assert.DoesNotContain(vm.Toasts, result => result.ResultKey is not null);
+        Assert.Empty(vm.Results);
+        Assert.NotNull(vm.AttachmentResult);
         Assert.Equal("Saved", vm.SaveStateText);
         Assert.True(File.Exists(BinderPath));
 
@@ -391,8 +384,9 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Null(exception);
         Assert.Empty(note.Attachments);
-        Assert.Single(vm.Toasts);
-        Assert.Contains("Could not add", vm.Toasts[0].Message);
+        var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
+        Assert.Contains("Could not prepare", result.Message);
+        Assert.Empty(vm.Results);
 
         await vm.ShutdownAsync();
     }
@@ -406,10 +400,84 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.AddDroppedFiles([], unavailable: 2);
 
         Assert.Empty(vm.Attachments);
-        var result = Assert.Single(vm.Toasts);
-        Assert.Equal(ToastKind.Warning, result.Kind);
+        var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
+        Assert.Equal(OperationResultKind.Warning, result.Kind);
         Assert.True(result.IsPersistent);
         Assert.Equal("2 items are not readable local files.", result.Message);
+        Assert.Empty(vm.Results);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Attachment_open_failure_stays_on_the_row_and_successful_retry_clears_it()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+
+        var source = Path.Combine(_home, "open-me.txt");
+        File.WriteAllText(source, "attachment content");
+        vm.AddDroppedFiles(new[] { source });
+        var item = Assert.Single(vm.Attachments);
+
+        _dialogs.OpenPathError = new IOException("test open failure");
+        await vm.OpenAttachmentCommand.ExecuteAsync(item);
+
+        var failure = Assert.IsType<OperationResultViewModel>(item.Result);
+        Assert.Equal(OperationResultKind.Error, failure.Kind);
+        Assert.Equal(AutomationLiveSetting.Assertive, failure.LiveSetting);
+        Assert.Contains("Double-click to try again", failure.Message);
+        Assert.Null(vm.AttachmentResult);
+        Assert.Empty(vm.Results);
+
+        var anotherSource = Path.Combine(_home, "another.txt");
+        File.WriteAllText(anotherSource, "different attachment content");
+        vm.AddDroppedFiles(new[] { anotherSource });
+
+        Assert.Contains(item, vm.Attachments);
+        Assert.Same(failure, item.Result);
+
+        _dialogs.OpenPathError = null;
+        await vm.OpenAttachmentCommand.ExecuteAsync(item);
+
+        Assert.Null(item.Result);
+        Assert.Equal(item.FullPath, _dialogs.LastOpenedPath);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Missing_attachment_is_reported_on_its_row()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+
+        var source = Path.Combine(_home, "goes-missing.txt");
+        File.WriteAllText(source, "attachment content");
+        vm.AddDroppedFiles(new[] { source });
+        var selectedNote = vm.SelectedNote;
+        var originalItem = Assert.Single(vm.Attachments);
+        File.Delete(originalItem.FullPath);
+        vm.SelectedNote = null;
+        vm.SelectedNote = selectedNote;
+
+        var item = Assert.Single(vm.Attachments);
+        var result = Assert.IsType<OperationResultViewModel>(item.Result);
+        Assert.Equal(OperationResultKind.Warning, result.Kind);
+        Assert.Contains("unavailable on disk", result.Message);
+        Assert.Equal("Unavailable", item.DetailsText);
+        Assert.Null(vm.AttachmentResult);
+        Assert.Empty(vm.Results);
+
+        await vm.OpenAttachmentCommand.ExecuteAsync(item);
+        Assert.Same(result, item.Result);
+
+        File.WriteAllText(item.FullPath, "restored attachment content");
+        await vm.OpenAttachmentCommand.ExecuteAsync(item);
+
+        Assert.True(item.Exists);
+        Assert.Null(item.Result);
+        Assert.NotEqual("Unavailable", item.DetailsText);
 
         await vm.ShutdownAsync();
     }
@@ -606,6 +674,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         public bool ConfirmResult { get; set; } = true;
         public ExternalChangeChoice ExternalChoice { get; set; } = ExternalChangeChoice.KeepMine;
         public bool SettingsApplied { get; set; }
+        public Exception? OpenPathError { get; set; }
+        public string? LastOpenedPath { get; private set; }
 
         public Task<string?> PickBinderToOpenAsync() => Task.FromResult(BinderToOpen);
         public Task<string?> PickBinderToCreateAsync() => Task.FromResult(BinderToCreate);
@@ -617,7 +687,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave) =>
             Task.FromResult(SettingsApplied && trySave(config));
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName) => Task.FromResult(ExternalChoice);
-        public Task OpenPathExternallyAsync(string path) => Task.CompletedTask;
+        public Task OpenPathExternallyAsync(string path)
+        {
+            LastOpenedPath = path;
+            return OpenPathError is null
+                ? Task.CompletedTask
+                : Task.FromException(OpenPathError);
+        }
     }
 
     private sealed class NullLogger : IAppLogger
