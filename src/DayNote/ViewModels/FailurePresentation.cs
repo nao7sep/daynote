@@ -41,4 +41,19 @@ public static class FailurePresentation
             "Your changes are still in DayNote, but the binder could not be saved. " +
             "Check that its location is available and has enough free space, then try again.",
     };
+
+    public static string NewBinderPicker(Exception error) =>
+        "The new-binder picker could not be opened. Try creating the binder again.";
+
+    public static string OpenBinderPicker(Exception error) =>
+        "The binder picker could not be opened. Try opening the binder again.";
+
+    public static string AttachmentPicker(Exception error) =>
+        "The attachment picker could not be opened. Your note is unchanged; try adding attachments again.";
+
+    public static string ReloadBinder(Exception error) =>
+        "The binder changed on disk but could not be reloaded. Your version remains open; check the log and try again.";
+
+    public static string OpenExternalLink(Exception error) =>
+        "The link could not be opened in your browser. Try again.";
 }

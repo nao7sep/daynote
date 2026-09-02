@@ -90,6 +90,54 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Native_picker_failures_remain_owned_by_the_initiating_surface()
+    {
+        var hostile = new IOException("EACCES IPC /private/tmp/DAYNOTE-PICKER-SENTINEL");
+        var vm = NewViewModel();
+
+        _dialogs.NewBinderPickerError = hostile;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var newBinder = Assert.Single(vm.Results);
+        Assert.Contains("new-binder picker", newBinder.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("EACCES", newBinder.Message, StringComparison.Ordinal);
+
+        _dialogs.NewBinderPickerError = null;
+        _dialogs.OpenBinderPickerError = hostile;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        Assert.Contains(vm.Results, result => result.Message.Contains("binder picker", StringComparison.Ordinal));
+
+        _dialogs.OpenBinderPickerError = null;
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        _dialogs.AttachmentPickerError = hostile;
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+
+        Assert.NotNull(vm.AttachmentResult);
+        Assert.Contains("attachment picker", vm.AttachmentResult!.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("DAYNOTE-PICKER-SENTINEL", vm.AttachmentResult.Message, StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Failed_external_reload_never_publishes_success()
+    {
+        var vm = await OpenNewBinderAsync();
+        File.WriteAllText(BinderPath, "not valid DayNote data");
+
+        await vm.CheckExternalChangeAsync();
+
+        var result = Assert.Single(
+            vm.Results,
+            item => item.Message.Contains("changed on disk", StringComparison.Ordinal));
+        Assert.Equal(OperationResultKind.Error, result.Kind);
+        Assert.DoesNotContain(
+            vm.Results,
+            item => item.Message.Contains("Reloaded after", StringComparison.Ordinal));
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public void First_run_creates_config_json_but_not_state_json()
     {
         var configFile = Path.Combine(_home, "config.json");
@@ -675,11 +723,20 @@ public sealed class MainWindowViewModelTests : IDisposable
         public ExternalChangeChoice ExternalChoice { get; set; } = ExternalChangeChoice.KeepMine;
         public bool SettingsApplied { get; set; }
         public Exception? OpenPathError { get; set; }
+        public Exception? NewBinderPickerError { get; set; }
+        public Exception? OpenBinderPickerError { get; set; }
+        public Exception? AttachmentPickerError { get; set; }
         public string? LastOpenedPath { get; private set; }
 
-        public Task<string?> PickBinderToOpenAsync() => Task.FromResult(BinderToOpen);
-        public Task<string?> PickBinderToCreateAsync() => Task.FromResult(BinderToCreate);
-        public Task<IReadOnlyList<string>> PickAttachmentsAsync() => Task.FromResult(AttachmentPaths);
+        public Task<string?> PickBinderToOpenAsync() => OpenBinderPickerError is null
+            ? Task.FromResult(BinderToOpen)
+            : Task.FromException<string?>(OpenBinderPickerError);
+        public Task<string?> PickBinderToCreateAsync() => NewBinderPickerError is null
+            ? Task.FromResult(BinderToCreate)
+            : Task.FromException<string?>(NewBinderPickerError);
+        public Task<IReadOnlyList<string>> PickAttachmentsAsync() => AttachmentPickerError is null
+            ? Task.FromResult(AttachmentPaths)
+            : Task.FromException<IReadOnlyList<string>>(AttachmentPickerError);
         public Task<bool> ConfirmAsync(string title, string message, string confirmLabel, bool destructive = false) => Task.FromResult(ConfirmResult);
         public Task ShowErrorAsync(string title, string message) => Task.CompletedTask;
         public Task ShowAboutAsync() => Task.CompletedTask;

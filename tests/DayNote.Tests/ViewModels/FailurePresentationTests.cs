@@ -16,6 +16,11 @@ public sealed class FailurePresentationTests
 
         var open = FailurePresentation.OpenBinder(error);
         var save = FailurePresentation.SaveBinder(error);
+        var newBinderPicker = FailurePresentation.NewBinderPicker(error);
+        var openBinderPicker = FailurePresentation.OpenBinderPicker(error);
+        var attachmentPicker = FailurePresentation.AttachmentPicker(error);
+        var reload = FailurePresentation.ReloadBinder(error);
+        var link = FailurePresentation.OpenExternalLink(error);
         var startup = FailurePresentation.StartupData();
         var recovery = FailurePresentation.RecoveredData(binderListWasReset: true);
 
@@ -23,6 +28,11 @@ public sealed class FailurePresentationTests
         Assert.DoesNotContain(Hostile, recovery, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, open, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, save, StringComparison.Ordinal);
+        Assert.DoesNotContain(Hostile, newBinderPicker, StringComparison.Ordinal);
+        Assert.DoesNotContain(Hostile, openBinderPicker, StringComparison.Ordinal);
+        Assert.DoesNotContain(Hostile, attachmentPicker, StringComparison.Ordinal);
+        Assert.DoesNotContain(Hostile, reload, StringComparison.Ordinal);
+        Assert.DoesNotContain(Hostile, link, StringComparison.Ordinal);
         Assert.Contains("could not be opened", open, StringComparison.Ordinal);
         Assert.Contains("changes are still in DayNote", save, StringComparison.Ordinal);
         Assert.NotNull(error.InnerException);

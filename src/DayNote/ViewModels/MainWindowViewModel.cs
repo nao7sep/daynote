@@ -28,6 +28,10 @@ namespace DayNote.ViewModels;
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
     private const string SaveFailureResultKey = "binder-save-failure";
+    private const string NewBinderPickerResultKey = "new-binder-picker";
+    private const string OpenBinderPickerResultKey = "open-binder-picker";
+    private const string AttachmentPickerResultKey = "attachment-picker";
+    private const string ExternalReloadResultKey = "external-reload";
 
     private readonly AppPaths _paths;
     private readonly BinderStore _binderStore = new();
@@ -257,7 +261,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var path = await _dialogs.PickBinderToCreateAsync();
+        string? path;
+        try
+        {
+            path = await _dialogs.PickBinderToCreateAsync();
+            ResolveShellResult(NewBinderPickerResultKey);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to open the new-binder picker", error: ex);
+            ShowResult(
+                OperationResultKind.Error,
+                FailurePresentation.NewBinderPicker(ex),
+                resultKey: NewBinderPickerResultKey);
+            return;
+        }
         if (path is null)
         {
             return;
@@ -274,7 +292,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var path = await _dialogs.PickBinderToOpenAsync();
+        string? path;
+        try
+        {
+            path = await _dialogs.PickBinderToOpenAsync();
+            ResolveShellResult(OpenBinderPickerResultKey);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to open the binder picker", error: ex);
+            ShowResult(
+                OperationResultKind.Error,
+                FailurePresentation.OpenBinderPicker(ex),
+                resultKey: OpenBinderPickerResultKey);
+            return;
+        }
         if (path is not null)
         {
             await OpenBinderPathAsync(path, isNew: false);
@@ -417,7 +449,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var files = await _dialogs.PickAttachmentsAsync();
+        IReadOnlyList<string> files;
+        try
+        {
+            files = await _dialogs.PickAttachmentsAsync();
+            if (AttachmentResult?.ResultKey == AttachmentPickerResultKey)
+            {
+                AttachmentResult = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to open the attachment picker", new { noteId = SelectedNote.Note.Id }, ex);
+            AttachmentResult = new OperationResultViewModel(
+                OperationResultKind.Error,
+                FailurePresentation.AttachmentPicker(ex),
+                isPersistent: true,
+                resultKey: AttachmentPickerResultKey);
+            return;
+        }
+
         AddAttachmentFiles(files);
     }
 
@@ -967,7 +1018,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private async Task CheckExternalChangeAsync()
+    internal async Task CheckExternalChangeAsync()
     {
         if (!IsReady || _current is null || _externalChangeAcknowledged
             || _externalCheckInProgress)
@@ -992,8 +1043,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
                 case ExternalChange.Modified when !_dirty:
                     _log.Info("Binder changed on disk; reloading", new { path = _current.Path });
-                    ReloadFromDisk();
-                    ShowResult(OperationResultKind.Info, "Reloaded after an external change.");
+                    if (ReloadFromDisk())
+                    {
+                        ShowResult(
+                            OperationResultKind.Info,
+                            "Reloaded after an external change.",
+                            resultKey: ExternalReloadResultKey);
+                    }
                     return;
 
                 case ExternalChange.Modified:
@@ -1027,20 +1083,27 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    private void ReloadFromDisk()
+    internal bool ReloadFromDisk()
     {
         if (_current is null)
         {
-            return;
+            return false;
         }
 
         try
         {
             AdoptLoaded(_binderStore.Load(_current.Path), SelectedNote?.Note.Id);
+            ResolveShellResult(ExternalReloadResultKey);
+            return true;
         }
         catch (Exception ex)
         {
             _log.Error("Failed to reload binder", new { path = _current.Path }, ex);
+            ShowResult(
+                OperationResultKind.Error,
+                FailurePresentation.ReloadBinder(ex),
+                resultKey: ExternalReloadResultKey);
+            return false;
         }
     }
 

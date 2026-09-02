@@ -2,10 +2,12 @@ using Avalonia.Controls.Documents;
 using Shapes = Avalonia.Controls.Shapes;
 using Avalonia.Data;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using DayNote.Logging;
+using DayNote.ViewModels;
 
 namespace DayNote.Views;
 
@@ -19,12 +21,54 @@ public sealed class AboutDialog : DialogBase
     private const string GitHubUrl = "https://github.com/nao7sep/daynote";
 
     private readonly IAppLogger _log;
+    private readonly Func<Uri, Task> _openUri;
+    private readonly Border _linkResult;
+    private readonly TextBlock _linkResultText;
 
-    public AboutDialog(IAppLogger log)
+    public AboutDialog(IAppLogger log, Func<Uri, Task>? openUri = null)
     {
         _log = log;
+        _openUri = openUri ?? (uri => Launcher.LaunchUriAsync(uri));
         Width = 420;
         Title = "About DayNote";
+
+        _linkResultText = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = PaletteBrush.Resolve("TextPrimaryBrush", Brushes.White),
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        var closeResult = new Button
+        {
+            Name = "CloseAboutLinkResult",
+            Content = CloseMark(),
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        closeResult.Classes.Add("resultClose");
+        ToolTip.SetTip(closeResult, "Close");
+        AutomationProperties.SetName(closeResult, "Close link result");
+        var resultGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            ColumnSpacing = 8,
+        };
+        resultGrid.Children.Add(_linkResultText);
+        Grid.SetColumn(closeResult, 1);
+        resultGrid.Children.Add(closeResult);
+        _linkResult = new Border
+        {
+            Name = "AboutLinkResult",
+            IsVisible = false,
+            Margin = new Thickness(0, 0, 0, 16),
+            Padding = new Thickness(10, 8),
+            CornerRadius = new CornerRadius(6),
+            Background = PaletteBrush.Resolve("AppBackgroundBrush", Brushes.Transparent),
+            BorderBrush = PaletteBrush.Resolve("DangerBrush", Brushes.IndianRed),
+            BorderThickness = new Thickness(1),
+            Child = resultGrid,
+        };
+        AutomationProperties.SetLiveSetting(_linkResult, AutomationLiveSetting.Assertive);
+        closeResult.Click += (_, _) => _linkResult.IsVisible = false;
 
         var panel = new StackPanel
         {
@@ -52,6 +96,7 @@ public sealed class AboutDialog : DialogBase
                     Margin = new Thickness(0, 0, 0, 16),
                     Children = { LinkButton("GitHub", GitHubUrl), LinkButton("Report Issue", GitHubUrl + "/issues") },
                 },
+                _linkResult,
                 new TextBlock
                 {
                     Text = "© 2026 Yoshinao Inoguchi · MIT License",
@@ -68,19 +113,26 @@ public sealed class AboutDialog : DialogBase
 
     private Button LinkButton(string label, string url)
     {
-        var button = new Button { Content = ExternalLinkLabel(label) };
+        var button = new Button
+        {
+            Name = label.Replace(" ", string.Empty) + "LinkButton",
+            Content = ExternalLinkLabel(label),
+        };
         button.Classes.Add("utility");
         button.Click += async (_, _) =>
         {
             try
             {
-                await Launcher.LaunchUriAsync(new Uri(url));
+                await _openUri(new Uri(url));
+                _linkResult.IsVisible = false;
             }
             catch (Exception ex)
             {
-                // Best effort: failing to open a browser must not crash the About dialog — but the
-                // boundary failure is logged (warn) rather than silently swallowed.
                 _log.Warn("Failed to open external link", new { url }, ex);
+                var message = FailurePresentation.OpenExternalLink(ex);
+                _linkResultText.Text = message;
+                AutomationProperties.SetName(_linkResult, message);
+                _linkResult.IsVisible = true;
             }
         };
 
@@ -128,5 +180,15 @@ public sealed class AboutDialog : DialogBase
             new Binding("Foreground") { RelativeSource = new RelativeSource { AncestorType = typeof(Button) } });
         return mark;
     }
+
+    private static Shapes.Path CloseMark() => new()
+    {
+        Width = 10,
+        Height = 10,
+        Stroke = PaletteBrush.Resolve("DangerBrush", Brushes.IndianRed),
+        StrokeThickness = 1.6,
+        StrokeLineCap = PenLineCap.Round,
+        Data = Geometry.Parse("M1,1 L9,9 M9,1 L1,9"),
+    };
 
 }
