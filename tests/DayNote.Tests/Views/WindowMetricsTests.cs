@@ -113,7 +113,7 @@ public sealed class WindowMetricsTests
     [Fact]
     public void Attachment_results_are_rendered_inside_the_attachment_pane_and_rows()
     {
-        var axaml = ReadMainWindowAxaml();
+        var axaml = ReadMainWindowAxaml().ReplaceLineEndings("\n");
         var paneStart = axaml.IndexOf("<Border x:Name=\"AttachPane\"", System.StringComparison.Ordinal);
         var paneEnd = axaml.IndexOf("</Grid>\n\n        <!-- Results use", paneStart, System.StringComparison.Ordinal);
         var attachmentPane = axaml[paneStart..paneEnd];
