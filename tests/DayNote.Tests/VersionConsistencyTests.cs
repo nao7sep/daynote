@@ -36,6 +36,19 @@ public sealed class VersionConsistencyTests
             $"'{expectedManifestVersion}' (derived from {propsPath}'s Version '{version}').");
     }
 
+    [Fact]
+    public void GitHub_Release_Tag_Matches_The_Product_Version()
+    {
+        if (Environment.GetEnvironmentVariable("GITHUB_REF_TYPE") != "tag")
+        {
+            return;
+        }
+
+        var propsPath = Path.Combine(FindRepoRoot(), "Directory.Build.props");
+        var version = ReadFirstMatch(propsPath, @"<Version>([^<]+)</Version>");
+        Assert.Equal("v" + version, Environment.GetEnvironmentVariable("GITHUB_REF_NAME"));
+    }
+
     private static void AssertPlistKeyMatches(string plistText, string key, string expected, string plistPath, string propsPath)
     {
         var match = Regex.Match(plistText, $@"<key>{Regex.Escape(key)}</key>\s*<string>([^<]+)</string>");

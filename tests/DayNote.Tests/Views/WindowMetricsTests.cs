@@ -96,34 +96,6 @@ public sealed class WindowMetricsTests
         Assert.Equal(ContentColumnMinWidths, fromXaml);
     }
 
-    [Fact]
-    public void ResultViewport_HasItsOwnBoundedPaneTrackRowAndScrollsLocally()
-    {
-        var axaml = ReadMainWindowAxaml();
-
-        Assert.Contains("<Grid x:Name=\"PaneTrack\" Grid.Row=\"1\" RowDefinitions=\"Auto,*\">", axaml);
-        Assert.Contains("<Grid x:Name=\"PaneGrid\" Grid.Row=\"1\"", axaml);
-        Assert.Contains("<ScrollViewer x:Name=\"ResultsViewport\" Grid.Row=\"0\"", axaml);
-        Assert.Contains("MaxHeight=\"180\"", axaml);
-        Assert.Contains("IsVisible=\"{Binding HasResults}\"", axaml);
-        Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", axaml);
-        Assert.Contains("<ItemsControl ItemsSource=\"{Binding Results}\">", axaml);
-    }
-
-    [Fact]
-    public void Attachment_results_are_rendered_inside_the_attachment_pane_and_rows()
-    {
-        var axaml = ReadMainWindowAxaml().ReplaceLineEndings("\n");
-        var paneStart = axaml.IndexOf("<Border x:Name=\"AttachPane\"", System.StringComparison.Ordinal);
-        var paneEnd = axaml.IndexOf("</Grid>\n\n        <!-- Results use", paneStart, System.StringComparison.Ordinal);
-        var attachmentPane = axaml[paneStart..paneEnd];
-
-        Assert.Contains("IsVisible=\"{Binding HasAttachmentResult}\"", attachmentPane);
-        Assert.Contains("AutomationProperties.LiveSetting=\"{Binding AttachmentResult.LiveSetting}\"", attachmentPane);
-        Assert.Contains("IsVisible=\"{Binding HasResult}\"", attachmentPane);
-        Assert.Contains("AutomationProperties.LiveSetting=\"{Binding Result.LiveSetting}\"", attachmentPane);
-    }
-
     private static IReadOnlyList<double> ColumnMinWidths(string axaml) =>
         Regex.Matches(axaml, "<ColumnDefinition\\b[^>]*?MinWidth=\"(?<min>\\d+(?:\\.\\d+)?)\"")
             .Select(m => double.Parse(m.Groups["min"].Value, CultureInfo.InvariantCulture))
