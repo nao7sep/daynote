@@ -99,7 +99,7 @@ public sealed class AboutDialog : DialogBase
                 _linkResult,
                 new TextBlock
                 {
-                    Text = "© 2026 Yoshinao Inoguchi · MIT License",
+                    Text = "© 2026 Yoshinao Inoguchi · GNU GPL v3 or later",
                     FontSize = 12,
                     Foreground = Secondary,
                 },

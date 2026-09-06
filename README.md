@@ -42,7 +42,7 @@ On macOS, a self-contained ad-hoc-signed bundle (needed to exercise the Desktop/
 
 ## License
 
-MIT © 2026 Yoshinao Inoguchi
+[GNU GPL v3 or later](LICENSE) © 2026 Yoshinao Inoguchi
 
 ## Contact
 
