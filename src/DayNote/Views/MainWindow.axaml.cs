@@ -9,6 +9,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using DayNote.Controls;
+using DayNote.Core.Configuration;
 using DayNote.ViewModels;
 
 namespace DayNote.Views;
@@ -17,6 +18,11 @@ public partial class MainWindow : Window
 {
     private bool _shutdownComplete;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
+    private readonly DispatcherTimer _placementSaveTimer;
+    private WindowBounds? _normalWindowBounds;
+    private string _stableWindowMode = "maximized";
+    private bool _placementCaptureEnabled;
+    private bool _placementTransient;
 
     // The pixel width the user last dragged each side pane to (the "intent"). Only a splitter drag
     // updates these; a window resize re-derives the displayed width but never overwrites the intent,
@@ -41,6 +47,15 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        _placementSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _placementSaveTimer.Tick += (_, _) =>
+        {
+            _placementSaveTimer.Stop();
+            if (WindowState == WindowState.Normal && !_placementTransient)
+                CacheCurrentNormalBounds();
+            PersistWindowPlacement();
+        };
+
         if (OperatingSystem.IsWindows())
         {
             using var iconStream = AssetLoader.Open(new Uri("avares://DayNote/Assets/icon-win.png"));
@@ -48,6 +63,7 @@ public partial class MainWindow : Window
         }
 
         Loaded += OnLoaded;
+        PositionChanged += (_, _) => CaptureNormalWindowPlacement();
 
         // The attachments pane accepts external file drops (add).
         AttachPane.AddHandler(DragDrop.DragOverEvent, OnAttachDragOver);
@@ -384,7 +400,14 @@ public partial class MainWindow : Window
     private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.Property == ClientSizeProperty || e.Property == BoundsProperty)
+        {
             ClampPanesToWindow();
+            CaptureNormalWindowPlacement();
+        }
+        else if (e.Property == WindowStateProperty)
+        {
+            OnWindowStateChanged();
+        }
     }
 
     private void ClampPanesToWindow()
@@ -424,12 +447,125 @@ public partial class MainWindow : Window
 
     protected override void OnOpened(EventArgs e)
     {
+        PrepareWindowPlacement();
         base.OnOpened(e);
         if (DataContext is MainWindowViewModel vm)
         {
             vm.NoteCreated += OnNoteCreated;
             _ = vm.InitializeAsync();
         }
+    }
+
+    private void PrepareWindowPlacement()
+    {
+        var displays = Screens.All.Select(screen => new DisplayWorkArea(
+            screen.WorkingArea.X,
+            screen.WorkingArea.Y,
+            screen.WorkingArea.Width,
+            screen.WorkingArea.Height,
+            screen.Scaling)).ToArray();
+        var saved = (DataContext as MainWindowViewModel)?.MainWindowPlacement;
+        var restoration = WindowPlacementPolicy.Resolve(saved, MinWidth, MinHeight, displays);
+        if (restoration.NormalBounds is { } bounds)
+        {
+            var display = displays.First(item =>
+                bounds.X >= item.X && bounds.Y >= item.Y
+                && (long)bounds.X + bounds.Width <= (long)item.X + item.Width
+                && (long)bounds.Y + bounds.Height <= (long)item.Y + item.Height);
+            var frameSize = FrameSize ?? ClientSize;
+            var chromeWidth = Math.Max(0, frameSize.Width - ClientSize.Width);
+            var chromeHeight = Math.Max(0, frameSize.Height - ClientSize.Height);
+            Position = new PixelPoint(bounds.X, bounds.Y);
+            Width = Math.Max(MinWidth, bounds.Width / display.Scaling - chromeWidth);
+            Height = Math.Max(MinHeight, bounds.Height / display.Scaling - chromeHeight);
+        }
+
+        _stableWindowMode = restoration.Mode;
+        CacheCurrentNormalBounds();
+        if (_stableWindowMode == "maximized")
+            WindowState = WindowState.Maximized;
+        Opacity = 1;
+        ShowInTaskbar = true;
+        DispatcherTimer.RunOnce(() =>
+        {
+            _placementCaptureEnabled = true;
+            _placementTransient = WindowState is WindowState.Minimized or WindowState.FullScreen;
+        }, TimeSpan.FromMilliseconds(500));
+    }
+
+    private void CaptureNormalWindowPlacement()
+    {
+        if (!_placementCaptureEnabled || _placementTransient || WindowState != WindowState.Normal)
+            return;
+        _stableWindowMode = "normal";
+        _placementSaveTimer.Stop();
+        _placementSaveTimer.Start();
+    }
+
+    private void CacheCurrentNormalBounds()
+    {
+        var scale = (Screens.ScreenFromWindow(this)?.Scaling).GetValueOrDefault(RenderScaling);
+        var frameSize = FrameSize ?? ClientSize;
+        _normalWindowBounds = new WindowBounds
+        {
+            X = Position.X,
+            Y = Position.Y,
+            Width = (int)Math.Round(frameSize.Width * scale),
+            Height = (int)Math.Round(frameSize.Height * scale),
+        };
+    }
+
+    private void OnWindowStateChanged()
+    {
+        if (!_placementCaptureEnabled)
+            return;
+        if (WindowState is WindowState.Minimized or WindowState.FullScreen)
+        {
+            _placementTransient = true;
+            _placementSaveTimer.Stop();
+            return;
+        }
+        if (WindowState == WindowState.Maximized)
+        {
+            _placementTransient = false;
+            _placementSaveTimer.Stop();
+            _stableWindowMode = "maximized";
+            PersistWindowPlacement();
+            return;
+        }
+        _placementTransient = true;
+        _placementSaveTimer.Stop();
+        DispatcherTimer.RunOnce(() =>
+        {
+            _placementTransient = false;
+            if (WindowState != WindowState.Normal)
+                return;
+            CacheCurrentNormalBounds();
+            _stableWindowMode = "normal";
+            PersistWindowPlacement();
+        }, TimeSpan.FromMilliseconds(400));
+    }
+
+    private void PersistWindowPlacement()
+    {
+        if (!_placementCaptureEnabled || _normalWindowBounds is null)
+            return;
+        (DataContext as MainWindowViewModel)?.SaveMainWindowPlacement(new WindowPlacement
+        {
+            NormalBounds = _normalWindowBounds,
+            Mode = _stableWindowMode,
+        });
+    }
+
+    private void FlushWindowPlacement()
+    {
+        _placementSaveTimer.Stop();
+        if (_placementCaptureEnabled && !_placementTransient && WindowState == WindowState.Normal)
+        {
+            CacheCurrentNormalBounds();
+            _stableWindowMode = "normal";
+        }
+        PersistWindowPlacement();
     }
 
     // A freshly created note should be ready to type into: move focus to the title (Enter then jumps to
@@ -443,6 +579,7 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             CapturePaneWidths(vm);
+            FlushWindowPlacement();
 
             // Complete the quit only if the final flush succeeded. On failure ShutdownAsync keeps the
             // binder open with the autosave retrying, so the window stays open rather than discarding

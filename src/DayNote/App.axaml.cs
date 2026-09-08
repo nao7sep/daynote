@@ -33,7 +33,12 @@ public partial class App : Application
             // config/state) so a failure becomes an in-app error rather than a pre-UI crash.
             var dialogs = new DialogService(Program.Log);
             var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log);
-            var window = new MainWindow { DataContext = viewModel };
+            var window = new MainWindow
+            {
+                DataContext = viewModel,
+                Opacity = 0,
+                ShowInTaskbar = false,
+            };
             dialogs.Owner = window;
 
             desktop.MainWindow = window;
