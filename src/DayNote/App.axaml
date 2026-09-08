@@ -274,13 +274,16 @@
             <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
         </Style>
 
-        <!-- Slim, rounded scroll bars per the window-chrome-conventions (matches the fleet, e.g. scriptdock):
-             a transparent track and a rounded-pill thumb instead of the thick square OS/Fluent default. -->
-        <Style Selector="ScrollBar">
-            <Setter Property="Background" Value="Transparent"/>
+        <!-- Keep Fluent's native scrollbar geometry and hit targets. The framework expands the
+             thumb immediately on hover, keeps it expanded throughout interaction, then collapses
+             it two seconds after leave. These supported properties live at the app-wide owners so
+             every ListBox, editor, dialog, and passive feed follows one behavior. -->
+        <Style Selector="ScrollViewer">
+            <Setter Property="AllowAutoHide" Value="True"/>
         </Style>
-        <Style Selector="ScrollBar /template/ Thumb">
-            <Setter Property="CornerRadius" Value="5"/>
+        <Style Selector="ScrollBar">
+            <Setter Property="ShowDelay" Value="00:00:00"/>
+            <Setter Property="HideDelay" Value="00:00:02"/>
         </Style>
     </Application.Styles>
 </Application>
