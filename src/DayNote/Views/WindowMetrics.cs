@@ -12,6 +12,11 @@ namespace DayNote.Views;
 /// </summary>
 public static class WindowMetrics
 {
+    public static Avalonia.Size CapMinimumToWorkArea(
+        Avalonia.Size contentFloor, Avalonia.PixelRect workArea, double scale, Avalonia.Size chrome) =>
+        new(System.Math.Min(contentFloor.Width, System.Math.Max(1, workArea.Width / scale - chrome.Width)),
+            System.Math.Min(contentFloor.Height, System.Math.Max(1, workArea.Height / scale - chrome.Height)));
+
     private const double GridHorizontalMargin = 4 + 4;
     private const double SplitterWidth = 6;
     private const int SplitterCount = 3;

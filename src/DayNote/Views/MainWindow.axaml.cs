@@ -18,11 +18,7 @@ public partial class MainWindow : Window
 {
     private bool _shutdownComplete;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
-    private readonly DispatcherTimer _placementSaveTimer;
-    private WindowBounds? _normalWindowBounds;
-    private string _stableWindowMode = "maximized";
-    private bool _placementCaptureEnabled;
-    private bool _placementTransient;
+    private WindowPlacementController? _placement;
 
     // The pixel width the user last dragged each side pane to (the "intent"). Only a splitter drag
     // updates these; a window resize re-derives the displayed width but never overwrites the intent,
@@ -47,15 +43,6 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        _placementSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
-        _placementSaveTimer.Tick += (_, _) =>
-        {
-            _placementSaveTimer.Stop();
-            if (WindowState == WindowState.Normal && !_placementTransient && !IsNativeFullScreenFrame())
-                CacheCurrentNormalBounds();
-            PersistWindowPlacement();
-        };
-
         if (OperatingSystem.IsWindows())
         {
             using var iconStream = AssetLoader.Open(new Uri("avares://DayNote/Assets/icon-win.png"));
@@ -63,7 +50,15 @@ public partial class MainWindow : Window
         }
 
         Loaded += OnLoaded;
-        PositionChanged += (_, _) => CaptureNormalWindowPlacement();
+        WindowViewport.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ScrollViewer.ViewportProperty)
+                ClampPanesToWindow();
+        };
+        PositionChanged += (_, _) => ApplyNativeMinimum();
+        ScalingChanged += (_, _) => ApplyNativeMinimum();
+        Screens.Changed += OnScreensChanged;
+        Closed += (_, _) => Screens.Changed -= OnScreensChanged;
 
         // The attachments pane accepts external file drops (add).
         AttachPane.AddHandler(DragDrop.DragOverEvent, OnAttachDragOver);
@@ -381,10 +376,7 @@ public partial class MainWindow : Window
             _attachmentsWidthIntent = vm.AttachmentsPaneWidth;
         }
 
-        MinWidth = WindowMetrics.MinWidthFor(PaneGrid.ColumnDefinitions.Select(c => c.MinWidth));
-        MinHeight = WindowMetrics.MinHeightFor(
-            EditorPaneContentMinHeight(),
-            ResultsViewport.MaxHeight + ResultsViewport.Margin.Top + ResultsViewport.Margin.Bottom);
+        ApplyWindowMinimums();
 
         ClampPanesToWindow();
 
@@ -397,16 +389,20 @@ public partial class MainWindow : Window
     private double EditorPaneContentMinHeight() =>
         EditorPane.Child is Control content ? content.MinHeight : 0;
 
+    private void ApplyWindowMinimums()
+    {
+        LayoutRoot.MinWidth = WindowMetrics.MinWidthFor(PaneGrid.ColumnDefinitions.Select(c => c.MinWidth));
+        LayoutRoot.MinHeight = WindowMetrics.MinHeightFor(
+            EditorPaneContentMinHeight(),
+            ResultsViewport.MaxHeight + ResultsViewport.Margin.Top + ResultsViewport.Margin.Bottom);
+        ApplyNativeMinimum();
+    }
+
     private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.Property == ClientSizeProperty || e.Property == BoundsProperty)
         {
             ClampPanesToWindow();
-            CaptureNormalWindowPlacement();
-        }
-        else if (e.Property == WindowStateProperty)
-        {
-            OnWindowStateChanged();
         }
     }
 
@@ -418,7 +414,7 @@ public partial class MainWindow : Window
             return;
 
         var cols = PaneGrid.ColumnDefinitions;
-        var budget = WindowMetrics.SidePaneBudget(Width, cols[4].MinWidth);
+        var budget = WindowMetrics.SidePaneBudget(Math.Max(WindowViewport.Viewport.Width, LayoutRoot.MinWidth), cols[4].MinWidth);
         var intents = new[] { binders, notes, attachments };
         var mins = new[] { cols[0].MinWidth, cols[2].MinWidth, cols[6].MinWidth };
         var displays = WindowMetrics.DistributeSidePanes(intents, mins, budget);
@@ -447,7 +443,6 @@ public partial class MainWindow : Window
 
     protected override void OnOpened(EventArgs e)
     {
-        PrepareWindowPlacement();
         base.OnOpened(e);
         if (DataContext is MainWindowViewModel vm)
         {
@@ -456,156 +451,37 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PrepareWindowPlacement()
+    public void PrepareWindowPlacement()
     {
-        var displays = Screens.All.Select(screen => new DisplayWorkArea(
-            screen.WorkingArea.X,
-            screen.WorkingArea.Y,
-            screen.WorkingArea.Width,
-            screen.WorkingArea.Height,
-            screen.Scaling)).ToArray();
-        var saved = (DataContext as MainWindowViewModel)?.MainWindowPlacement;
-        var restoration = WindowPlacementPolicy.Resolve(saved, MinWidth, MinHeight, displays);
-        DisplayWorkArea? restoredDisplay = null;
-        if (restoration.NormalBounds is { } bounds)
+        ApplyWindowMinimums();
+        _placement = new WindowPlacementController(this,
+            (DataContext as MainWindowViewModel)?.MainWindowPlacement,
+            placement => (DataContext as MainWindowViewModel)?.SaveMainWindowPlacement(placement),
+            ex => Program.Log?.Warn("Window placement failed", error: ex), ApplyNativeMinimum);
+    }
+
+    private void OnScreensChanged(object? sender, EventArgs e) => ApplyNativeMinimum();
+
+    private void ApplyNativeMinimum(Screen? target = null)
+    {
+        try
         {
-            var display = displays.First(item =>
-                bounds.X >= item.X && bounds.Y >= item.Y
-                && (long)bounds.X + bounds.Width <= (long)item.X + item.Width
-                && (long)bounds.Y + bounds.Height <= (long)item.Y + item.Height);
-            restoredDisplay = display;
-            var frameSize = FrameSize ?? ClientSize;
-            var chromeWidth = Math.Max(0, frameSize.Width - ClientSize.Width);
-            var chromeHeight = Math.Max(0, frameSize.Height - ClientSize.Height);
-            Position = new PixelPoint(bounds.X, bounds.Y);
-            Width = Math.Max(MinWidth, bounds.Width / display.Scaling - chromeWidth);
-            Height = Math.Max(MinHeight, bounds.Height / display.Scaling - chromeHeight);
+            var floor = new Size(LayoutRoot.MinWidth, LayoutRoot.MinHeight);
+            var screen = target ?? Screens.ScreenFromWindow(this) ?? Screens.Primary;
+            var client = ClientSize;
+            var frame = FrameSize ?? client;
+            var minimum = screen is null ? floor : WindowMetrics.CapMinimumToWorkArea(
+                floor, screen.WorkingArea, screen.Scaling,
+                new Size(Math.Max(0, frame.Width - client.Width), Math.Max(0, frame.Height - client.Height)));
+            MinWidth = minimum.Width;
+            MinHeight = minimum.Height;
         }
-
-        _stableWindowMode = restoration.Mode;
-        DispatcherTimer.RunOnce(() =>
+        catch (Exception ex)
         {
-            // On macOS FrameSize is not final during OnOpened. Reconcile the
-            // physical outer rectangle while the window is still transparent.
-            if (restoration.NormalBounds is { } accepted && restoredDisplay is { } display)
-            {
-                var frameSize = FrameSize ?? ClientSize;
-                Width = Math.Max(MinWidth, Width + accepted.Width / display.Scaling - frameSize.Width);
-                Height = Math.Max(MinHeight, Height + accepted.Height / display.Scaling - frameSize.Height);
-                Position = new PixelPoint(accepted.X, accepted.Y);
-            }
-            CacheCurrentNormalBounds();
-            _normalWindowBounds = WindowPlacementPolicy.SeedNormalBounds(restoration, _normalWindowBounds!);
-            DispatcherTimer.RunOnce(() =>
-            {
-                // Let the native frame apply the reconciled client size before
-                // maximizing; otherwise Cocoa remembers the pre-reconcile frame
-                // as the unmaximize landing rectangle.
-                if (_stableWindowMode == "maximized")
-                    WindowState = WindowState.Maximized;
-                Opacity = 1;
-                ShowInTaskbar = true;
-                DispatcherTimer.RunOnce(() =>
-                {
-                    _placementCaptureEnabled = true;
-                    _placementTransient = WindowState is WindowState.Minimized or WindowState.FullScreen
-                        || IsNativeFullScreenFrame();
-                }, TimeSpan.FromMilliseconds(500));
-            }, TimeSpan.Zero);
-        }, TimeSpan.Zero);
-    }
-
-    private void CaptureNormalWindowPlacement()
-    {
-        if (!_placementCaptureEnabled || _placementTransient || WindowState != WindowState.Normal)
-            return;
-        if (IsNativeFullScreenFrame())
-        {
-            _placementSaveTimer.Stop();
-            return;
+            // Leave the current native minimum intact when the display backend
+            // is unavailable; content still owns its full minimum and scrolling.
+            Program.Log?.Warn("Window minimum work-area update failed", error: ex);
         }
-        _stableWindowMode = "normal";
-        _placementSaveTimer.Stop();
-        _placementSaveTimer.Start();
-    }
-
-    private void CacheCurrentNormalBounds()
-    {
-        var scale = (Screens.ScreenFromWindow(this)?.Scaling).GetValueOrDefault(RenderScaling);
-        var frameSize = FrameSize ?? ClientSize;
-        _normalWindowBounds = new WindowBounds
-        {
-            X = Position.X,
-            Y = Position.Y,
-            Width = (int)Math.Round(frameSize.Width * scale),
-            Height = (int)Math.Round(frameSize.Height * scale),
-        };
-    }
-
-    private bool IsNativeFullScreenFrame()
-    {
-        if (!OperatingSystem.IsMacOS())
-            return false;
-        var scale = (Screens.ScreenFromWindow(this)?.Scaling).GetValueOrDefault(RenderScaling);
-        var frameSize = FrameSize ?? ClientSize;
-        var frame = new WindowBounds
-        {
-            X = Position.X,
-            Y = Position.Y,
-            Width = (int)Math.Round(frameSize.Width * scale),
-            Height = (int)Math.Round(frameSize.Height * scale),
-        };
-        var displays = Screens.All.Select(screen => new DisplayWorkArea(
-            screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height, screen.Scaling));
-        return WindowPlacementPolicy.IsFullDisplayFrame(frame, displays);
-    }
-
-    private void OnWindowStateChanged()
-    {
-        if (!_placementCaptureEnabled)
-            return;
-        if (WindowState is WindowState.Minimized or WindowState.FullScreen)
-        {
-            _placementTransient = true;
-            _placementSaveTimer.Stop();
-            return;
-        }
-        if (WindowState == WindowState.Maximized)
-        {
-            _placementTransient = false;
-            _placementSaveTimer.Stop();
-            _stableWindowMode = "maximized";
-            PersistWindowPlacement();
-            return;
-        }
-        _placementTransient = true;
-        _placementSaveTimer.Stop();
-        DispatcherTimer.RunOnce(() =>
-        {
-            _placementTransient = false;
-            if (WindowState != WindowState.Normal || IsNativeFullScreenFrame())
-                return;
-            CacheCurrentNormalBounds();
-            _stableWindowMode = "normal";
-            PersistWindowPlacement();
-        }, TimeSpan.FromMilliseconds(400));
-    }
-
-    private void PersistWindowPlacement()
-    {
-        if (!_placementCaptureEnabled || _normalWindowBounds is null)
-            return;
-        (DataContext as MainWindowViewModel)?.SaveMainWindowPlacement(new WindowPlacement
-        {
-            NormalBounds = _normalWindowBounds,
-            Mode = _stableWindowMode,
-        });
-    }
-
-    private void FlushWindowPlacement()
-    {
-        _placementSaveTimer.Stop();
-        PersistWindowPlacement();
     }
 
     // A freshly created note should be ready to type into: move focus to the title (Enter then jumps to
@@ -619,7 +495,7 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             CapturePaneWidths(vm);
-            FlushWindowPlacement();
+            _placement?.Flush();
 
             // Complete the quit only if the final flush succeeded. On failure ShutdownAsync keeps the
             // binder open with the autosave retrying, so the window stays open rather than discarding

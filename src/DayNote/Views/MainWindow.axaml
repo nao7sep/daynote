@@ -43,12 +43,14 @@
         </Style>
     </Window.Styles>
 
-    <Panel>
+    <ScrollViewer x:Name="WindowViewport"
+                  HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
     <!-- Three reserved tracks (toolbar / pane track / status bar) so the fixed chrome bars each own
          an auto-sized row and the star-sized middle track can never overlap the status bar (a
          DockPanel fill child can — see the window-chrome conventions). The pane track contains the
          optional bounded results row plus the four panes; WindowMetrics reserves both maxima. -->
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*,Auto"
+          Width="{Binding #WindowViewport.Viewport.Width}" Height="{Binding #WindowViewport.Viewport.Height}">
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
@@ -430,5 +432,5 @@
         </ScrollViewer>
         </Grid>
     </Grid>
-    </Panel>
+    </ScrollViewer>
 </Window>

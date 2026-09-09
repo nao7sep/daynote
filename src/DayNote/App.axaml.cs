@@ -36,11 +36,10 @@ public partial class App : Application
             var window = new MainWindow
             {
                 DataContext = viewModel,
-                Opacity = 0,
-                ShowInTaskbar = false,
             };
             dialogs.Owner = window;
 
+            window.PrepareWindowPlacement();
             desktop.MainWindow = window;
             RegisterOwnerActivation(window);
 

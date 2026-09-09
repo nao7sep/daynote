@@ -51,10 +51,17 @@ public sealed class WindowBounds
     public int Y { get; set; }
     public int Width { get; set; }
     public int Height { get; set; }
+
+    // Legacy fields above are physical outer bounds. New saves also retain the
+    // logical client size, matching Avalonia's Width/Height and ClientSize APIs.
+    public double? ClientWidth { get; set; }
+    public double? ClientHeight { get; set; }
 }
 
 public sealed class WindowPlacementsConverter : JsonConverter<WindowPlacements>
 {
+    public override bool HandleNull => true;
+
     public override WindowPlacements Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         using var document = JsonDocument.ParseValue(ref reader);
@@ -69,13 +76,18 @@ public sealed class WindowPlacementsConverter : JsonConverter<WindowPlacements>
                 ? modeValue.GetString()!
                 : "maximized";
         WindowBounds? bounds = null;
-        if (main.TryGetProperty("normalBounds", out var normal)
-            && normal.ValueKind == JsonValueKind.Object
-            && TryInt(normal, "x", out var x)
-            && TryInt(normal, "y", out var y)
-            && TryInt(normal, "width", out var width)
-            && TryInt(normal, "height", out var height))
-            bounds = new WindowBounds { X = x, Y = y, Width = width, Height = height };
+        if (main.TryGetProperty("normalBounds", out var normal))
+        {
+            try
+            {
+                bounds = normal.Deserialize<WindowBounds>(options);
+            }
+            catch (JsonException)
+            {
+                // Disposable geometry may be malformed independently of a valid mode.
+                bounds = null;
+            }
+        }
         return new WindowPlacements { Main = new WindowPlacement { NormalBounds = bounds, Mode = mode } };
     }
 
@@ -87,59 +99,36 @@ public sealed class WindowPlacementsConverter : JsonConverter<WindowPlacements>
         writer.WriteEndObject();
     }
 
-    private static bool TryInt(JsonElement element, string name, out int value)
-    {
-        value = 0;
-        return element.TryGetProperty(name, out var property)
-            && property.ValueKind == JsonValueKind.Number
-            && property.TryGetInt32(out value);
-    }
 }
 
 public sealed record DisplayWorkArea(int X, int Y, int Width, int Height, double Scaling);
 
 public static class WindowPlacementPolicy
 {
-    public static WindowBounds SeedNormalBounds(WindowPlacement restoration, WindowBounds observedOpening) =>
-        restoration.NormalBounds ?? observedOpening;
-
-    public static bool IsFullDisplayFrame(
-        WindowBounds bounds,
-        IEnumerable<DisplayWorkArea> displays) => displays.Any(display =>
-            bounds.X == display.X
-            && bounds.Y == display.Y
-            && bounds.Width == display.Width
-            && bounds.Height == display.Height);
-
     public static WindowPlacement Resolve(
         WindowPlacement? saved,
-        double minimumWidth,
-        double minimumHeight,
-        IEnumerable<DisplayWorkArea> displays,
-        string defaultMode = "maximized")
+        IEnumerable<DisplayWorkArea> displays)
     {
-        var mode = saved?.Mode is "normal" or "maximized" ? saved.Mode : defaultMode;
         var bounds = saved?.NormalBounds;
         return new WindowPlacement
         {
-            Mode = mode,
-            NormalBounds = bounds is not null && IsUsable(bounds, minimumWidth, minimumHeight, displays)
-                ? bounds
-                : null,
+            Mode = saved?.Mode is "normal" or "maximized" ? saved.Mode : "maximized",
+            NormalBounds = bounds is { Width: > 0, Height: > 0 }
+                && FindDisplay(bounds, displays) is not null ? bounds : null,
         };
     }
 
-    public static bool IsUsable(
+    // Avalonia has no off-screen geometry restoration facility. Keep any
+    // intersecting placement; the window boundary fits it to this work area.
+    public static DisplayWorkArea? FindDisplay(
         WindowBounds bounds,
-        double minimumWidth,
-        double minimumHeight,
-        IEnumerable<DisplayWorkArea> displays) => displays.Any(display =>
-            bounds.Width >= Math.Ceiling(minimumWidth * display.Scaling)
-            && bounds.Height >= Math.Ceiling(minimumHeight * display.Scaling)
-            && bounds.X >= display.X
-            && bounds.Y >= display.Y
-            && (long)bounds.X + bounds.Width <= (long)display.X + display.Width
-            && (long)bounds.Y + bounds.Height <= (long)display.Y + display.Height);
+        IEnumerable<DisplayWorkArea> displays) => displays.FirstOrDefault(display =>
+            display.Width > 0 && display.Height > 0
+            && double.IsFinite(display.Scaling) && display.Scaling > 0
+            && (long)bounds.X + bounds.Width > display.X
+            && (long)bounds.Y + bounds.Height > display.Y
+            && bounds.X < (long)display.X + display.Width
+            && bounds.Y < (long)display.Y + display.Height);
 }
 
 /// <summary>A binder the user has opened: its file path and the locally-stored display title.</summary>
