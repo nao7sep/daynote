@@ -3,7 +3,7 @@ namespace DayNote.Core.Configuration;
 /// <summary>
 /// Volatile session state, persisted to <c>~/.daynote/state.json</c>: pane widths, the known-binders
 /// list, and the current selection. Kept separate from <see cref="AppConfig"/> so durable preferences
-/// and throwaway session state do not mix.
+/// and throwaway session state do not mix. Main-window geometry is disposable session state too.
 /// </summary>
 public sealed class AppState
 {
@@ -14,6 +14,13 @@ public sealed class AppState
     public double BindersPaneWidth { get; set; } = 220;
     public double NotesPaneWidth { get; set; } = 260;
     public double AttachmentsPaneWidth { get; set; } = 260;
+
+    // Last normal main-window geometry. Nullable primitives distinguish an absent placement from
+    // coordinates at the origin; negative positions are valid on screens left of or above primary.
+    public int? WindowPositionX { get; set; }
+    public int? WindowPositionY { get; set; }
+    public double? WindowWidth { get; set; }
+    public double? WindowHeight { get; set; }
 
     // Known binders, each a file path plus its locally-stored display title. Not capped — the user
     // prunes the list explicitly via the row ✕, so a known binder never silently disappears. The title

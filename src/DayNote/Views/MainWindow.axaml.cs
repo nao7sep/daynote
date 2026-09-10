@@ -387,13 +387,13 @@ public partial class MainWindow : Window
     private double EditorPaneContentMinHeight() =>
         EditorPane.Child is Control content ? content.MinHeight : 0;
 
-    private void ApplyWindowMinimums()
+    private void ApplyWindowMinimums(Screen? target = null)
     {
         LayoutRoot.MinWidth = WindowMetrics.MinWidthFor(PaneGrid.ColumnDefinitions.Select(c => c.MinWidth));
         LayoutRoot.MinHeight = WindowMetrics.MinHeightFor(
             EditorPaneContentMinHeight(),
             ResultsViewport.MaxHeight + ResultsViewport.Margin.Top + ResultsViewport.Margin.Bottom);
-        ApplyNativeMinimum();
+        ApplyNativeMinimum(target);
     }
 
     private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -451,6 +451,37 @@ public partial class MainWindow : Window
 
     private void OnScreensChanged(object? sender, EventArgs e) => ApplyNativeMinimum();
 
+    public void RestoreWindowGeometry()
+    {
+        if (DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        try
+        {
+            var target = Screens.All.FirstOrDefault(screen => WindowMetrics.CanRestoreWindowGeometry(
+                vm.WindowPositionX, vm.WindowPositionY, vm.WindowWidth, vm.WindowHeight,
+                [screen.WorkingArea]));
+            if (target is null)
+            {
+                return;
+            }
+
+            ApplyWindowMinimums(target);
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Position = new PixelPoint(vm.WindowPositionX!.Value, vm.WindowPositionY!.Value);
+            Width = vm.WindowWidth!.Value;
+            Height = vm.WindowHeight!.Value;
+        }
+        catch (Exception ex)
+        {
+            // Placement is disposable. Keep the designed defaults if the display backend or a
+            // saved value cannot be used; startup and user data remain unaffected.
+            Program.Log?.Warn("Window geometry restore failed", error: ex);
+        }
+    }
+
     private void ApplyNativeMinimum(Screen? target = null)
     {
         try
@@ -484,6 +515,10 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             CapturePaneWidths(vm);
+            if (WindowMetrics.CanSaveWindowGeometry(WindowState))
+            {
+                vm.CaptureWindowGeometry(Position.X, Position.Y, Width, Height);
+            }
 
             // Complete the quit only if the final flush succeeded. On failure ShutdownAsync keeps the
             // binder open with the autosave retrying, so the window stays open rather than discarding

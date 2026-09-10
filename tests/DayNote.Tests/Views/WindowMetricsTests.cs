@@ -21,6 +21,45 @@ namespace DayNote.Tests.Views;
 public sealed class WindowMetricsTests
 {
     [Fact]
+    public void Window_geometry_is_saved_only_in_normal_mode()
+    {
+        Assert.True(WindowMetrics.CanSaveWindowGeometry(Avalonia.Controls.WindowState.Normal));
+        Assert.False(WindowMetrics.CanSaveWindowGeometry(Avalonia.Controls.WindowState.Minimized));
+        Assert.False(WindowMetrics.CanSaveWindowGeometry(Avalonia.Controls.WindowState.Maximized));
+        Assert.False(WindowMetrics.CanSaveWindowGeometry(Avalonia.Controls.WindowState.FullScreen));
+    }
+
+    [Fact]
+    public void Saved_window_geometry_requires_a_position_on_a_current_working_area()
+    {
+        Avalonia.PixelRect[] workingAreas =
+        [
+            new(-1920, -200, 1920, 1080),
+            new(0, 0, 2560, 1440),
+        ];
+
+        Assert.True(WindowMetrics.CanRestoreWindowGeometry(-1800, -100, 1200, 800, workingAreas));
+        Assert.True(WindowMetrics.CanRestoreWindowGeometry(0, 0, 1200, 800, workingAreas));
+        Assert.False(WindowMetrics.CanRestoreWindowGeometry(-2500, 100, 1200, 800, workingAreas));
+        Assert.False(WindowMetrics.CanRestoreWindowGeometry(2560, 100, 1200, 800, workingAreas));
+    }
+
+    [Theory]
+    [InlineData(null, 0, 1200.0, 800.0)]
+    [InlineData(0, null, 1200.0, 800.0)]
+    [InlineData(0, 0, null, 800.0)]
+    [InlineData(0, 0, 1200.0, null)]
+    [InlineData(0, 0, 0.0, 800.0)]
+    [InlineData(0, 0, 1200.0, -1.0)]
+    [InlineData(0, 0, double.PositiveInfinity, 800.0)]
+    public void Saved_window_geometry_rejects_missing_or_invalid_primitives(
+        int? x, int? y, double? width, double? height)
+    {
+        Assert.False(WindowMetrics.CanRestoreWindowGeometry(
+            x, y, width, height, [new Avalonia.PixelRect(0, 0, 1920, 1080)]));
+    }
+
+    [Fact]
     public void Native_minimum_uses_scaled_work_area_without_changing_the_content_floor()
     {
         var floor = new Avalonia.Size(1200, 800);

@@ -39,6 +39,8 @@ public partial class App : Application
             };
             dialogs.Owner = window;
 
+            window.RestoreWindowGeometry();
+
             desktop.MainWindow = window;
             RegisterOwnerActivation(window);
 

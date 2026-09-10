@@ -185,6 +185,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private double _attachmentsPaneWidth = 260;
 
+    public int? WindowPositionX => _state.WindowPositionX;
+    public int? WindowPositionY => _state.WindowPositionY;
+    public double? WindowWidth => _state.WindowWidth;
+    public double? WindowHeight => _state.WindowHeight;
+
+    public void CaptureWindowGeometry(int x, int y, double width, double height)
+    {
+        _state.WindowPositionX = x;
+        _state.WindowPositionY = y;
+        _state.WindowWidth = width;
+        _state.WindowHeight = height;
+    }
+
     [ObservableProperty]
     private FontFamily _editorFontFamily = new("Menlo");
 
