@@ -127,14 +127,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public bool HasAttachmentResult => AttachmentResult is not null;
 
-    public WindowPlacement? MainWindowPlacement => _state.WindowPlacements.Main;
-
-    public void SaveMainWindowPlacement(WindowPlacement placement)
-    {
-        _state.WindowPlacements.Main = placement;
-        PersistState();
-    }
-
     partial void OnAttachmentResultChanged(OperationResultViewModel? value) =>
         OnPropertyChanged(nameof(HasAttachmentResult));
 

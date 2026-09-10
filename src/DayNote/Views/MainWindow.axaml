@@ -7,7 +7,6 @@
         Title="DayNote"
         Icon="/Assets/icon.png"
         Width="1200" Height="800"
-        WindowStartupLocation="CenterScreen"
         Background="{StaticResource AppBackgroundBrush}"
         RequestedThemeVariant="Dark"><!-- DayNote is dark; forcing the window's theme variant makes
         its ActualThemeVariant Dark so Avalonia's macOS backend paints a dark native title bar

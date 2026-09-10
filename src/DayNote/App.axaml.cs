@@ -39,7 +39,6 @@ public partial class App : Application
             };
             dialogs.Owner = window;
 
-            window.PrepareWindowPlacement();
             desktop.MainWindow = window;
             RegisterOwnerActivation(window);
 

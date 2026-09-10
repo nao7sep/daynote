@@ -9,7 +9,6 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using DayNote.Controls;
-using DayNote.Core.Configuration;
 using DayNote.ViewModels;
 
 namespace DayNote.Views;
@@ -18,7 +17,6 @@ public partial class MainWindow : Window
 {
     private bool _shutdownComplete;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
-    private WindowPlacementController? _placement;
 
     // The pixel width the user last dragged each side pane to (the "intent"). Only a splitter drag
     // updates these; a window resize re-derives the displayed width but never overwrites the intent,
@@ -451,15 +449,6 @@ public partial class MainWindow : Window
         }
     }
 
-    public void PrepareWindowPlacement()
-    {
-        ApplyWindowMinimums();
-        _placement = new WindowPlacementController(this,
-            (DataContext as MainWindowViewModel)?.MainWindowPlacement,
-            placement => (DataContext as MainWindowViewModel)?.SaveMainWindowPlacement(placement),
-            ex => Program.Log?.Warn("Window placement failed", error: ex), ApplyNativeMinimum);
-    }
-
     private void OnScreensChanged(object? sender, EventArgs e) => ApplyNativeMinimum();
 
     private void ApplyNativeMinimum(Screen? target = null)
@@ -495,7 +484,6 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             CapturePaneWidths(vm);
-            _placement?.Flush();
 
             // Complete the quit only if the final flush succeeded. On failure ShutdownAsync keeps the
             // binder open with the autosave retrying, so the window stays open rather than discarding
