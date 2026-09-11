@@ -15,17 +15,13 @@ APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/DayNote"
 RUNTIME_TOKEN="rebuild-$$-$(date +%s)-$RANDOM"
 source "$SCRIPT_DIR/launcher-runtime.sh"
 
-# Map the host CPU to a .NET runtime identifier so a local rebuild runs natively
-# on Apple Silicon and Intel Macs without a manual flag.
+# Apple Silicon only, matching the product that the release workflow ships.
 ARCH="$(uname -m)"
-case "$ARCH" in
-  arm64)  RID="osx-arm64" ;;
-  x86_64) RID="osx-x64"   ;;
-  *)
-    echo "Unsupported macOS architecture: $ARCH (expected arm64 or x86_64)." >&2
-    exit 1
-    ;;
-esac
+if [[ "$ARCH" != "arm64" ]]; then
+  echo "DayNote builds for Apple Silicon only; this host is $ARCH." >&2
+  exit 1
+fi
+RID="osx-arm64"
 
 pause_on_failure() {
   local status="$1"
