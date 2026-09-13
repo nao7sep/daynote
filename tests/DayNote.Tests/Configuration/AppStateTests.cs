@@ -7,7 +7,7 @@ namespace DayNote.Tests.Configuration;
 public sealed class AppStateTests
 {
     [Fact]
-    public void Window_geometry_round_trips_as_four_primitives()
+    public void Window_placement_round_trips_as_five_primitives()
     {
         var state = new AppState
         {
@@ -15,6 +15,7 @@ public sealed class AppStateTests
             WindowPositionY = 80,
             WindowWidth = 1100.5,
             WindowHeight = 720.25,
+            WindowMaximized = true,
         };
 
         var json = JsonSerializer.Serialize(state, DayNoteJson.Options);
@@ -24,6 +25,7 @@ public sealed class AppStateTests
         Assert.Equal(80, restored.WindowPositionY);
         Assert.Equal(1100.5, restored.WindowWidth);
         Assert.Equal(720.25, restored.WindowHeight);
+        Assert.True(restored.WindowMaximized);
         Assert.DoesNotContain("windowPlacements", json);
     }
 

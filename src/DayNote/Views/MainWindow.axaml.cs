@@ -17,6 +17,7 @@ public partial class MainWindow : Window
 {
     private bool _shutdownComplete;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
+    private (int X, int Y, double Width, double Height)? _normalGeometry;
 
     // The pixel width the user last dragged each side pane to (the "intent"). Only a splitter drag
     // updates these; a window resize re-derives the displayed width but never overwrites the intent,
@@ -53,7 +54,12 @@ public partial class MainWindow : Window
             if (e.Property == ScrollViewer.ViewportProperty)
                 ClampPanesToWindow();
         };
-        PositionChanged += (_, _) => ApplyNativeMinimum();
+        PositionChanged += (_, _) =>
+        {
+            RememberNormalGeometryAfterNativeEvents();
+            ApplyNativeMinimum();
+        };
+        Resized += (_, _) => RememberNormalGeometryAfterNativeEvents();
         ScalingChanged += (_, _) => ApplyNativeMinimum();
         Screens.Changed += OnScreensChanged;
         Closed += (_, _) => Screens.Changed -= OnScreensChanged;
@@ -442,6 +448,7 @@ public partial class MainWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
+        RememberNormalGeometry();
         if (DataContext is MainWindowViewModel vm)
         {
             vm.NoteCreated += OnNoteCreated;
@@ -473,6 +480,11 @@ public partial class MainWindow : Window
             Position = new PixelPoint(vm.WindowPositionX!.Value, vm.WindowPositionY!.Value);
             Width = vm.WindowWidth!.Value;
             Height = vm.WindowHeight!.Value;
+            _normalGeometry = (
+                vm.WindowPositionX!.Value, vm.WindowPositionY!.Value,
+                vm.WindowWidth!.Value, vm.WindowHeight!.Value);
+            WindowState = WindowMetrics.RestoredWindowState(
+                vm.WindowMaximized, OperatingSystem.IsWindows());
         }
         catch (Exception ex)
         {
@@ -515,9 +527,13 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             CapturePaneWidths(vm);
-            if (WindowMetrics.CanSaveWindowGeometry(WindowState))
+            RememberNormalGeometry();
+            if (WindowState is WindowState.Normal or WindowState.Maximized
+                && _normalGeometry is { } normal)
             {
-                vm.CaptureWindowGeometry(Position.X, Position.Y, Width, Height);
+                vm.CaptureWindowPlacement(
+                    normal.X, normal.Y, normal.Width, normal.Height,
+                    OperatingSystem.IsWindows() && WindowState == WindowState.Maximized);
             }
 
             // Complete the quit only if the final flush succeeded. On failure ShutdownAsync keeps the
@@ -534,6 +550,27 @@ public partial class MainWindow : Window
 
         base.OnClosing(e);
     }
+
+    private void RememberNormalGeometry()
+    {
+        if (WindowState != WindowState.Normal)
+            return;
+
+        // Avalonia reports macOS title-bar zoom as Normal. Judge the settled native frame too,
+        // otherwise the zoomed rectangle replaces the actual normal rectangle.
+        var screen = Screens.ScreenFromWindow(this);
+        if (screen is not null
+            && WindowMetrics.IsMaximizedGeometry(
+                FrameSize ?? new Size(Width, Height), screen.WorkingArea, screen.Scaling))
+        {
+            return;
+        }
+
+        _normalGeometry = (Position.X, Position.Y, Width, Height);
+    }
+
+    private void RememberNormalGeometryAfterNativeEvents() =>
+        Dispatcher.UIThread.Post(RememberNormalGeometry);
 
     // Symmetric with the OnOpened subscription, so the handler never outlives the window.
     protected override void OnClosed(EventArgs e)

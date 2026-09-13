@@ -20,13 +20,29 @@ namespace DayNote.Tests.Views;
 /// </summary>
 public sealed class WindowMetricsTests
 {
-    [Fact]
-    public void Window_geometry_is_saved_only_in_normal_mode()
+    [Theory]
+    [InlineData(false, false, Avalonia.Controls.WindowState.Normal)]
+    [InlineData(true, false, Avalonia.Controls.WindowState.Normal)]
+    [InlineData(false, true, Avalonia.Controls.WindowState.Normal)]
+    [InlineData(true, true, Avalonia.Controls.WindowState.Maximized)]
+    public void Restored_window_state_is_maximized_only_on_Windows(
+        bool maximized, bool isWindows, Avalonia.Controls.WindowState expected)
     {
-        Assert.True(WindowMetrics.CanSaveWindowGeometry(Avalonia.Controls.WindowState.Normal));
-        Assert.False(WindowMetrics.CanSaveWindowGeometry(Avalonia.Controls.WindowState.Minimized));
-        Assert.False(WindowMetrics.CanSaveWindowGeometry(Avalonia.Controls.WindowState.Maximized));
-        Assert.False(WindowMetrics.CanSaveWindowGeometry(Avalonia.Controls.WindowState.FullScreen));
+        Assert.Equal(expected, WindowMetrics.RestoredWindowState(maximized, isWindows));
+    }
+
+    [Theory]
+    [InlineData(1280, 720, 2560, 1280, 1, false)]
+    [InlineData(2557, 1276, 2560, 1280, 1, true)]
+    [InlineData(1278, 636, 2560, 1280, 2, true)]
+    [InlineData(2560, 1280, 2560, 1280, 0, false)]
+    public void Maximized_geometry_matches_the_scaled_working_area(
+        double width, double height, int workWidth, int workHeight, double scale, bool expected)
+    {
+        Assert.Equal(expected, WindowMetrics.IsMaximizedGeometry(
+            new Avalonia.Size(width, height),
+            new Avalonia.PixelRect(0, 30, workWidth, workHeight),
+            scale));
     }
 
     [Fact]

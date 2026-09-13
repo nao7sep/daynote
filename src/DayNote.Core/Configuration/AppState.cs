@@ -21,6 +21,7 @@ public sealed class AppState
     public int? WindowPositionY { get; set; }
     public double? WindowWidth { get; set; }
     public double? WindowHeight { get; set; }
+    public bool WindowMaximized { get; set; }
 
     // Known binders, each a file path plus its locally-stored display title. Not capped — the user
     // prunes the list explicitly via the row ✕, so a known binder never silently disappears. The title
