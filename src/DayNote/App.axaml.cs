@@ -13,8 +13,9 @@ public partial class App : Application
 {
     internal static string? StartupFailureMessage { get; set; }
 
-    // The main window's view model, which the app menu's About and Settings items open through.
-    // Null while a startup failure is shown instead, when those items do nothing.
+    // The main window and its view model, which the app menu's About and Settings items open through.
+    // Null while a startup failure is shown instead, when those items are disabled.
+    private MainWindow? _mainWindow;
     private MainWindowViewModel? _viewModel;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -23,6 +24,15 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // The one macOS menu bar, set before any window so every window, a startup failure notice
+            // included, shows the same bar. About and Settings are enabled while the main window is in
+            // front, so never over one of its dialogs.
+            MacMenuBar.Install(
+                "DayNote",
+                showAbout: () => _viewModel?.OpenAboutCommand.Execute(null),
+                showSettings: () => _viewModel?.OpenSettingsCommand.Execute(null),
+                canShowAppDialogs: () => _mainWindow is { IsActive: true });
+
             if (StartupFailureMessage is { } startupFailure)
             {
                 desktop.MainWindow = new MessageDialog(
@@ -50,6 +60,7 @@ public partial class App : Application
             window.RestoreWindowGeometry();
 
             desktop.MainWindow = window;
+            _mainWindow = window;
             RegisterOwnerActivation(window);
 
             // Report material recovery once the main window can own the dialog.
@@ -70,10 +81,6 @@ public partial class App : Application
 
         base.OnFrameworkInitializationCompleted();
     }
-
-    private void AboutMenu_Click(object? sender, EventArgs e) => _viewModel?.OpenAboutCommand.Execute(null);
-
-    private void SettingsMenu_Click(object? sender, EventArgs e) => _viewModel?.OpenSettingsCommand.Execute(null);
 
     private static void RegisterOwnerActivation(Window window)
     {

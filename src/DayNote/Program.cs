@@ -5,6 +5,7 @@ using DayNote.Core.Storage;
 using DayNote.Logging;
 using DayNote.Services;
 using DayNote.ViewModels;
+using DayNote.Views;
 
 namespace DayNote;
 
@@ -100,6 +101,7 @@ internal static class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            .With(MacMenuBar.PlatformOptions())
             .WithInterFont()
             .LogToTrace();
 

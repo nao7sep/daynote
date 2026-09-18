@@ -22,7 +22,6 @@ public partial class DialogBase : Window
     public DialogBase()
     {
         InitializeComponent();
-        MacMenus.Attach(this, includeWindowMenu: false);
         Opened += OnOpened;
         KeyDown += OnKeyDown;
     }
