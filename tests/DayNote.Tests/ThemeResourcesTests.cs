@@ -63,7 +63,7 @@ public sealed class ThemeResourcesTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
-    public void TextMeetsWcagAaInEachTheme(string theme)
+    public void TextKeepsHighContrastInEachTheme(string theme)
     {
         var b = ThemeBrushes(theme);
         var failures = new List<string>();
@@ -98,7 +98,7 @@ public sealed class ThemeResourcesTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
-    public void WhiteLabelsMeetWcagAaOnTheDangerFill(string theme)
+    public void WhiteLabelsKeepHighContrastOnTheDangerFill(string theme)
     {
         var b = ThemeBrushes(theme);
         Assert.True(Contrast(Colors.White, b["DangerBrush"]) >= 4.5, $"{theme}: white on DangerBrush");
