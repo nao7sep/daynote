@@ -33,6 +33,9 @@ public partial class App : Application
             // config/state) so a failure becomes an in-app error rather than a pre-UI crash.
             var dialogs = new DialogService(Program.Log);
             var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log);
+            // Before the main window exists, so its first frame and title bar take the saved theme.
+            // A startup failure above never reads settings, so its dialog follows the OS.
+            AppTheme.Apply(viewModel.Theme);
             var window = new MainWindow
             {
                 DataContext = viewModel,

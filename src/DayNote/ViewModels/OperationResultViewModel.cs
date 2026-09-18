@@ -1,12 +1,11 @@
 using Avalonia.Automation;
-using Avalonia.Media;
 
 namespace DayNote.ViewModels;
 
 /// <summary>
 /// Presentation data for an app-controlled result. The surface that owns the operation decides
 /// where the result is rendered and how it is cleared; this type owns only severity, accessibility,
-/// palette, and message data shared by those surfaces.
+/// and message data shared by those surfaces. The views map the severity to theme brushes.
 /// </summary>
 public sealed class OperationResultViewModel
 {
@@ -24,12 +23,6 @@ public sealed class OperationResultViewModel
         LiveSetting = kind == OperationResultKind.Error
             ? AutomationLiveSetting.Assertive
             : AutomationLiveSetting.Polite;
-        Accent = kind switch
-        {
-            OperationResultKind.Warning => PaletteBrush.Resolve("WarningBrush"),
-            OperationResultKind.Error => PaletteBrush.Resolve("DangerBrush"),
-            _ => PaletteBrush.Resolve("AccentBrush"),
-        };
     }
 
     public OperationResultKind Kind { get; }
@@ -40,7 +33,9 @@ public sealed class OperationResultViewModel
 
     public AutomationLiveSetting LiveSetting { get; }
 
-    public IBrush Accent { get; }
+    public bool IsWarning => Kind == OperationResultKind.Warning;
+
+    public bool IsError => Kind == OperationResultKind.Error;
 
     public bool IsPersistent { get; }
 

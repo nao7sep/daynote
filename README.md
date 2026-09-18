@@ -23,7 +23,7 @@ Prebuilt builds for **macOS (Apple Silicon)** and **Windows (x64)** are on the [
 - **Lifecycle status** — draft → ready → published → expired; published and expired notes are locked until moved back to draft or ready.
 - **Character counting** — live word/character counts plus an X/Twitter-weighted count against the 280 limit.
 - **Autosave** — debounced save as you type; flushes on close and quit.
-- **Dark "Twilight" theme**, keyboard-driven throughout.
+- **Light and dark themes** — a plum "Twilight" dark and a lavender light; follow the OS or pick one in Settings. Keyboard-driven throughout.
 
 ## Files and recovery
 

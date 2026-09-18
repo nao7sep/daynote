@@ -29,6 +29,10 @@ public sealed class AppConfig
     // this never touches the note content's font.
     public string UiFontFamily { get; set; } = DefaultUiFontFamily;
 
+    // App appearance — the theme. System follows the OS; applied app-wide before the main window
+    // exists and again on each Save.
+    public ThemePreference Theme { get; set; } = ThemePreference.System;
+
     // Editor appearance — named text-style presets and the one currently selected (by name).
     // Both seed from the built-in defaults on first run; from then on they are the user's to edit.
     public List<EditorTextStyle> TextStyles { get; set; } = DefaultTextStyles();
@@ -52,6 +56,7 @@ public sealed class AppConfig
     public AppConfig Copy() => new()
     {
         UiFontFamily = UiFontFamily,
+        Theme = Theme,
         TextStyles = TextStyles.Select(style => style.Copy()).ToList(),
         SelectedTextStyle = SelectedTextStyle,
         AutosaveDelaySeconds = AutosaveDelaySeconds,

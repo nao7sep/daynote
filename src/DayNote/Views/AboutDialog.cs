@@ -35,9 +35,8 @@ public sealed class AboutDialog : DialogBase
         _linkResultText = new TextBlock
         {
             TextWrapping = TextWrapping.Wrap,
-            Foreground = PaletteBrush.Resolve("TextPrimaryBrush", Brushes.White),
             VerticalAlignment = VerticalAlignment.Top,
-        };
+        }.Themed(TextBlock.ForegroundProperty, "TextPrimaryBrush");
         var closeResult = new Button
         {
             Name = "CloseAboutLinkResult",
@@ -62,11 +61,11 @@ public sealed class AboutDialog : DialogBase
             Margin = new Thickness(0, 0, 0, 16),
             Padding = new Thickness(10, 8),
             CornerRadius = new CornerRadius(6),
-            Background = PaletteBrush.Resolve("AppBackgroundBrush", Brushes.Transparent),
-            BorderBrush = PaletteBrush.Resolve("DangerBrush", Brushes.IndianRed),
             BorderThickness = new Thickness(1),
             Child = resultGrid,
-        };
+        }
+            .Themed(Border.BackgroundProperty, "AppBackgroundBrush")
+            .Themed(Border.BorderBrushProperty, "DangerTextBrush");
         AutomationProperties.SetLiveSetting(_linkResult, AutomationLiveSetting.Assertive);
         closeResult.Click += (_, _) => _linkResult.IsVisible = false;
 
@@ -79,9 +78,8 @@ public sealed class AboutDialog : DialogBase
                 {
                     Text = $"{AppInfo.Name} {AppInfo.Version}",
                     FontSize = 13,
-                    Foreground = Secondary,
                     Margin = new Thickness(0, 0, 0, 12),
-                },
+                }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"),
                 new TextBlock
                 {
                     Text = "A plain-text notes desktop application: binders containing notes. Successor to quickdeck.",
@@ -101,8 +99,7 @@ public sealed class AboutDialog : DialogBase
                 {
                     Text = "© 2026 Yoshinao Inoguchi · GNU GPL v3 or later",
                     FontSize = 12,
-                    Foreground = Secondary,
-                },
+                }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"),
             },
         };
 
@@ -138,8 +135,6 @@ public sealed class AboutDialog : DialogBase
 
         return button;
     }
-
-    private static IBrush Secondary => PaletteBrush.Resolve("TextSecondaryBrush", Brushes.Gray);
 
     /// <summary>
     /// A button label with a trailing external-link mark drawn as a vector rather than the
@@ -181,14 +176,13 @@ public sealed class AboutDialog : DialogBase
         return mark;
     }
 
-    private static Shapes.Path CloseMark() => new()
+    private static Shapes.Path CloseMark() => new Shapes.Path
     {
         Width = 10,
         Height = 10,
-        Stroke = PaletteBrush.Resolve("DangerBrush", Brushes.IndianRed),
         StrokeThickness = 1.6,
         StrokeLineCap = PenLineCap.Round,
         Data = Geometry.Parse("M1,1 L9,9 M9,1 L1,9"),
-    };
+    }.Themed(Shapes.Shape.StrokeProperty, "DangerTextBrush");
 
 }

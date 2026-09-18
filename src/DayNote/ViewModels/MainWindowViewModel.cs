@@ -122,6 +122,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public bool HasResults => Results.Count > 0;
 
+    /// <summary>
+    /// The saved theme. The view applies it app-wide (AppTheme) at startup and whenever Settings
+    /// commits a change, which raises this property; the view model never touches the application.
+    /// </summary>
+    public ThemePreference Theme => _config.Theme;
+
     [ObservableProperty]
     private OperationResultViewModel? _attachmentResult;
 
@@ -138,9 +144,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string _saveStateText = "Saved";
 
-    /// <summary>Color of the save-state dot, mapped from the current <see cref="SaveState"/>.</summary>
+    // The save state the status-bar dot shows; the view maps it to theme brushes (saved is the
+    // absence of the other three).
     [ObservableProperty]
-    private IBrush _saveStateBrush = Brushes.Transparent;
+    private bool _isSaveStateSaving;
+
+    [ObservableProperty]
+    private bool _isSaveStateUnsaved;
+
+    [ObservableProperty]
+    private bool _isSaveStateError;
 
     /// <summary>Status-bar text when a binder is open but no note is selected: the binder's note count.</summary>
     [ObservableProperty]
@@ -823,8 +836,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        var themeChanged = _config.Theme != working.Theme;
         _config = working;
         ApplyConfig();
+        if (themeChanged)
+        {
+            OnPropertyChanged(nameof(Theme));
+        }
+
         foreach (var note in _allNotes)
         {
             note.Refresh();
@@ -1700,13 +1719,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         };
 
         // The dot tracks the state by color: green saved, accent saving, amber unsaved, red failed.
-        SaveStateBrush = PaletteBrush.Resolve(_saveState switch
-        {
-            SaveState.Saving => "AccentBrush",
-            SaveState.Unsaved => "WarningBrush",
-            SaveState.Error => "DangerBrush",
-            _ => "PositiveBrush",
-        });
+        IsSaveStateSaving = _saveState == SaveState.Saving;
+        IsSaveStateUnsaved = _saveState == SaveState.Unsaved;
+        IsSaveStateError = _saveState == SaveState.Error;
     }
 
     /// <summary>
@@ -1736,6 +1751,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private static object ConfigSummary(AppConfig config) => new
     {
         uiFontFamily = config.UiFontFamily,
+        theme = config.Theme,
         selectedTextStyle = config.SelectedTextStyle,
         textStyleCount = config.TextStyles.Count,
         autosaveDelaySeconds = config.AutosaveDelaySeconds,

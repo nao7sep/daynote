@@ -3,7 +3,7 @@
              x:Class="DayNote.App"
              xmlns:local="using:DayNote"
              Name="DayNote"
-             RequestedThemeVariant="Dark">
+             RequestedThemeVariant="Default">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
@@ -11,57 +11,84 @@
 
     <Application.Resources>
         <ResourceDictionary>
+            <!-- The theme palette, one complete set per theme (app-chrome conventions, Theme). Every
+                 surface reads these through DynamicResource, so a theme change repaints open windows.
+                 Dark is the twilight journal: soft plum surfaces with a cheerful lavender accent. Light
+                 is the same journal by day: lavender-white paper, plum ink, and a deeper violet accent
+                 that carries white text and still marks focus on a pale surface. Note lifecycle status:
+                 draft (muted) → ready (amber) → published (green); expired (red). -->
             <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <!-- Light: the journal by day. -->
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F4F1F7"/>
+                    <SolidColorBrush x:Key="SurfaceBrush" Color="#FCFBFD"/>
+                    <SolidColorBrush x:Key="BorderBrush" Color="#DCD5E3"/>
+                    <SolidColorBrush x:Key="FieldBorderBrush" Color="#8A7F95"/>
+                    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#221D29"/>
+                    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5F5669"/>
+                    <SolidColorBrush x:Key="AccentBrush" Color="#7352D6"/>
+                    <SolidColorBrush x:Key="AccentHoverBrush" Color="#6444C4"/>
+                    <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="DangerBrush" Color="#B93650"/>
+                    <SolidColorBrush x:Key="DangerHoverBrush" Color="#A32C45"/>
+                    <SolidColorBrush x:Key="DangerTextBrush" Color="#A32C45"/>
+                    <SolidColorBrush x:Key="WarningBrush" Color="#87500B"/>
+                    <SolidColorBrush x:Key="PositiveBrush" Color="#236A47"/>
+                    <SolidColorBrush x:Key="UtilityBrush" Color="#ECE7F1"/>
+                    <SolidColorBrush x:Key="UtilityHoverBrush" Color="#E1DAE8"/>
+                    <SolidColorBrush x:Key="ListBackgroundBrush" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="ListSelectionBrush" Color="#EDE5FA"/>
+                    <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="#E4D9F6"/>
+                    <SolidColorBrush x:Key="StatusDraftBrush" Color="#5F5669"/>
+                    <SolidColorBrush x:Key="StatusReadyBrush" Color="#87500B"/>
+                    <SolidColorBrush x:Key="StatusPublishedBrush" Color="#236A47"/>
+                    <SolidColorBrush x:Key="StatusExpiredBrush" Color="#A32C45"/>
+                    <!-- Fluent form-control outlines: a field is identified by its outline alone, so it holds 3:1. -->
+                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#8A7F95"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#6F6479"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#7352D6"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#DCD5E3"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#8A7F95"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#6F6479"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#6F6479"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushDisabled" Color="#DCD5E3"/>
+                </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
-                    <!-- Keep Fluent form controls quiet against the custom dark surfaces. -->
-                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#3A3442"/>
-                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#51485A"/>
+                    <!-- Dark: the twilight journal. -->
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#17151C"/>
+                    <SolidColorBrush x:Key="SurfaceBrush" Color="#211E28"/>
+                    <SolidColorBrush x:Key="BorderBrush" Color="#3A3442"/>
+                    <SolidColorBrush x:Key="FieldBorderBrush" Color="#7A6F85"/>
+                    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F1ECF4"/>
+                    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#AFA3B1"/>
+                    <SolidColorBrush x:Key="AccentBrush" Color="#A78BFA"/>
+                    <SolidColorBrush x:Key="AccentHoverBrush" Color="#B69CFF"/>
+                    <SolidColorBrush x:Key="AccentForegroundBrush" Color="#1B1425"/>
+                    <SolidColorBrush x:Key="DangerBrush" Color="#B93650"/>
+                    <SolidColorBrush x:Key="DangerHoverBrush" Color="#C2415D"/>
+                    <SolidColorBrush x:Key="DangerTextBrush" Color="#F08A9C"/>
+                    <SolidColorBrush x:Key="WarningBrush" Color="#E0A14A"/>
+                    <SolidColorBrush x:Key="PositiveBrush" Color="#5FB98B"/>
+                    <SolidColorBrush x:Key="UtilityBrush" Color="#3A3347"/>
+                    <SolidColorBrush x:Key="UtilityHoverBrush" Color="#484054"/>
+                    <SolidColorBrush x:Key="ListBackgroundBrush" Color="#121015"/>
+                    <SolidColorBrush x:Key="ListSelectionBrush" Color="#3B2F51"/>
+                    <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="#413456"/>
+                    <SolidColorBrush x:Key="StatusDraftBrush" Color="#AFA3B1"/>
+                    <SolidColorBrush x:Key="StatusReadyBrush" Color="#E0A14A"/>
+                    <SolidColorBrush x:Key="StatusPublishedBrush" Color="#5FB98B"/>
+                    <SolidColorBrush x:Key="StatusExpiredBrush" Color="#F08A9C"/>
+                    <!-- Fluent form-control outlines: a field is identified by its outline alone, so it holds 3:1. -->
+                    <SolidColorBrush x:Key="TextControlBorderBrush" Color="#7A6F85"/>
+                    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#968BA0"/>
                     <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#A78BFA"/>
                     <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#2D2935"/>
-                    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#3A3442"/>
-                    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#51485A"/>
-                    <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#51485A"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#7A6F85"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#968BA0"/>
+                    <SolidColorBrush x:Key="ComboBoxBorderBrushPressed" Color="#968BA0"/>
                     <SolidColorBrush x:Key="ComboBoxBorderBrushDisabled" Color="#2D2935"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
-
-            <!-- Twilight journal: soft plum surfaces with a cheerful lavender accent. -->
-            <Color x:Key="AppBackground">#17151C</Color>
-            <Color x:Key="Surface">#211E28</Color>
-            <Color x:Key="Border">#3A3442</Color>
-            <Color x:Key="TextPrimary">#F1ECF4</Color>
-            <Color x:Key="TextSecondary">#A89CAA</Color>
-            <Color x:Key="Accent">#A78BFA</Color>
-            <Color x:Key="AccentHover">#B69CFF</Color>
-            <Color x:Key="AccentForeground">#1B1425</Color>
-            <Color x:Key="Danger">#B93650</Color>
-            <Color x:Key="DangerHover">#C2415D</Color>
-            <Color x:Key="Warning">#E0A14A</Color>
-            <Color x:Key="Utility">#3A3347</Color>
-            <Color x:Key="UtilityHover">#484054</Color>
-            <Color x:Key="ListBackground">#121015</Color>
-            <Color x:Key="ListSelection">#3B2F51</Color>
-            <Color x:Key="ListSelectionHover">#493A61</Color>
-            <!-- Note lifecycle status accents: draft (muted) → ready (amber) → published (green); expired (red). -->
-            <Color x:Key="Positive">#5FB98B</Color>
-
-            <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackground}"/>
-            <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Surface}"/>
-            <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource Border}"/>
-            <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimary}"/>
-            <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}"/>
-            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}"/>
-            <SolidColorBrush x:Key="AccentForegroundBrush" Color="{StaticResource AccentForeground}"/>
-            <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}"/>
-            <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource Warning}"/>
-            <SolidColorBrush x:Key="ListBackgroundBrush" Color="{StaticResource ListBackground}"/>
-            <SolidColorBrush x:Key="ListSelectionBrush" Color="{StaticResource ListSelection}"/>
-            <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="{StaticResource ListSelectionHover}"/>
-            <SolidColorBrush x:Key="PositiveBrush" Color="{StaticResource Positive}"/>
-            <SolidColorBrush x:Key="StatusDraftBrush" Color="{StaticResource TextSecondary}"/>
-            <SolidColorBrush x:Key="StatusReadyBrush" Color="{StaticResource Warning}"/>
-            <SolidColorBrush x:Key="StatusPublishedBrush" Color="{StaticResource Positive}"/>
-            <SolidColorBrush x:Key="StatusExpiredBrush" Color="{StaticResource Danger}"/>
 
             <!-- The app-wide UI (chrome) font. The default is the bundled Inter; the view model
                  overrides this resource at runtime from the configured UI font, and the Window style
@@ -73,11 +100,17 @@
 
     <Application.Styles>
         <FluentTheme>
+            <!-- Fluent's own accent, window region, and error text, per theme; they repeat the palette's
+                 Accent, AppBackground, and DangerText values (a palette entry takes a color, not a brush). -->
             <FluentTheme.Palettes>
+                <ColorPaletteResources x:Key="Light"
+                                       Accent="#7352D6"
+                                       RegionColor="#F4F1F7"
+                                       ErrorText="#A32C45"/>
                 <ColorPaletteResources x:Key="Dark"
-                                       Accent="{StaticResource Accent}"
-                                       RegionColor="{StaticResource AppBackground}"
-                                       ErrorText="{StaticResource Danger}"/>
+                                       Accent="#A78BFA"
+                                       RegionColor="#17151C"
+                                       ErrorText="#F08A9C"/>
             </FluentTheme.Palettes>
         </FluentTheme>
 
@@ -89,22 +122,22 @@
         </Style>
 
         <Style Selector="Button.accent">
-            <Setter Property="Background" Value="{StaticResource Accent}"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <Style Selector="Button.accent /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource Accent}"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
         <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource AccentHover}"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
+            <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
         <Style Selector="Button.accent:focus /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource AccentHover}"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentForeground}"/>
+            <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
 
         <!-- A button states everything it requires of its label: that the content is
@@ -136,55 +169,55 @@
         </Style>
 
         <Style Selector="Button.utility">
-            <Setter Property="Background" Value="{StaticResource Utility}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <Style Selector="Button.utility:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource UtilityHover}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
         <Style Selector="Button.utility:focus /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource UtilityHover}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 
         <Style Selector="Button.destructive">
-            <Setter Property="Background" Value="{StaticResource Danger}"/>
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <Style Selector="Button.destructive:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource DangerHover}"/>
+            <Setter Property="Background" Value="{DynamicResource DangerHoverBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
         <Style Selector="Button.destructive:focus /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource DangerHover}"/>
+            <Setter Property="Background" Value="{DynamicResource DangerHoverBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
 
         <Style Selector="ListBox">
-            <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ListBackgroundBrush}"/>
         </Style>
 
         <!-- Stable app-toned list selection instead of the user's platform accent. -->
         <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
         </Style>
         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource ListSelectionBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ListSelectionBrush}"/>
         </Style>
         <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource ListSelectionHoverBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ListSelectionHoverBrush}"/>
         </Style>
 
         <!-- Pane header strip: a title row separated from the pane body by a bottom borderline,
              matching the fleet (zipkit). The header spans the full pane width; the body below
              carries its own padding. -->
         <Style Selector="Border.paneHeader">
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
             <Setter Property="Padding" Value="12,9"/>
         </Style>
@@ -196,7 +229,7 @@
         <Style Selector="Button.rowAction">
             <Setter Property="Opacity" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
             <Setter Property="Padding" Value="5"/>
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -211,34 +244,34 @@
             <Setter Property="Opacity" Value="1"/>
         </Style>
         <Style Selector="Button.rowAction:pointerover">
-            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
         </Style>
         <Style Selector="Button.rowAction:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
         </Style>
 
         <!-- Persistent results keep a quiet, always-present close affordance at their upper end. -->
         <Style Selector="Button.resultClose">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="6"/>
             <Setter Property="CornerRadius" Value="4"/>
         </Style>
         <Style Selector="Button.resultClose:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource Utility}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
         <Style Selector="Button.resultClose:focus /template/ ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource Utility}"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 
         <!-- Text-style preset cards are uniform; the default one is marked by its "Default" pill,
              not a whole-card highlight (that read as a selection). -->
         <Style Selector="Border.stylePreset">
-            <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ListBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="7"/>
             <Setter Property="Padding" Value="12"/>
@@ -246,7 +279,7 @@
 
         <!-- A small colored pill (e.g. the "Default" text-style marker); its text is set by the caller. -->
         <Style Selector="Border.pill">
-            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="CornerRadius" Value="10"/>
             <Setter Property="Padding" Value="11,5"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -254,24 +287,25 @@
 
         <!-- A muted, neutral badge (e.g. the editor's "Read-only" hint). -->
         <Style Selector="Border.badge">
-            <Setter Property="Background" Value="{StaticResource Utility}"/>
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
             <Setter Property="CornerRadius" Value="9"/>
             <Setter Property="Padding" Value="8,3"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
-        <!-- Subtle resting border on text inputs; the theme's accent focus indicator still shows on focus. -->
+        <!-- A field's resting outline is its only boundary, so it takes the 3:1 field border rather than
+             the decorative one; the theme's accent focus indicator still shows on focus. -->
         <Style Selector="TextBox /template/ Border#PART_BorderElement">
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource FieldBorderBrush}"/>
         </Style>
         <Style Selector="ComboBox, NumericUpDown">
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource FieldBorderBrush}"/>
         </Style>
 
         <!-- A read-only text field (a locked note's title/body) is shown recessed, so it visibly
              reads as not-editable. :is(TextBox) also covers the ComposingTextBox title field. -->
         <Style Selector=":is(TextBox)[IsReadOnly=True] /template/ Border#PART_BorderElement">
-            <Setter Property="Background" Value="{StaticResource ListBackgroundBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ListBackgroundBrush}"/>
         </Style>
 
         <!-- Keep Fluent's native scrollbar geometry and hit targets. The framework expands the

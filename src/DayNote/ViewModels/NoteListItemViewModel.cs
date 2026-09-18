@@ -1,4 +1,3 @@
-using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
 using DayNote.Core.Text;
@@ -32,8 +31,16 @@ public sealed partial class NoteListItemViewModel : ObservableObject
     [ObservableProperty]
     private string _statusLabel = string.Empty;
 
+    // The lifecycle state the row's stripe and label show; the view maps it to theme brushes.
+    // Draft is the absence of the other three.
     [ObservableProperty]
-    private IBrush _statusBrush = Brushes.Gray;
+    private bool _isStatusReady;
+
+    [ObservableProperty]
+    private bool _isStatusPublished;
+
+    [ObservableProperty]
+    private bool _isStatusExpired;
 
     /// <summary>Re-reads the title, status, and creation time from the underlying note.</summary>
     public void Refresh()
@@ -43,7 +50,9 @@ public sealed partial class NoteListItemViewModel : ObservableObject
         // and the displayed date agree, and a row does not jump its label as it is edited.
         Subtitle = DayNoteTime.ToDisplay(Note.Created, _displayTimeZone);
         StatusLabel = StatusText(Note.Status);
-        StatusBrush = StatusColor(Note.Status);
+        IsStatusReady = Note.Status == NoteStatus.Ready;
+        IsStatusPublished = Note.Status == NoteStatus.Published;
+        IsStatusExpired = Note.Status == NoteStatus.Expired;
     }
 
     private static string StatusText(NoteStatus status) => status switch
@@ -53,19 +62,6 @@ public sealed partial class NoteListItemViewModel : ObservableObject
         NoteStatus.Expired => "Expired",
         _ => "Draft",
     };
-
-    private static IBrush StatusColor(NoteStatus status)
-    {
-        var key = status switch
-        {
-            NoteStatus.Ready => "StatusReadyBrush",
-            NoteStatus.Published => "StatusPublishedBrush",
-            NoteStatus.Expired => "StatusExpiredBrush",
-            _ => "StatusDraftBrush",
-        };
-
-        return PaletteBrush.Resolve(key, Brushes.Gray);
-    }
 
     /// <summary>
     /// The note's title, or — until one is set — a single-line preview of the body, so an untitled

@@ -33,9 +33,8 @@ public sealed class ShortcutsDialog : DialogBase
                 Text = ShortcutCatalog.GroupHeader(group),
                 FontWeight = FontWeight.SemiBold,
                 FontSize = 13,
-                Foreground = PaletteBrush.Resolve("TextSecondaryBrush"),
                 Margin = new Thickness(2, 0, 0, 6),
-            });
+            }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"));
             sections.Children.Add(BuildCard(rows));
         }
 
@@ -53,19 +52,19 @@ public sealed class ShortcutsDialog : DialogBase
             stack.Children.Add(BuildRow(rows[i]));
             if (i < rows.Count - 1)
             {
-                stack.Children.Add(new Border { Height = 1, Background = PaletteBrush.Resolve("BorderBrush") });
+                stack.Children.Add(new Border { Height = 1 }.Themed(Border.BackgroundProperty, "BorderBrush"));
             }
         }
 
         return new Border
         {
-            BorderBrush = PaletteBrush.Resolve("BorderBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
-            Background = PaletteBrush.Resolve("SurfaceBrush"),
             Padding = new Thickness(14, 4),
             Child = stack,
-        };
+        }
+            .Themed(Border.BorderBrushProperty, "BorderBrush")
+            .Themed(Border.BackgroundProperty, "SurfaceBrush");
     }
 
     // Description on the left (wrapping), key on the right.
@@ -82,9 +81,8 @@ public sealed class ShortcutsDialog : DialogBase
         {
             Text = item.Description,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = PaletteBrush.Resolve("TextPrimaryBrush"),
             VerticalAlignment = VerticalAlignment.Center,
-        };
+        }.Themed(TextBlock.ForegroundProperty, "TextPrimaryBrush");
         Grid.SetColumn(description, 0);
         grid.Children.Add(description);
 
@@ -95,10 +93,8 @@ public sealed class ShortcutsDialog : DialogBase
         return grid;
     }
 
-    private static Border Keycap(string label) => new()
+    private static Border Keycap(string label) => new Border
     {
-        Background = PaletteBrush.Resolve("AppBackgroundBrush"),
-        BorderBrush = PaletteBrush.Resolve("BorderBrush"),
         BorderThickness = new Thickness(1),
         CornerRadius = new CornerRadius(5),
         Padding = new Thickness(8, 3),
@@ -109,17 +105,17 @@ public sealed class ShortcutsDialog : DialogBase
             Text = label,
             FontWeight = FontWeight.SemiBold,
             FontSize = 12,
-            Foreground = PaletteBrush.Resolve("TextPrimaryBrush"),
-        },
-    };
+        }.Themed(TextBlock.ForegroundProperty, "TextPrimaryBrush"),
+    }
+        .Themed(Border.BackgroundProperty, "AppBackgroundBrush")
+        .Themed(Border.BorderBrushProperty, "BorderBrush");
 
-    private static TextBlock PlainAffordance(string label) => new()
+    private static TextBlock PlainAffordance(string label) => new TextBlock
     {
         Text = label,
         FontWeight = FontWeight.SemiBold,
         FontSize = 12,
-        Foreground = PaletteBrush.Resolve("TextSecondaryBrush"),
         HorizontalAlignment = HorizontalAlignment.Right,
         VerticalAlignment = VerticalAlignment.Center,
-    };
+    }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush");
 }

@@ -18,10 +18,18 @@ namespace DayNote.Views;
 /// </summary>
 public sealed class SettingsDialog : DialogBase
 {
+    private static readonly (ThemePreference Value, string Label)[] ThemeChoices =
+    [
+        (ThemePreference.System, "System"),
+        (ThemePreference.Light, "Light"),
+        (ThemePreference.Dark, "Dark"),
+    ];
+
     private readonly AppConfig _config;
     private readonly AppConfig _original;
     private readonly StackPanel _styleItems = new() { Spacing = 8 };
     private readonly Dictionary<EditorTextStyle, StyleEditorControls> _styleEditors = [];
+    private readonly IReadOnlyList<RadioButton> _themeButtons;
     private readonly TextBox _uiFont;
     private readonly NumericUpDown _autosave;
     private readonly TextBox _timeZone;
@@ -56,7 +64,6 @@ public sealed class SettingsDialog : DialogBase
         // The presets live in a bordered, padded list container; the cards are its rows.
         var styleList = new Border
         {
-            BorderBrush = PaletteBrush.Resolve("BorderBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(8),
@@ -67,7 +74,24 @@ public sealed class SettingsDialog : DialogBase
                 VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
                 Content = _styleItems,
             },
-        };
+        }.Themed(Border.BorderBrushProperty, "BorderBrush");
+
+        // The platform radio group: one tab stop, arrow keys move and select (composite-control
+        // conventions). App-wide, applied on Save like every other field here. The buttons group by
+        // their shared parent rather than a GroupName, which Avalonia tracks across every dialog not
+        // yet in a window, so one Settings dialog's radios could uncheck another's.
+        _themeButtons = ThemeChoices
+            .Select(choice => new RadioButton { Content = choice.Label, IsChecked = choice.Value == config.Theme })
+            .ToList();
+        var themeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 20 };
+        foreach (var button in _themeButtons)
+        {
+            themeRow.Children.Add(button);
+        }
+
+        AutomationProperties.SetName(themeRow, "Theme");
+        var themeHint = new TextBlock { Text = "System follows the OS appearance.", FontSize = 12 }
+            .Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush");
 
         _uiFont = new ComposingTextBox { Text = config.UiFontFamily, PlaceholderText = AppConfig.DefaultUiFontFamily };
         _autosave = Numeric((decimal)SettingsValidator.MinAutosaveSeconds, (decimal)SettingsValidator.MaxAutosaveSeconds, 0.25m);
@@ -77,8 +101,11 @@ public sealed class SettingsDialog : DialogBase
         var panel = new StackPanel { Spacing = 8, Width = 540 };
         panel.Children.Add(styleHeader);
         panel.Children.Add(styleList);
-        // The UI (chrome) font sits with the appearance settings, just below the editor text styles;
-        // it governs the whole app's chrome, while the styles above govern the note body.
+        // The theme and the UI (chrome) font sit with the appearance settings, just below the editor
+        // text styles; they govern the whole app's chrome, while the styles above govern the note body.
+        panel.Children.Add(Label("Theme"));
+        panel.Children.Add(themeRow);
+        panel.Children.Add(themeHint);
         panel.Children.Add(Label("UI font (comma-separated; first installed is used; blank = Inter)"));
         panel.Children.Add(_uiFont);
         panel.Children.Add(Label("Autosave delay (seconds)"));
@@ -87,11 +114,10 @@ public sealed class SettingsDialog : DialogBase
         panel.Children.Add(_timeZone);
         _saveError = new TextBlock
         {
-            Foreground = PaletteBrush.Resolve("DangerBrush"),
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             IsVisible = false,
-        };
+        }.Themed(TextBlock.ForegroundProperty, "DangerTextBrush");
         AutomationProperties.SetLiveSetting(_saveError, AutomationLiveSetting.Assertive);
         panel.Children.Add(_saveError);
 
@@ -119,6 +145,19 @@ public sealed class SettingsDialog : DialogBase
             _config.DisplayTimeZone = (_timeZone.Text ?? string.Empty).Trim();
             Revalidate();
         };
+        foreach (var (button, choice) in _themeButtons.Zip(ThemeChoices))
+        {
+            button.IsCheckedChanged += (_, _) =>
+            {
+                if (button.IsChecked == true)
+                {
+                    _config.Theme = choice.Value;
+                }
+
+                Revalidate();
+            };
+        }
+
         _uiFont.TextChanged += (_, _) =>
         {
             // Free text; blank is allowed and resolves to the bundled default at apply time.
@@ -184,11 +223,10 @@ public sealed class SettingsDialog : DialogBase
                 Text = "Default",
                 FontSize = 13,
                 FontWeight = FontWeight.SemiBold,
-                Foreground = PaletteBrush.Resolve("AccentForegroundBrush"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextAlignment = TextAlignment.Center,
-            },
+            }.Themed(TextBlock.ForegroundProperty, "AccentForegroundBrush"),
         };
         defaultLabel.Classes.Add("pill");
         var remove = Utility("Remove", () => RemoveStyle(style));

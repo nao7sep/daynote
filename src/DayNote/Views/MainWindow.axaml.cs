@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
@@ -37,6 +38,8 @@ public partial class MainWindow : Window
     private IReadOnlyList<AttachmentItemViewModel>? _attachStartOrder;
     private bool _attachReordering;
     private string? _attachDragToken;
+
+    private MainWindowViewModel? _themeSource;
 
     public MainWindow()
     {
@@ -388,6 +391,23 @@ public partial class MainWindow : Window
         BindersSplitter.AddHandler(Thumb.DragCompletedEvent, OnBindersSplitterDragCompleted);
         NotesSplitter.AddHandler(Thumb.DragCompletedEvent, OnNotesSplitterDragCompleted);
         AttachmentsSplitter.AddHandler(Thumb.DragCompletedEvent, OnAttachmentsSplitterDragCompleted);
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (_themeSource is not null)
+            _themeSource.PropertyChanged -= OnViewModelPropertyChanged;
+        _themeSource = DataContext as MainWindowViewModel;
+        if (_themeSource is not null)
+            _themeSource.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    // The theme is app-wide: when Settings commits a new one, every window and title bar follows.
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainWindowViewModel.Theme) && sender is MainWindowViewModel vm)
+            AppTheme.Apply(vm.Theme);
     }
 
     private double EditorPaneContentMinHeight() =>
