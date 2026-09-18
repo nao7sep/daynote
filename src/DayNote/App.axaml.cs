@@ -13,6 +13,10 @@ public partial class App : Application
 {
     internal static string? StartupFailureMessage { get; set; }
 
+    // The main window's view model, which the app menu's About and Settings items open through.
+    // Null while a startup failure is shown instead, when those items do nothing.
+    private MainWindowViewModel? _viewModel;
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
@@ -33,6 +37,7 @@ public partial class App : Application
             // config/state) so a failure becomes an in-app error rather than a pre-UI crash.
             var dialogs = new DialogService(Program.Log);
             var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log);
+            _viewModel = viewModel;
             // Before the main window exists, so its first frame and title bar take the saved theme.
             // A startup failure above never reads settings, so its dialog follows the OS.
             AppTheme.Apply(viewModel.Theme);
@@ -65,6 +70,10 @@ public partial class App : Application
 
         base.OnFrameworkInitializationCompleted();
     }
+
+    private void AboutMenu_Click(object? sender, EventArgs e) => _viewModel?.OpenAboutCommand.Execute(null);
+
+    private void SettingsMenu_Click(object? sender, EventArgs e) => _viewModel?.OpenSettingsCommand.Execute(null);
 
     private static void RegisterOwnerActivation(Window window)
     {

@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        MacMenus.Attach(this, includeWindowMenu: true);
 
         if (OperatingSystem.IsWindows())
         {
