@@ -20,7 +20,7 @@ public sealed class AppConfig
     /// </summary>
     public static List<EditorTextStyle> DefaultTextStyles() => new()
     {
-        new EditorTextStyle { Name = "Mono", FontFamily = "Menlo", FontSize = 14, LineSpacing = 1.4, Padding = 12 },
+        new EditorTextStyle { Name = "Mono", FontFamily = EditorTextStyle.DefaultFixedWidthFamilies, FontSize = 14, LineSpacing = 1.4, Padding = 12 },
         new EditorTextStyle { Name = "Sans", FontFamily = "Inter", FontSize = 15, LineSpacing = 1.5, Padding = 14 },
     };
 

@@ -11,10 +11,16 @@ public sealed class EditorTextStyle
     public string Name { get; set; } = "Default";
 
     /// <summary>
-    /// Font family name (e.g. <c>Menlo</c>, <c>Inter</c>). A concrete family is used rather than a CSS
-    /// generic like <c>monospace</c>, which Avalonia's font manager does not resolve on every platform.
+    /// The fixed-width default (app-chrome-conventions): Menlo on macOS, Consolas on Windows, and the
+    /// generic <c>monospace</c> last, which Avalonia's font manager resolves only through fontconfig.
     /// </summary>
-    public string FontFamily { get; set; } = "Menlo";
+    public const string DefaultFixedWidthFamilies = "Menlo, Consolas, monospace";
+
+    /// <summary>
+    /// Font family, free text and possibly a comma-separated list (e.g. <c>Menlo, Consolas</c>, <c>Inter</c>);
+    /// the app resolves it to the first installed family.
+    /// </summary>
+    public string FontFamily { get; set; } = DefaultFixedWidthFamilies;
 
     public double FontSize { get; set; } = 14;
 

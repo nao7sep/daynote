@@ -57,6 +57,39 @@ public static class UiFont
         return new FontFamily(BundledUiFontUri);
     }
 
+    /// <summary>
+    /// The editor's family for a text-style preset. Inter means the bundled Inter, which a bare name
+    /// never reaches; otherwise the first requested family actually installed; and when none is, the
+    /// fixed-width default, so a preset naming a face one platform lacks (Menlo on Windows) still gets
+    /// a fixed-width face rather than the platform's proportional one.
+    /// </summary>
+    public static FontFamily ResolveEditor(string? value)
+    {
+        foreach (var name in ParseFamilies(value))
+        {
+            if (string.Equals(name, AppConfig.DefaultUiFontFamily, StringComparison.OrdinalIgnoreCase))
+            {
+                return new FontFamily(BundledUiFontUri);
+            }
+
+            if (IsInstalled(name))
+            {
+                return new FontFamily(name);
+            }
+        }
+
+        foreach (var name in ParseFamilies(EditorTextStyle.DefaultFixedWidthFamilies))
+        {
+            if (IsInstalled(name))
+            {
+                return new FontFamily(name);
+            }
+        }
+
+        // Neither Menlo nor Consolas: the generic name, which fontconfig resolves on Linux.
+        return new FontFamily("monospace");
+    }
+
     private static bool IsInstalled(string name)
     {
         try

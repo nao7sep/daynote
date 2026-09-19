@@ -214,7 +214,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     [ObservableProperty]
-    private FontFamily _editorFontFamily = new("Menlo");
+    private FontFamily _editorFontFamily = UiFont.ResolveEditor(EditorTextStyle.DefaultFixedWidthFamilies);
 
     [ObservableProperty]
     private double _editorFontSize = 14;
@@ -1663,7 +1663,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        EditorFontFamily = new FontFamily(string.IsNullOrWhiteSpace(style.FontFamily) ? "Menlo" : style.FontFamily);
+        EditorFontFamily = UiFont.ResolveEditor(style.FontFamily);
         EditorFontSize = style.FontSize;
         // LineHeight is absolute; NaN lets the control use the font's natural leading.
         EditorLineHeight = style.LineSpacing > 0 ? style.FontSize * style.LineSpacing : double.NaN;

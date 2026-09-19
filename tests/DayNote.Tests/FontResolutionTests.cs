@@ -31,4 +31,17 @@ public sealed class FontResolutionTests
         Assert.True(FontManager.Current.TryGetGlyphTypeface(typeface, out var glyphTypeface));
         Assert.StartsWith("Inter", glyphTypeface.FamilyName);
     }
+
+    [AvaloniaFact]
+    public void EditorInterIsTheBundledInter()
+    {
+        Assert.Equal(UiFont.BundledUiFontUri, UiFont.ResolveEditor("Inter").ToString());
+    }
+
+    [AvaloniaFact]
+    public void EditorFamilyNobodyHasFallsBackToTheFixedWidthDefault()
+    {
+        var resolved = UiFont.ResolveEditor("No Such Font 99999").ToString();
+        Assert.Contains(resolved, new[] { "Menlo", "Consolas", "monospace" });
+    }
 }
