@@ -7,40 +7,76 @@ namespace DayNote.Views;
 
 /// <summary>
 /// Keyboard-shortcuts help. Renders the <see cref="ShortcutCatalog"/> it is handed — the same source
-/// the live accelerators are built from — grouped into sections, each a rounded card with the
-/// description on the left and the key on the right as a keycap. The window Title becomes the header
-/// (via <see cref="DialogBase"/>). Read-only: no draft state.
+/// the live accelerators are built from — grouped into sections laid out in two balanced columns, each
+/// a rounded card with the description on the left and the key on the right as a keycap. The window
+/// Title becomes the header (via <see cref="DialogBase"/>). Read-only: no draft state.
 /// </summary>
 public sealed class ShortcutsDialog : DialogBase
 {
     public ShortcutsDialog(IReadOnlyList<ShortcutItem> shortcuts)
     {
-        Width = 460;
+        Width = 820;
         Title = "Keyboard Shortcuts";
 
-        var sections = new StackPanel { Spacing = 16 };
+        var groups = ShortcutCatalog.GroupOrder
+            .Select(group => (Group: group, Rows: shortcuts.Where(s => s.Group == group).ToList()))
+            .Where(section => section.Rows.Count > 0)
+            .ToList();
+        var split = BalancedSplit(groups.Select(section => section.Rows.Count).ToList());
 
-        foreach (var group in ShortcutCatalog.GroupOrder)
+        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 20 };
+        for (var column = 0; column < 2; column++)
         {
-            var rows = shortcuts.Where(s => s.Group == group).ToList();
-            if (rows.Count == 0)
+            var stack = new StackPanel { Spacing = 16 };
+            foreach (var (group, rows) in column == 0 ? groups.Take(split) : groups.Skip(split))
             {
-                continue;
+                var section = new StackPanel();
+                section.Children.Add(new TextBlock
+                {
+                    Text = ShortcutCatalog.GroupHeader(group),
+                    FontWeight = FontWeight.SemiBold,
+                    FontSize = 13,
+                    Margin = new Thickness(2, 0, 0, 6),
+                }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"));
+                section.Children.Add(BuildCard(rows));
+                stack.Children.Add(section);
             }
 
-            sections.Children.Add(new TextBlock
-            {
-                Text = ShortcutCatalog.GroupHeader(group),
-                FontWeight = FontWeight.SemiBold,
-                FontSize = 13,
-                Margin = new Thickness(2, 0, 0, 6),
-            }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"));
-            sections.Children.Add(BuildCard(rows));
+            Grid.SetColumn(stack, column);
+            columns.Children.Add(stack);
         }
 
-        SetContent(sections);
+        SetContent(columns);
         var buttons = SetButtons([new DialogButton("Close", "ok", DialogButtonKind.Primary)]);
         SetInitialFocus(buttons["ok"]);
+    }
+
+    /// <summary>
+    /// Where the section list divides into two columns, keeping the sections in order: the split that
+    /// leaves the taller column with the fewest rows, earlier on a tie so the left column is the longer.
+    /// </summary>
+    internal static int BalancedSplit(IReadOnlyList<int> rowCounts)
+    {
+        var total = rowCounts.Sum();
+        var best = 0;
+        var bestTaller = int.MaxValue;
+        var left = 0;
+        for (var split = 0; split <= rowCounts.Count; split++)
+        {
+            var taller = Math.Max(left, total - left);
+            if (taller < bestTaller)
+            {
+                best = split;
+                bestTaller = taller;
+            }
+
+            if (split < rowCounts.Count)
+            {
+                left += rowCounts[split];
+            }
+        }
+
+        return best;
     }
 
     // A rounded card per section holding its rows, with a 1px divider between them (none after the last).
