@@ -436,13 +436,54 @@ public sealed class SettingsDialog : DialogBase
         return row;
     }
 
-    private static NumericUpDown Numeric(decimal min, decimal max, decimal increment) => new()
+    // Minus and plus, each 1.5 units thick in a 10x10 box, so the two glyphs carry one weight.
+    private const string MinusGlyph = "M0,4.25 H10 V5.75 H0 Z";
+    private const string PlusGlyph = "M4.25,0 H5.75 V4.25 H10 V5.75 H5.75 V10 H4.25 V5.75 H0 V4.25 H4.25 Z";
+
+    private static NumericUpDown Numeric(decimal min, decimal max, decimal increment)
     {
-        Minimum = min,
-        Maximum = max,
-        Increment = increment,
-        HorizontalAlignment = HorizontalAlignment.Stretch,
-    };
+        var numeric = new NumericUpDown
+        {
+            Minimum = min,
+            Maximum = max,
+            Increment = increment,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        numeric.TemplateApplied += (_, applied) =>
+        {
+            if (applied.NameScope.Find<ButtonSpinner>("PART_Spinner") is { } spinner)
+            {
+                spinner.TemplateApplied += (_, spinnerApplied) => UseMinusAndPlus(spinnerApplied.NameScope);
+            }
+        };
+
+        return numeric;
+    }
+
+    /// <summary>
+    /// Makes the spinner a minus and a plus, minus first. The theme pairs an up and a down chevron
+    /// side by side, which no ordinary numeric control does: a chevron pair means one step each way
+    /// when it is stacked, and side by side that pair is minus and plus. The theme sets each glyph
+    /// inside its own template, where a style cannot reach it, so the buttons are dressed here.
+    /// </summary>
+    private static void UseMinusAndPlus(INameScope scope)
+    {
+        var decrease = scope.Find<RepeatButton>("PART_DecreaseButton");
+        var increase = scope.Find<RepeatButton>("PART_IncreaseButton");
+        if (decrease is null || increase is null)
+        {
+            return;
+        }
+
+        decrease.Content = new PathIcon { Width = 10, Height = 10, Data = Geometry.Parse(MinusGlyph) };
+        increase.Content = new PathIcon { Width = 10, Height = 10, Data = Geometry.Parse(PlusGlyph) };
+        if (scope.Find<StackPanel>("PART_SpinnerPanel") is { } panel
+            && panel.Children.IndexOf(decrease) > panel.Children.IndexOf(increase))
+        {
+            panel.Children.Move(panel.Children.IndexOf(decrease), panel.Children.IndexOf(increase));
+        }
+    }
 
     private static Button Utility(string text, Action onClick, string? name = null)
     {

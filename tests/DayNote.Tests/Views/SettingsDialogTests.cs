@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
 using System.Linq;
@@ -6,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using DayNote.Core.Configuration;
 using DayNote.Views;
 using Xunit;
@@ -159,6 +161,30 @@ public sealed class SettingsDialogTests
 
         Assert.Equal(before, config.TextStyles[0].FontSize);
         Assert.Equal((decimal)before, size.Value);
+        dialog.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_number_steps_with_a_minus_and_a_plus_in_that_order()
+    {
+        var dialog = new SettingsDialog(new AppConfig(), _ => true);
+        dialog.Show();
+        Dispatcher.UIThread.RunJobs();
+        dialog.UpdateLayout();
+        var size = dialog.GetVisualDescendants().OfType<NumericUpDown>().First();
+
+        var buttons = size.GetVisualDescendants().OfType<RepeatButton>()
+            .OrderBy(button => button.TranslatePoint(default, size)!.Value.X)
+            .ToList();
+        var glyphs = buttons
+            .Select(button => button.GetVisualDescendants().OfType<PathIcon>().Single().Data!.Bounds)
+            .ToList();
+
+        Assert.Equal(["PART_DecreaseButton", "PART_IncreaseButton"], buttons.Select(button => button.Name));
+        // A bar as wide as the square cross beside it: minus, then plus, and no chevron either side.
+        Assert.Equal(glyphs[0].Width, glyphs[1].Width);
+        Assert.Equal(glyphs[1].Width, glyphs[1].Height);
+        Assert.True(glyphs[0].Height < glyphs[1].Height / 4, $"The minus is {glyphs[0].Height:0.##} tall.");
         dialog.Close();
     }
 
