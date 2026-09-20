@@ -405,6 +405,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        // The file is there, so the row stops saying it is gone: a marker of what is true has to
+        // stop being shown the moment it stops being true.
+        item.IsMissing = false;
         await OpenBinderPathAsync(item.Path, isNew: false);
     }
 

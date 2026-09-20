@@ -865,6 +865,12 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(vm.Results);
         Assert.True(PathKey.Equal(vm.Binders.Single(binder => binder.IsCurrent).Path, BinderPath));
 
+        // The marker states what is true now, so the file coming back clears it.
+        File.WriteAllText(travel, File.ReadAllText(BinderPath));
+        await vm.OpenKnownBinderCommand.ExecuteAsync(missing);
+        Assert.False(missing.IsMissing);
+        Assert.True(PathKey.Equal(vm.Binders.Single(binder => binder.IsCurrent).Path, travel));
+
         await vm.ShutdownAsync();
     }
 
