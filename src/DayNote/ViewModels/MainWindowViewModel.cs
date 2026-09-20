@@ -27,12 +27,13 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
-    // The subjects of app-shell results. Each holds at most one result, so these four are also the
+    // The subjects of app-shell results. Each holds at most one result, so these five are also the
     // most results the shell can show at once.
     private const string SaveFailureResultKey = "binder-save-failure";
     private const string NewBinderPickerResultKey = "new-binder-picker";
     private const string OpenBinderPickerResultKey = "open-binder-picker";
     private const string BinderFileResultKey = "binder-file";
+    private const string AttachmentCleanupResultKey = "attachment-cleanup";
 
     private const string AttachmentPickerResultKey = "attachment-picker";
 
@@ -43,6 +44,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly IDialogService _dialogs;
     private readonly IAppLogger _log;
     private readonly Action<string> _deleteFile;
+    private readonly Action<string> _deleteDirectory;
 
     private readonly DispatcherTimer _autosaveTimer;
     private readonly DispatcherTimer _textStyleStatusTimer;
@@ -64,12 +66,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _externalCheckInProgress;
     private SaveState _saveState = SaveState.Saved;
 
-    public MainWindowViewModel(AppPaths paths, IDialogService dialogs, IAppLogger log, Action<string>? deleteFile = null)
+    public MainWindowViewModel(
+        AppPaths paths,
+        IDialogService dialogs,
+        IAppLogger log,
+        Action<string>? deleteFile = null,
+        Action<string>? deleteDirectory = null)
     {
         _paths = paths;
         _dialogs = dialogs;
         _log = log;
         _deleteFile = deleteFile ?? File.Delete;
+        _deleteDirectory = deleteDirectory ?? (path => Directory.Delete(path, recursive: true));
         _configStore = new JsonStore<AppConfig>(paths.ConfigFile);
         _stateStore = new JsonStore<AppState>(paths.StateFile);
 
@@ -499,7 +507,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         var note = target.Note;
         var label = string.IsNullOrWhiteSpace(note.Title) ? "untitled" : note.Title;
-        if (!await _dialogs.ConfirmAsync("Delete note", $"Delete “{label}”? Its attachment files are left on disk.", "Delete", destructive: true))
+        var attachmentCount = note.Attachments.Count;
+        var attachmentWarning = attachmentCount switch
+        {
+            0 => string.Empty,
+            1 => " Its attachment is deleted with it.",
+            _ => $" Its {attachmentCount} attachments are deleted with it.",
+        };
+        if (!await _dialogs.ConfirmAsync(
+                "Delete note",
+                $"Delete “{label}”?{attachmentWarning}",
+                "Delete",
+                destructive: true))
         {
             return;
         }
@@ -525,8 +544,39 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             SelectedNote = Notes.Count == 0 ? null : Notes[Math.Clamp(index, 0, Notes.Count - 1)];
         }
 
+        DeleteNoteAssets(note);
         MarkDirty(noteId: null);
         _log.Info("Deleted note", new { noteId = note.Id });
+    }
+
+    /// <summary>
+    /// Deletes the note's own attachment folder. The folder is named by the note's id and nothing
+    /// else reads it, so leaving it would leave bytes on disk under a name no one can resolve once
+    /// the note is gone. A failure says so, because the user asked for those files to go.
+    /// </summary>
+    private void DeleteNoteAssets(Note note)
+    {
+        if (_current is null)
+        {
+            return;
+        }
+
+        var directory = BinderStore.NoteAssetsDirectory(_current.Path, note.Id);
+        try
+        {
+            if (Directory.Exists(directory))
+            {
+                _deleteDirectory(directory);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to delete a note's attachments", new { noteId = note.Id, path = directory }, ex);
+            ShowResult(
+                OperationResultKind.Warning,
+                "The note is gone, but its attachment files could not be deleted. They are still in the binder's assets folder.",
+                AttachmentCleanupResultKey);
+        }
     }
 
     [RelayCommand]

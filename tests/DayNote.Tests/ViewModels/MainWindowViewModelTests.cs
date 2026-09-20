@@ -50,9 +50,9 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     private string BinderPath => Path.Combine(_home, "test.daynote");
 
-    private MainWindowViewModel NewViewModel(Action<string>? deleteFile = null)
+    private MainWindowViewModel NewViewModel(Action<string>? deleteFile = null, Action<string>? deleteDirectory = null)
     {
-        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger(), deleteFile);
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger(), deleteFile, deleteDirectory);
         Assert.True(vm.IsReady);
         return vm;
     }
@@ -797,6 +797,70 @@ public sealed class MainWindowViewModelTests : IDisposable
         var again = Assert.Single(vm.Results);
         Assert.NotSame(picker, again);
         Assert.Same(again, vm.AnnouncedResult);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Deleting_a_note_takes_its_attachment_folder_with_it()
+    {
+        var vm = await OpenNewBinderAsync();
+        var kept = Path.Combine(_home, "kept.txt");
+        var doomed = Path.Combine(_home, "doomed.txt");
+        File.WriteAllText(kept, "kept");
+        File.WriteAllText(doomed, "doomed");
+
+        vm.NewNoteCommand.Execute(null);
+        var keeper = vm.SelectedNote!.Note;
+        _dialogs.AttachmentPaths = [kept];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+
+        vm.NewNoteCommand.Execute(null);
+        var victim = vm.SelectedNote!.Note;
+        _dialogs.AttachmentPaths = [doomed];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        var keeperAssets = BinderStore.NoteAssetsDirectory(BinderPath, keeper.Id);
+        var victimAssets = BinderStore.NoteAssetsDirectory(BinderPath, victim.Id);
+        Assert.True(Directory.Exists(keeperAssets));
+        Assert.Single(Directory.GetFiles(victimAssets));
+
+        await vm.DeleteNoteCommand.ExecuteAsync(null);
+
+        // The note's own folder is named by its id: leaving it would leave bytes nobody can resolve.
+        Assert.False(Directory.Exists(victimAssets));
+        Assert.True(Directory.Exists(keeperAssets));
+        Assert.Single(Directory.GetFiles(keeperAssets));
+        Assert.Empty(vm.Results);
+        // The file the user attached FROM is theirs and is untouched.
+        Assert.True(File.Exists(doomed));
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_note_whose_attachments_could_not_be_deleted_says_so()
+    {
+        var vm = NewViewModel(deleteDirectory: _ => throw new IOException("in use"));
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var file = Path.Combine(_home, "locked.txt");
+        File.WriteAllText(file, "locked");
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        _dialogs.AttachmentPaths = [file];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        await vm.DeleteNoteCommand.ExecuteAsync(null);
+
+        // The note is gone either way; the files that outlived it are the user's to know about.
+        Assert.Empty(vm.Notes);
+        var warning = Assert.Single(vm.Results);
+        Assert.Equal(OperationResultKind.Warning, warning.Kind);
+        Assert.Contains("attachment files", warning.Message, StringComparison.Ordinal);
+        Assert.True(Directory.Exists(BinderStore.NoteAssetsDirectory(BinderPath, note.Id)));
 
         await vm.ShutdownAsync();
     }
