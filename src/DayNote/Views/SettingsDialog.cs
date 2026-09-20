@@ -55,7 +55,7 @@ public sealed class SettingsDialog : DialogBase
         _config = config;
         _trySave = trySave;
         Title = "Settings";
-        Width = 600;
+        Width = 660;
 
         // The preset list. Add belongs to the list; the selected preset's own actions sit with its
         // editor. Drag or Cmd/Ctrl+Shift+Up/Down reorders it, which is also the cycling order.
@@ -65,18 +65,22 @@ public sealed class SettingsDialog : DialogBase
             ItemsSource = _styleRows,
             ItemTemplate = new FuncDataTemplate<StyleRow>((_, _) => StyleRowView()),
         };
+        _styleList.BorderThickness = new Thickness(1);
+        _styleList.CornerRadius = new CornerRadius(6);
+        _styleList.Themed(ListBox.BorderBrushProperty, "BorderBrush");
         AutomationProperties.SetName(_styleList, "Text styles");
         DragDrop.SetAllowDrop(_styleList, true);
         _styleList.SelectionChanged += (_, _) => LoadSelectedStyle();
         _ = new ListReorder<StyleRow>(_styleList, canReorder: null, MoveStyle, Revalidate, () => _styleRows.ToArray(), RestoreStyles);
 
         var addStyle = Utility("Add", AddStyle, "AddTextStyleButton");
-        addStyle.HorizontalAlignment = HorizontalAlignment.Left;
-        addStyle.Margin = new Thickness(0, 8, 0, 0);
-        var listColumn = new DockPanel();
-        DockPanel.SetDock(addStyle, Dock.Bottom);
-        listColumn.Children.Add(addStyle);
-        listColumn.Children.Add(_styleList);
+        addStyle.HorizontalAlignment = HorizontalAlignment.Right;
+        var listHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+        var listLabel = Label("Text styles");
+        listLabel.VerticalAlignment = VerticalAlignment.Center;
+        listHeader.Children.Add(listLabel);
+        Grid.SetColumn(addStyle, 1);
+        listHeader.Children.Add(addStyle);
 
         _styleFontFamily = new ComposingTextBox
         {
@@ -108,14 +112,20 @@ public sealed class SettingsDialog : DialogBase
         editor.Children.Add(decorations);
         editor.Children.Add(styleActions);
 
+        // The list's header and the editor's first field start on one line, so the right half has no
+        // empty band over it, and the list's own bounds are drawn rather than left to its rows.
         var styleSurface = new Grid
         {
-            Height = 240,
-            ColumnDefinitions = new ColumnDefinitions("180,*"),
+            ColumnDefinitions = new ColumnDefinitions("200,*"),
+            RowDefinitions = new RowDefinitions("Auto,240"),
             ColumnSpacing = 16,
+            RowSpacing = 6,
         };
-        styleSurface.Children.Add(listColumn);
+        styleSurface.Children.Add(listHeader);
+        Grid.SetRow(_styleList, 1);
+        styleSurface.Children.Add(_styleList);
         Grid.SetColumn(editor, 1);
+        Grid.SetRowSpan(editor, 2);
         styleSurface.Children.Add(editor);
 
         _themeButtons = ThemeChoices
@@ -136,8 +146,7 @@ public sealed class SettingsDialog : DialogBase
         _autosave.Value = (decimal)config.AutosaveDelaySeconds;
         _timeZone = new ComposingTextBox { Text = config.DisplayTimeZone };
 
-        var panel = new StackPanel { Spacing = 8, Width = 540 };
-        panel.Children.Add(Label("Text styles"));
+        var panel = new StackPanel { Spacing = 8, Width = 600 };
         panel.Children.Add(styleSurface);
         panel.Children.Add(Label("Theme"));
         panel.Children.Add(themeRow);
