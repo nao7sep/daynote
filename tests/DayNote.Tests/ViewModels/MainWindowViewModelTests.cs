@@ -658,7 +658,8 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         vm.CycleTextStyleCommand.Execute(null);
 
-        Assert.Equal("Text style: Inter", Assert.Single(vm.Results).Message);
+        Assert.Equal("Text style: Inter", vm.TextStyleStatusText);
+        Assert.Empty(vm.Results);
         var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
         Assert.Equal(new[] { false, true }, saved.TextStyles.Select(style => style.IsDefault));
 
@@ -666,7 +667,8 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Equal(
             "Text style: " + UiFont.EditorFamilyName(EditorTextStyle.DefaultFixedWidthFamilies),
-            Assert.Single(vm.Results).Message);
+            vm.TextStyleStatusText);
+        Assert.Empty(vm.Results);
         saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
         Assert.Equal(new[] { true, false }, saved.TextStyles.Select(style => style.IsDefault));
 
@@ -742,6 +744,67 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task Shell_results_keep_one_card_per_subject_with_the_newest_on_top()
     {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        // Someone else edits the file while this window holds no unsaved work.
+        var store = new BinderStore();
+        var outside = store.Load(BinderPath).Binder;
+        outside.Notes[0].Title = "Changed outside";
+        store.Save(BinderPath, outside);
+        await vm.CheckExternalChangeAsync();
+
+        var reloaded = Assert.Single(vm.Results);
+        Assert.Equal(OperationResultKind.Info, reloaded.Kind);
+        Assert.False(reloaded.IsPersistent);
+        Assert.Same(reloaded, vm.AnnouncedResult);
+
+        // Another subject goes on top and leaves the first card where it stands.
+        _dialogs.OpenBinderPickerError = new IOException("picker unavailable");
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        var picker = vm.Results[0];
+        Assert.Equal(2, vm.Results.Count);
+        Assert.Same(reloaded, vm.Results[1]);
+        Assert.Same(picker, vm.AnnouncedResult);
+
+        // Repeating that failure is neither a second card nor a second announcement.
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        _dialogs.OpenBinderPickerError = null;
+        Assert.Equal(2, vm.Results.Count);
+        Assert.Same(picker, vm.Results[0]);
+
+        // A later message replaces its subject's card in place, whatever its severity: the file is
+        // one subject whether it was reloaded or is gone.
+        File.Delete(BinderPath);
+        await vm.CheckExternalChangeAsync();
+        var warning = vm.Results[1];
+        Assert.Equal(OperationResultKind.Warning, warning.Kind);
+        Assert.True(warning.IsPersistent);
+
+        // The same unresolved problem again is neither a second card nor a second announcement.
+        await vm.CheckExternalChangeAsync();
+        Assert.Same(warning, vm.Results[1]);
+        Assert.Equal(2, vm.Results.Count);
+
+        // A result that leaves stops being the announcement, so the same failure after a dismissal
+        // is a new card and a new announcement.
+        vm.DismissResult(warning);
+        Assert.Null(vm.AnnouncedResult);
+        vm.DismissResult(picker);
+        _dialogs.OpenBinderPickerError = new IOException("picker unavailable");
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        _dialogs.OpenBinderPickerError = null;
+        var again = Assert.Single(vm.Results);
+        Assert.NotSame(picker, again);
+        Assert.Same(again, vm.AnnouncedResult);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_missing_binder_is_reported_on_its_own_row()
+    {
         var vm = NewViewModel();
         var travel = Path.Combine(_home, "travel.daynote");
         _dialogs.BinderToCreate = travel;
@@ -750,39 +813,14 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.NewBinderCommand.ExecuteAsync(null);
         File.Delete(travel);
         var missing = Assert.Single(vm.Binders, binder => PathKey.Equal(binder.Path, travel));
+        Assert.False(missing.IsMissing);
 
         await vm.OpenKnownBinderCommand.ExecuteAsync(missing);
-        var warning = Assert.Single(vm.Results);
-        Assert.Equal(OperationResultKind.Warning, warning.Kind);
-        Assert.True(warning.IsPersistent);
-        Assert.Same(warning, vm.AnnouncedResult);
 
-        // The same unresolved problem again is neither a second card nor a second announcement.
-        await vm.OpenKnownBinderCommand.ExecuteAsync(missing);
-        Assert.Same(warning, Assert.Single(vm.Results));
-
-        // Another subject goes on top and leaves the warning in place; a repeat of that subject
-        // replaces its own card where it stands.
-        vm.CycleTextStyleCommand.Execute(null);
-        var firstStyle = vm.Results[0];
-        vm.CycleTextStyleCommand.Execute(null);
-        Assert.Equal(2, vm.Results.Count);
-        var style = vm.Results[0];
-        Assert.NotSame(firstStyle, style);
-        Assert.Equal(OperationResultKind.Info, style.Kind);
-        Assert.False(style.IsPersistent);
-        Assert.Same(warning, vm.Results[1]);
-        Assert.Same(style, vm.AnnouncedResult);
-
-        // A result that leaves stops being the announcement, so the same warning shown again after
-        // it was dismissed is a new card and a new announcement.
-        vm.DismissResult(style);
-        Assert.Null(vm.AnnouncedResult);
-        vm.DismissResult(warning);
-        await vm.OpenKnownBinderCommand.ExecuteAsync(missing);
-        var again = Assert.Single(vm.Results);
-        Assert.NotSame(warning, again);
-        Assert.Same(again, vm.AnnouncedResult);
+        // The row owns the condition: no shell card, and the open binder is untouched.
+        Assert.True(missing.IsMissing);
+        Assert.Empty(vm.Results);
+        Assert.True(PathKey.Equal(vm.Binders.Single(binder => binder.IsCurrent).Path, BinderPath));
 
         await vm.ShutdownAsync();
     }
@@ -877,11 +915,12 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var (vm, window) = await OpenWindowWithNoteAsync();
         window.Width = 900;
-        window.Height = 480;
+        // The smallest window the app allows: four results are taller than the room it leaves them.
+        window.Height = window.MinHeight;
         await ShowEveryShellResultAsync(vm, window);
         var viewport = Assert.IsType<ScrollViewer>(window.FindControl<ScrollViewer>("ResultsViewport"));
 
-        Assert.True(viewport.Extent.Height > viewport.Viewport.Height, "Six results outgrow a small window.");
+        Assert.True(viewport.Extent.Height > viewport.Viewport.Height, "The results outgrow the smallest window.");
         var scrollBar = Assert.Single(
             viewport.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ScrollBar>(),
             bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical);
@@ -953,7 +992,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var corner = attachments.BottomRight - new Vector(40, 30);
         Assert.False(HitsResults(corner));
 
-        vm.CycleTextStyleCommand.Execute(null);
+        await ReloadFromOutsideAsync(vm);
         Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();
         var card = BoundsIn(window, Assert.Single(ResultCards(window)));
@@ -973,20 +1012,20 @@ public sealed class MainWindowViewModelTests : IDisposable
         var host = Assert.IsType<Panel>(window.FindControl<Panel>("ResultsHost"));
         Assert.Null(AutomationProperties.GetName(host));
 
+        await ReloadFromOutsideAsync(vm);
+        var reloaded = Assert.Single(vm.Results);
+        Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(host));
+        Assert.Equal(reloaded.Message, AutomationProperties.GetName(host));
+
         File.Delete(BinderPath);
         Directory.CreateDirectory(BinderPath);
         vm.Editor.Title = "Unsaved title";
         await vm.SaveNowCommand.ExecuteAsync(null);
-        var failure = Assert.Single(vm.Results);
+        var failure = vm.Results[0];
         Assert.Equal(AutomationLiveSetting.Assertive, AutomationProperties.GetLiveSetting(host));
         Assert.Equal(failure.Message, AutomationProperties.GetName(host));
 
-        vm.CycleTextStyleCommand.Execute(null);
-        var style = vm.Results[0];
-        Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(host));
-        Assert.Equal(style.Message, AutomationProperties.GetName(host));
-
-        vm.DismissResult(style);
+        vm.DismissResult(failure);
         Assert.Null(AutomationProperties.GetName(host));
 
         await CloseResultsTestWindowAsync(vm, window);
@@ -1075,7 +1114,8 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     /// <summary>
     /// Raises one result for every app-shell subject through its real trigger, oldest first, each
-    /// with the longest copy it carries: the most results the policy can show at once.
+    /// with the longest copy it carries: the most results the policy can show at once. A missing
+    /// binder and an applied text style are not here — they report at their own owners.
     /// </summary>
     private async Task ShowEveryShellResultAsync(MainWindowViewModel vm, MainWindow window)
     {
@@ -1085,6 +1125,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
 
         var pickerFailure = new IOException("picker unavailable");
         _dialogs.OpenBinderPickerError = pickerFailure;
@@ -1093,20 +1134,30 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.NewBinderCommand.ExecuteAsync(null);
         _dialogs.OpenBinderPickerError = null;
         _dialogs.NewBinderPickerError = null;
-        File.Delete(travel);
-        await vm.OpenKnownBinderCommand.ExecuteAsync(
-            vm.Binders.Single(binder => PathKey.Equal(binder.Path, travel)));
-        File.Delete(BinderPath);
-        await vm.CheckExternalChangeAsync();
+
+        await ReloadFromOutsideAsync(vm);
         // A directory at the binder path makes every save fail until the test removes it.
+        File.Delete(BinderPath);
         Directory.CreateDirectory(BinderPath);
         vm.Editor.Title = "Unsaved title";
         await vm.SaveNowCommand.ExecuteAsync(null);
-        vm.CycleTextStyleCommand.Execute(null);
 
-        Assert.Equal(6, vm.Results.Select(result => result.ResultKey).Distinct().Count());
+        Assert.Equal(4, vm.Results.Select(result => result.ResultKey).Distinct().Count());
         Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();
+    }
+
+    /// <summary>
+    /// Edits the open binder's file from outside and lets the window notice it, which is the shell's
+    /// one piece of information: everything else it reports is a warning or a failure.
+    /// </summary>
+    private async Task ReloadFromOutsideAsync(MainWindowViewModel vm)
+    {
+        var store = new BinderStore();
+        var outside = store.Load(BinderPath).Binder;
+        outside.Notes[0].Title = "Changed outside";
+        store.Save(BinderPath, outside);
+        await vm.CheckExternalChangeAsync();
     }
 
     private static IReadOnlyList<Border> ResultCards(MainWindow window) =>

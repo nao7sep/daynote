@@ -147,13 +147,21 @@
         <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,*" Margin="12,5">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                            IsVisible="{Binding HasBinder}">
-                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Classes="saveDot"
-                             Classes.saving="{Binding IsSaveStateSaving}"
-                             Classes.unsaved="{Binding IsSaveStateUnsaved}"
-                             Classes.failed="{Binding IsSaveStateError}"/>
-                    <TextBlock Text="{Binding SaveStateText}" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                IsVisible="{Binding HasBinder}">
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Classes="saveDot"
+                                 Classes.saving="{Binding IsSaveStateSaving}"
+                                 Classes.unsaved="{Binding IsSaveStateUnsaved}"
+                                 Classes.failed="{Binding IsSaveStateError}"/>
+                        <TextBlock Text="{Binding SaveStateText}" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <!-- The applied text style, briefly: standing state belongs in the strip that is
+                         always there, not in a card over the workspace. -->
+                    <TextBlock Text="{Binding TextStyleStatusText}" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               AutomationProperties.LiveSetting="Polite"
+                               IsVisible="{Binding TextStyleStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="16,0,0,0"
@@ -235,7 +243,7 @@
                                     <DataTemplate DataType="vm:BinderListItemViewModel">
                                     <!-- Primary label is the binder title (capitalized, human-friendly); the path
                                          below shows the lowercase file. Double-tap the row to rename the title. -->
-                                    <Grid ColumnDefinitions="*,Auto" Background="Transparent" DoubleTapped="BinderRow_DoubleTapped">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" Background="Transparent" DoubleTapped="BinderRow_DoubleTapped">
                                         <StackPanel Spacing="2">
                                             <Panel>
                                                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
@@ -249,9 +257,17 @@
                                             <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="PrefixCharacterEllipsis"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
+                                        <!-- The row is where a missing file is reported: it is the narrowest owner
+                                             of the condition, it already shows the path, and several missing
+                                             binders each say it once. -->
+                                        <Border Grid.Column="1" Classes="badge" VerticalAlignment="Center"
+                                                Margin="8,0,0,0" IsVisible="{Binding IsMissing}">
+                                            <TextBlock Text="Missing" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource DangerTextBrush}"/>
+                                        </Border>
                                         <!-- Remove from the list (revealed on hover/selection). If it's the open
                                              binder, this closes it (flushing edits) first; closing == forgetting. -->
-                                        <Button Grid.Column="1" Classes="rowAction" Click="RemoveBinderRow_Click"
+                                        <Button Grid.Column="2" Classes="rowAction" Click="RemoveBinderRow_Click"
                                                 ToolTip.Tip="Remove from list">
                                             <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>

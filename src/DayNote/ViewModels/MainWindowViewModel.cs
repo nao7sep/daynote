@@ -27,14 +27,12 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
-    // The subjects of app-shell results. Each holds at most one result, so these six are also the
+    // The subjects of app-shell results. Each holds at most one result, so these four are also the
     // most results the shell can show at once.
     private const string SaveFailureResultKey = "binder-save-failure";
     private const string NewBinderPickerResultKey = "new-binder-picker";
     private const string OpenBinderPickerResultKey = "open-binder-picker";
-    private const string MissingBinderResultKey = "missing-binder";
     private const string BinderFileResultKey = "binder-file";
-    private const string TextStyleResultKey = "text-style";
 
     private const string AttachmentPickerResultKey = "attachment-picker";
 
@@ -47,6 +45,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private readonly Action<string> _deleteFile;
 
     private readonly DispatcherTimer _autosaveTimer;
+    private readonly DispatcherTimer _textStyleStatusTimer;
     private readonly DispatcherTimer _externalTimer;
 
     private readonly List<NoteListItemViewModel> _allNotes = new();
@@ -98,6 +97,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             }
         };
 
+        _textStyleStatusTimer = new DispatcherTimer { Interval = TextStyleStatusLifetime };
+        _textStyleStatusTimer.Tick += (_, _) =>
+        {
+            _textStyleStatusTimer.Stop();
+            TextStyleStatusText = string.Empty;
+        };
+
         _autosaveTimer = new DispatcherTimer();
         _autosaveTimer.Tick += async (_, _) =>
         {
@@ -143,6 +149,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     private OperationResultViewModel? _announcedResult;
+
+    /// <summary>
+    /// The text style just applied, which the status bar shows briefly and then drops. The style is
+    /// standing state of the editor, so app-chrome-conventions put this feedback in the always-present
+    /// strip rather than in a card the reader has to look away for.
+    /// </summary>
+    [ObservableProperty]
+    private string _textStyleStatusText = string.Empty;
 
     /// <summary>
     /// The saved theme. The view applies it app-wide (AppTheme) at startup and whenever Settings
@@ -370,12 +384,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         if (!File.Exists(item.Path))
         {
+            // The row owns this: it is the narrowest surviving owner, it already shows the path,
+            // and several missing binders each say it once instead of replacing one shared card.
             item.IsMissing = true;
             _log.Warn("Known binder is missing from disk", new { path = item.Path });
-            ShowResult(
-                OperationResultKind.Warning,
-                "That binder is no longer at " + item.Path,
-                resultKey: MissingBinderResultKey);
             return;
         }
 
@@ -917,7 +929,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             TrySaveConfig();
         }
 
-        ShowResult(OperationResultKind.Info, "Text style: " + label, resultKey: TextStyleResultKey);
+        TextStyleStatusText = "Text style: " + label;
+        _textStyleStatusTimer.Stop();
+        _textStyleStatusTimer.Start();
     }
 
     // ----- Binder open / close / save ----------------------------------------------------------
@@ -1535,6 +1549,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private void RefreshSelectedListItem() => SelectedNote?.Refresh();
 
     private static readonly TimeSpan TransientResultLifetime = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan TextStyleStatusLifetime = TimeSpan.FromSeconds(5);
 
     public void DismissResult(OperationResultViewModel result) => Results.Remove(result);
 
