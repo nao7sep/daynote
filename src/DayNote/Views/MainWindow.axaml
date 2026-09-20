@@ -401,7 +401,7 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Attachments" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             <Button Grid.Column="1" Content="Add" Classes="utility"
-                                    Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding Editor.HasNote}"/>
+                                    Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding CanEditNote}"/>
                         </Grid>
                     </Border>
                     <Border DockPanel.Dock="Top" Margin="10,10,10,0" Padding="10,8"
@@ -447,8 +447,11 @@
                                             <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"/>
                                             <TextBlock Text="{Binding DetailsText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
-                                        <!-- Same hover-✕ remove affordance as the other lists. -->
-                                        <Button Grid.Column="2" Classes="rowAction" Click="RemoveAttachment_Click" ToolTip.Tip="Remove attachment">
+                                        <!-- Same hover-✕ remove affordance as the other lists; a published or
+                                             expired note keeps its attachments, as it keeps its text. -->
+                                        <Button Grid.Column="2" Classes="rowAction" Click="RemoveAttachment_Click"
+                                                IsVisible="{Binding $parent[ListBox].DataContext.CanEditNote}"
+                                                ToolTip.Tip="Remove attachment">
                                             <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
                                         </Button>

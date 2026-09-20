@@ -70,12 +70,14 @@ public partial class MainWindow : Window
         // attachments list's reorder drags stay distinct from external file drops onto the pane.
         _binderReorder = new ListReorder<BinderListItemViewModel>(
             BindersList,
+            canReorder: null,
             (item, target) => Vm?.MoveBinder(item, target) ?? false,
             () => Vm?.CommitBinderOrder(),
             () => Vm?.BinderOrder() ?? [],
             order => Vm?.RestoreBinderOrder(order) ?? false);
         _attachmentReorder = new ListReorder<AttachmentItemViewModel>(
             AttachList,
+            canReorder: () => Vm?.CanEditNote ?? false,
             (item, target) => Vm is { } vm && vm.MoveAttachment(item, vm.Attachments.IndexOf(target)),
             () => Vm?.CommitAttachmentOrder(),
             () => Vm?.Attachments.ToArray() ?? [],
@@ -94,7 +96,7 @@ public partial class MainWindow : Window
 
     private void OnAttachDragOver(object? sender, DragEventArgs e)
     {
-        var accept = DataContext is MainWindowViewModel { Editor.HasNote: true } && e.DataTransfer.Contains(DataFormat.File);
+        var accept = DataContext is MainWindowViewModel { CanEditNote: true } && e.DataTransfer.Contains(DataFormat.File);
         e.DragEffects = accept ? DragDropEffects.Copy : DragDropEffects.None;
         if (DataContext is MainWindowViewModel vm)
         {

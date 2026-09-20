@@ -17,6 +17,7 @@ using Microsoft.Data.Sqlite;
 using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
 using DayNote.Core.Identity;
+using DayNote.Core.Models;
 using DayNote.Core.Storage;
 using DayNote.Logging;
 using DayNote.Services;
@@ -798,6 +799,48 @@ public sealed class MainWindowViewModelTests : IDisposable
         var again = Assert.Single(vm.Results);
         Assert.NotSame(picker, again);
         Assert.Same(again, vm.AnnouncedResult);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_published_note_keeps_the_attachments_it_was_published_with()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var first = Path.Combine(_home, "first.txt");
+        var second = Path.Combine(_home, "second.txt");
+        var late = Path.Combine(_home, "late.txt");
+        // Distinct content: the note dedups attachments by content hash.
+        foreach (var file in new[] { first, second, late })
+        {
+            File.WriteAllText(file, file);
+        }
+
+        _dialogs.AttachmentPaths = [first, second];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var published = vm.Attachments.Select(attachment => attachment.FileName).ToArray();
+        Assert.Equal(2, published.Length);
+
+        vm.Editor.Status = NoteStatus.Published;
+        Assert.False(vm.CanEditNote);
+
+        // A published note's text is read-only, and so is the set of files it carries: nothing adds,
+        // removes, or reorders them until it goes back to a draft.
+        Assert.False(vm.MoveAttachment(vm.Attachments[1], 0));
+        _dialogs.AttachmentPaths = [late];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        vm.AddDroppedFiles([late]);
+        await vm.RemoveAttachmentCommand.ExecuteAsync(vm.Attachments[0]);
+        Assert.Equal(published, vm.Attachments.Select(attachment => attachment.FileName));
+
+        // Back in a draft, all three work again.
+        vm.Editor.Status = NoteStatus.Draft;
+        Assert.True(vm.CanEditNote);
+        Assert.True(vm.MoveAttachment(vm.Attachments[1], 0));
+        vm.AddDroppedFiles([late]);
+        Assert.Equal(3, vm.Attachments.Count);
 
         await vm.ShutdownAsync();
     }

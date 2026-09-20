@@ -80,6 +80,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         Editor = new EditorViewModel(_config.DisplayTimeZone);
         Editor.Edited += OnEditorEdited;
+        Editor.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(EditorViewModel.IsEditable))
+            {
+                OnPropertyChanged(nameof(CanEditNote));
+            }
+        };
 
         // Empty-state text is derived from the live collections. Collection notifications keep the
         // mandatory pane overlays in sync without maintaining parallel counts or visibility flags.
@@ -136,6 +143,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<NoteListItemViewModel> Notes { get; } = new();
     public ObservableCollection<BinderListItemViewModel> Binders { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
+
+    /// <summary>
+    /// Whether the selected note may be changed. A published or expired note is read-only, and its
+    /// attachments are part of the note rather than a list beside it, so adding, removing, and
+    /// reordering them answer to the same rule as its title and body.
+    /// </summary>
+    public bool CanEditNote => SelectedNote is not null && Editor.IsEditable;
 
     /// <summary>Active app-shell results, newest first, rendered as a stack over the pane track.</summary>
     public ObservableCollection<OperationResultViewModel> Results { get; } = new();
@@ -511,7 +525,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task AddAttachment()
     {
-        if (!IsReady || _current is null || SelectedNote is null)
+        if (!IsReady || _current is null || SelectedNote is null || !CanEditNote)
         {
             return;
         }
@@ -551,7 +565,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public bool MoveAttachment(AttachmentItemViewModel item, int newIndex)
     {
         var oldIndex = Attachments.IndexOf(item);
-        if (oldIndex < 0 || newIndex < 0 || newIndex >= Attachments.Count || newIndex == oldIndex)
+        if (!CanEditNote || oldIndex < 0 || newIndex < 0 || newIndex >= Attachments.Count || newIndex == oldIndex)
         {
             return false;
         }
@@ -607,7 +621,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void AddAttachmentFiles(IReadOnlyList<string> files, int unavailable = 0)
     {
-        if (!IsReady || _current is null || SelectedNote is null)
+        if (!IsReady || _current is null || SelectedNote is null || !CanEditNote)
         {
             return;
         }
@@ -781,7 +795,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task RemoveAttachment(AttachmentItemViewModel item)
     {
-        if (!IsReady || _current is null || SelectedNote is null)
+        if (!IsReady || _current is null || SelectedNote is null || !CanEditNote)
         {
             return;
         }
@@ -1622,6 +1636,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Editor.Load(value?.Note);
         LoadAttachments(value?.Note);
         OnPropertyChanged(nameof(AttachmentsEmptyStateText));
+        OnPropertyChanged(nameof(CanEditNote));
         _state.CurrentNoteId = value?.Note.Id;
         UpdateBinderStatus();
     }

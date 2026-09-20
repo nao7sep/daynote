@@ -68,7 +68,7 @@ public sealed class SettingsDialog : DialogBase
         AutomationProperties.SetName(_styleList, "Text styles");
         DragDrop.SetAllowDrop(_styleList, true);
         _styleList.SelectionChanged += (_, _) => LoadSelectedStyle();
-        _ = new ListReorder<StyleRow>(_styleList, MoveStyle, Revalidate, () => _styleRows.ToArray(), RestoreStyles);
+        _ = new ListReorder<StyleRow>(_styleList, canReorder: null, MoveStyle, Revalidate, () => _styleRows.ToArray(), RestoreStyles);
 
         var addStyle = Utility("Add", AddStyle, "AddTextStyleButton");
         addStyle.HorizontalAlignment = HorizontalAlignment.Left;

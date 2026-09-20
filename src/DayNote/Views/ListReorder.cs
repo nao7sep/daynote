@@ -66,6 +66,7 @@ public sealed class ListReorder<T>
         DataFormat.CreateStringApplicationFormat("com.nao7sep.daynote.list-reorder");
 
     private readonly ListBox _list;
+    private readonly Func<bool>? _canReorder;
     private readonly Func<T, T, bool> _move;
     private readonly Action _commit;
     private readonly Func<IReadOnlyList<T>> _snapshot;
@@ -78,18 +79,25 @@ public sealed class ListReorder<T>
     private string? _token;
 
     /// <param name="list">The list whose rows are reordered.</param>
+    /// <param name="canReorder">
+    /// Whether the list may be reordered at all right now, or null when it always may. A list whose
+    /// owner is locked answers false, and then no drag starts and no chord moves anything, rather
+    /// than a drag running with nowhere to land.
+    /// </param>
     /// <param name="move">Moves an item to its target's place as a live, unsaved step.</param>
     /// <param name="commit">Persists the current order once; a no-op when nothing changed.</param>
     /// <param name="snapshot">Captures the owner's full order before a drag, hidden rows included.</param>
     /// <param name="restore">Returns the owner to a snapshot, or false when the list changed meanwhile.</param>
     public ListReorder(
         ListBox list,
+        Func<bool>? canReorder,
         Func<T, T, bool> move,
         Action commit,
         Func<IReadOnlyList<T>> snapshot,
         Func<IReadOnlyList<T>, bool> restore)
     {
         _list = list;
+        _canReorder = canReorder;
         _move = move;
         _commit = commit;
         _snapshot = snapshot;
@@ -149,6 +157,7 @@ public sealed class ListReorder<T>
         }
 
         if (IsReordering || _pressed
+            || _canReorder?.Invoke() == false
             || !e.GetCurrentPoint(_list).Properties.IsLeftButtonPressed
             || (e.Source as Control)?.DataContext is not T item)
         {
@@ -273,6 +282,7 @@ public sealed class ListReorder<T>
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
         if (IsReordering
+            || _canReorder?.Invoke() == false
             || e.Source is TextBox
             || (TopLevel.GetTopLevel(_list) is { } top && ComposingTextBox.IsFocusedElementComposing(top))
             || _list.SelectedItem is not T item)
