@@ -121,11 +121,13 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
                     <!-- Settings / Shortcuts / About live in a hamburger menu, matching the fleet. -->
-                    <Button Classes="utility" Padding="14,6" ToolTip.Tip="Menu" AutomationProperties.Name="Menu">
-                        <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across fonts. -->
-                        <Path Width="18" Height="14" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    <Button Classes="utility" Padding="8,6" ToolTip.Tip="Menu" AutomationProperties.Name="Menu">
+                        <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across
+                             fonts. Bars 16 long and 2 thick with 5 between them: closer together they read as
+                             one block rather than a menu, and the round caps stay inside the 18x16 box. -->
+                        <Path Width="18" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
                               Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="2" StrokeLineCap="Round"
-                              UseLayoutRounding="True" Data="M0,1 H18 M0,7 H18 M0,13 H18"/>
+                              UseLayoutRounding="True" Data="M1,1 H17 M1,8 H17 M1,15 H17"/>
                         <Button.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedRight">
                                 <MenuItem Header="Settings" Click="Settings_Click"/>
