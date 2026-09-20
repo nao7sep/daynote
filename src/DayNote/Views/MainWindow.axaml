@@ -79,14 +79,23 @@
         <Style Selector="Border.resultFrame.error">
             <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}"/>
         </Style>
-        <Style Selector="Border.resultStripe">
-            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+        <!-- An app-shell result card. Severity sets its tint and its edge; the edge holds 3:1 against
+             every workspace surface, so the card stands apart from whatever it floats over. -->
+        <Style Selector="Border.shellResult">
+            <Setter Property="Background" Value="{DynamicResource ResultInfoBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="14,12,8,12"/>
+            <Setter Property="BoxShadow" Value="0 4 14 0 #40000000"/>
         </Style>
-        <Style Selector="Border.resultStripe.warning">
-            <Setter Property="Background" Value="{DynamicResource WarningBrush}"/>
+        <Style Selector="Border.shellResult.warning">
+            <Setter Property="Background" Value="{DynamicResource ResultWarningBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource WarningBrush}"/>
         </Style>
-        <Style Selector="Border.resultStripe.error">
-            <Setter Property="Background" Value="{DynamicResource DangerTextBrush}"/>
+        <Style Selector="Border.shellResult.error">
+            <Setter Property="Background" Value="{DynamicResource ResultErrorBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}"/>
         </Style>
         <!-- Give list rows breathing room so the title and subtitle lines do not touch. -->
         <Style Selector="ListBoxItem">
@@ -98,8 +107,8 @@
                   HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
     <!-- Three reserved tracks (toolbar / pane track / status bar) so the fixed chrome bars each own
          an auto-sized row and the star-sized middle track can never overlap the status bar (a
-         DockPanel fill child can — see the window-chrome conventions). The pane track contains the
-         optional bounded results row plus the four panes; WindowMetrics reserves both maxima. -->
+         DockPanel fill child can — see the window-chrome conventions). The pane track holds the four
+         panes, with the app-shell results floating over them; WindowMetrics reserves the panes only. -->
     <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*,Auto"
           Width="{Binding #WindowViewport.Viewport.Width}" Height="{Binding #WindowViewport.Viewport.Height}">
         <!-- Toolbar -->
@@ -181,12 +190,9 @@
             </Grid>
         </Border>
 
-        <!-- Results and panes share the middle track but never share layout space. The optional
-             result row pushes the panes down instead of covering their controls; the window
-             minimum reserves the row's maximum so every pane still keeps its real minimum. -->
-        <Grid x:Name="PaneTrack" Grid.Row="1" RowDefinitions="Auto,*">
+        <Grid x:Name="PaneTrack" Grid.Row="1">
         <!-- Four panes -->
-        <Grid x:Name="PaneGrid" Grid.Row="1" Margin="4">
+        <Grid x:Name="PaneGrid" Margin="4">
             <Grid.ColumnDefinitions>
                 <!-- The three side panes are pixel-sized; the editor is the sole star column (fill
                      pane) that absorbs window resize. The code-behind tracks each side pane's "intent"
@@ -335,7 +341,7 @@
                         <!-- Header: title + lifecycle status in one row, then the body directly below (no
                              borderline — the metadata that used to sit here now lives in the status bar).
                              Published and expired notes are read-only until moved to draft or ready. -->
-                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="10,10,10,6">
+                        <Grid x:Name="EditorHeader" DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="10,10,10,6">
                             <ctl:ComposingTextBox x:Name="TitleBox"
                                                   Text="{Binding Editor.Title}" PlaceholderText="Title…"
                                                   FontSize="18" FontWeight="SemiBold" AcceptsReturn="False" SubmitOnEnter="True"
@@ -375,7 +381,7 @@
             <!-- Attachments -->
             <Border x:Name="AttachPane" Grid.Column="6" Classes="pane" DragDrop.AllowDrop="True">
                 <DockPanel MinHeight="200">
-                    <Border DockPanel.Dock="Top" Classes="paneHeader">
+                    <Border x:Name="AttachmentsHeader" DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Attachments" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             <Button Grid.Column="1" Content="Add" Classes="utility"
@@ -463,39 +469,57 @@
             </Border>
         </Grid>
 
-        <!-- Results use a dedicated bounded row inside the pane track, never an overlay. The row
-             collapses when empty, grows only to the viewport maximum, and then scrolls locally. -->
-        <ScrollViewer x:Name="ResultsViewport" Grid.Row="0"
-                      HorizontalAlignment="Right" VerticalAlignment="Top"
-                      Margin="0,8,20,8" Width="400" MaxHeight="180" ClipToBounds="True"
-                      IsVisible="{Binding HasResults}"
-                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Results}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="vm:OperationResultViewModel">
-                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="8" Margin="0,0,0,8" BoxShadow="0 6 20 0 #50000000"
-                                AutomationProperties.Name="{Binding AccessibleMessage}"
-                                AutomationProperties.LiveSetting="{Binding LiveSetting}">
-                            <Grid ColumnDefinitions="4,*,Auto">
-                                <Border Classes="resultStripe" Classes.warning="{Binding IsWarning}"
-                                        Classes.error="{Binding IsError}" CornerRadius="8,0,0,8"/>
-                                <TextBlock Grid.Column="1" Margin="12" Text="{Binding Message}" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                <Button Grid.Column="2" Classes="resultClose"
-                                        Margin="4" VerticalAlignment="Top"
-                                        IsVisible="{Binding IsPersistent}" Click="DismissResult_Click"
-                                        ToolTip.Tip="Close" AutomationProperties.Name="Close message">
-                                    <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
-                                          StrokeThickness="1.6" StrokeLineCap="Round"
-                                          Data="M1,1 L9,9 M9,1 L1,9"/>
-                                </Button>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+        <!-- App-shell results float over the bottom-right corner of the pane track, above the status
+             bar. They take no layout space, so showing, updating, or dismissing one never moves a
+             pane, and the window minimum reserves nothing for them. The newest result sits on top,
+             so an arriving result never moves those already shown. The code-behind starts the
+             host's region below the attachments header and the editor's title row, the headers it
+             floats beside: a stack taller than that region scrolls, with its scroll bar kept in
+             view, and its cards pass under those header lines and the status bar edge instead of
+             covering the header controls.
+
+             The host is the one stable live region: it takes the latest result's politeness first
+             and then its message as its name, which is the change a platform announces. The empty
+             host and the gaps between cards have no background, so pointer input reaches the panes
+             everywhere except on a card. -->
+        <Panel x:Name="ResultsHost" Width="392" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               AutomationProperties.LiveSetting="{Binding AnnouncedResult.LiveSetting, FallbackValue=Polite}"
+               AutomationProperties.Name="{Binding AnnouncedResult.AccessibleMessage}">
+            <ScrollViewer x:Name="ResultsViewport" IsVisible="{Binding HasResults}"
+                          Background="{x:Null}" Padding="16" AllowAutoHide="False"
+                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Results}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="8"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:OperationResultViewModel">
+                            <Border Classes="shellResult"
+                                    Classes.warning="{Binding IsWarning}" Classes.error="{Binding IsError}">
+                                <!-- A fixed line height centres the text in each line box, and the close
+                                     button's negative margins give it exactly one line box of layout
+                                     height: it centres on the first line, and a one-line card keeps
+                                     equal room above and below its text. The larger hit area spills
+                                     into the card's padding. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" LineHeight="18"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <Button Grid.Column="1" Classes="resultClose" Margin="0,-2"
+                                            VerticalAlignment="Top" Click="DismissResult_Click"
+                                            ToolTip.Tip="Close" AutomationProperties.Name="Close notification">
+                                        <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
+                                              StrokeThickness="1.6" StrokeLineCap="Round"
+                                              Data="M1,1 L9,9 M9,1 L1,9"/>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Panel>
         </Grid>
     </Grid>
     </ScrollViewer>

@@ -98,6 +98,47 @@ public sealed class ThemeResourcesTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
+    public void ResultCardsStandApartFromTheWorkspaceAndStayReadable(string theme)
+    {
+        // Each severity's card fill and edge, as MainWindow's Border.shellResult styles pair them.
+        var cards = new[]
+        {
+            ("ResultInfoBackgroundBrush", "AccentBrush"),
+            ("ResultWarningBackgroundBrush", "WarningBrush"),
+            ("ResultErrorBackgroundBrush", "DangerTextBrush"),
+        };
+        // Everything a card can float over: the gaps between panes, pane and list surfaces, and rows.
+        var workspace = new[]
+        {
+            "AppBackgroundBrush", "SurfaceBrush", "ListBackgroundBrush",
+            "ListSelectionBrush", "ListSelectionHoverBrush", "UtilityBrush",
+        };
+        var b = ThemeBrushes(theme);
+        var failures = new List<string>();
+        void Check(string ink, string surface, double floor)
+        {
+            var ratio = Contrast(b[ink], b[surface]);
+            if (ratio < floor)
+                failures.Add($"{ink} on {surface}: {ratio:F2}");
+        }
+
+        foreach (var (fill, edge) in cards)
+        {
+            // The message, and the close mark at rest and under the pointer.
+            Check("TextPrimaryBrush", fill, 4.5);
+            Check("TextSecondaryBrush", fill, 4.5);
+            // The edge outlines the card against its own fill and against whatever lies beneath it.
+            Check(edge, fill, 3);
+            foreach (var surface in workspace)
+                Check(edge, surface, 3);
+        }
+
+        Assert.True(failures.Count == 0, $"{theme}: {string.Join("; ", failures)}");
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
     public void WhiteLabelsKeepHighContrastOnTheDangerFill(string theme)
     {
         var b = ThemeBrushes(theme);

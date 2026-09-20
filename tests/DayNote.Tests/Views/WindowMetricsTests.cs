@@ -12,8 +12,8 @@ namespace DayNote.Tests.Views;
 /// <summary>
 /// The window's minimum size is derived, not guessed (per the window-chrome conventions):
 /// <see cref="WindowMetrics"/> sums the live pane-Grid column minimums plus the splitters, grid
-/// margin, bounded result viewport, and fixed chrome so the window can never shrink small enough to
-/// hide a pane, result action, toolbar, or status bar. These tests pin the derivation math directly
+/// margin and fixed chrome so the window can never shrink small enough to hide a pane, toolbar, or
+/// status bar. The bounded result viewport is an overlay and contributes no layout height. These tests pin the derivation math directly
 /// (no Avalonia headless harness, matching the suite's pure-helper style) and guard that every
 /// content column declares a non-zero minimum width — so a future column added without one fails
 /// here rather than silently letting the window under-size.
@@ -99,7 +99,6 @@ public sealed class WindowMetricsTests
 
     // The editor pane is the tallest; its content MinHeight in the XAML drives the height.
     private const double TallestPaneMinHeight = 300;
-    private const double ResultViewportReserveHeight = 180 + 8 + 8;
 
     [Fact]
     public void MinWidth_EqualsColumnMinimumsPlusChrome()
@@ -119,15 +118,14 @@ public sealed class WindowMetricsTests
     }
 
     [Fact]
-    public void MinHeight_EqualsChromePlusResultsAndTallestPaneMinimum()
+    public void MinHeight_EqualsChromePlusTallestPaneMinimum()
     {
         // Toolbar (52) + status bar (33) + pane vertical margins (16) + the tallest pane's content
-        // minimum + the bounded result viewport and its vertical margins. Mirrors the private
-        // constants/live XAML values; if those change, this changes with them deliberately.
+        // minimum. The result viewport overlays the panes and contributes no layout reserve.
         const double chromeHeight = 52 + 33 + 16;
         Assert.Equal(
-            chromeHeight + TallestPaneMinHeight + ResultViewportReserveHeight,
-            WindowMetrics.MinHeightFor(TallestPaneMinHeight, ResultViewportReserveHeight));
+            chromeHeight + TallestPaneMinHeight,
+            WindowMetrics.MinHeightFor(TallestPaneMinHeight));
     }
 
     [Fact]
@@ -135,10 +133,10 @@ public sealed class WindowMetricsTests
     {
         // Raising the tallest pane's content minimum must raise the window minimum by the same
         // amount — the height counterpart to the width-tracking property above.
-        var baseHeight = WindowMetrics.MinHeightFor(TallestPaneMinHeight, ResultViewportReserveHeight);
+        var baseHeight = WindowMetrics.MinHeightFor(TallestPaneMinHeight);
         Assert.Equal(
             baseHeight + 50,
-            WindowMetrics.MinHeightFor(TallestPaneMinHeight + 50, ResultViewportReserveHeight));
+            WindowMetrics.MinHeightFor(TallestPaneMinHeight + 50));
     }
 
     [Fact]

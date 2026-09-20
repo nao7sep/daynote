@@ -88,6 +88,8 @@ public partial class MainWindow : Window
             ClearAttachDropHighlight();
         };
 
+        AttachmentsHeader.SizeChanged += (_, _) => KeepResultsBelowHeaders();
+        EditorHeader.SizeChanged += (_, _) => KeepResultsBelowHeaders();
     }
 
     private void OnAttachDragOver(object? sender, DragEventArgs e)
@@ -135,6 +137,27 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.IsAttachmentDropActive = false;
+        }
+    }
+
+    // The result stack floats beside the attachments header and the editor's title row. Its region
+    // starts below both, so a stack of any height scrolls beneath them rather than covering their
+    // controls. Only these headers' sizes move that line; the window's size does not.
+    private void KeepResultsBelowHeaders()
+    {
+        var top = 0.0;
+        foreach (var header in new Control[] { AttachmentsHeader, EditorHeader })
+        {
+            if (header.IsEffectivelyVisible
+                && header.TranslatePoint(new Point(0, header.Bounds.Height), PaneTrack) is { } bottom)
+            {
+                top = Math.Max(top, bottom.Y);
+            }
+        }
+
+        if (ResultsHost.Margin.Top != top)
+        {
+            ResultsHost.Margin = new Thickness(0, top, 0, 0);
         }
     }
 
@@ -192,9 +215,7 @@ public partial class MainWindow : Window
     private void ApplyWindowMinimums(Screen? target = null)
     {
         LayoutRoot.MinWidth = WindowMetrics.MinWidthFor(PaneGrid.ColumnDefinitions.Select(c => c.MinWidth));
-        LayoutRoot.MinHeight = WindowMetrics.MinHeightFor(
-            EditorPaneContentMinHeight(),
-            ResultsViewport.MaxHeight + ResultsViewport.Margin.Top + ResultsViewport.Margin.Bottom);
+        LayoutRoot.MinHeight = WindowMetrics.MinHeightFor(EditorPaneContentMinHeight());
         ApplyNativeMinimum(target);
     }
 

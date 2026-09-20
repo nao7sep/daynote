@@ -27,12 +27,16 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase
 {
+    // The subjects of app-shell results. Each holds at most one result, so these six are also the
+    // most results the shell can show at once.
     private const string SaveFailureResultKey = "binder-save-failure";
     private const string NewBinderPickerResultKey = "new-binder-picker";
     private const string OpenBinderPickerResultKey = "open-binder-picker";
+    private const string MissingBinderResultKey = "missing-binder";
+    private const string BinderFileResultKey = "binder-file";
     private const string TextStyleResultKey = "text-style";
+
     private const string AttachmentPickerResultKey = "attachment-picker";
-    private const string ExternalReloadResultKey = "external-reload";
 
     private readonly AppPaths _paths;
     private readonly BinderStore _binderStore = new();
@@ -83,7 +87,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         Binders.CollectionChanged += (_, _) => OnPropertyChanged(nameof(BindersEmptyStateText));
         Notes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(NotesEmptyStateText));
         Attachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(AttachmentsEmptyStateText));
-        Results.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasResults));
+        Results.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasResults));
+            // A result that leaves stops being the announcement, so the same message shown again
+            // later is a new announcement rather than an unchanged name.
+            if (AnnouncedResult is { } announced && !Results.Contains(announced))
+            {
+                AnnouncedResult = null;
+            }
+        };
 
         _autosaveTimer = new DispatcherTimer();
         _autosaveTimer.Tick += async (_, _) =>
@@ -118,10 +131,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<BinderListItemViewModel> Binders { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
 
-    /// <summary>Active in-window results, rendered in their own bounded pane-track row.</summary>
+    /// <summary>Active app-shell results, newest first, rendered as a stack over the pane track.</summary>
     public ObservableCollection<OperationResultViewModel> Results { get; } = new();
 
     public bool HasResults => Results.Count > 0;
+
+    /// <summary>
+    /// The result most recently shown, while it remains. The view announces it through one stable
+    /// live region: platforms announce a live region when its name changes, not when a new element
+    /// appears, so a newly added result card would otherwise go unannounced.
+    /// </summary>
+    [ObservableProperty]
+    private OperationResultViewModel? _announcedResult;
 
     /// <summary>
     /// The saved theme. The view applies it app-wide (AppTheme) at startup and whenever Settings
@@ -351,7 +372,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             item.IsMissing = true;
             _log.Warn("Known binder is missing from disk", new { path = item.Path });
-            ShowResult(OperationResultKind.Warning, "That binder is no longer at " + item.Path);
+            ShowResult(
+                OperationResultKind.Warning,
+                "That binder is no longer at " + item.Path,
+                resultKey: MissingBinderResultKey);
             return;
         }
 
@@ -996,6 +1020,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         SelectedNote = null;
         UpdateBinderStatus();
         SetSaveState(SaveState.Saved);
+        // What the closed binder's file did on disk no longer concerns the open workspace.
+        ResolveShellResult(BinderFileResultKey);
 
         if (clearSelection)
         {
@@ -1055,6 +1081,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             RefreshSelectedListItem();
             SetSaveState(SaveState.Saved);
             ResolveShellResult(SaveFailureResultKey);
+            // The file now holds this version, which settles any deletion or reload problem.
+            ResolveShellResult(BinderFileResultKey);
             _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
             return true;
         }
@@ -1090,7 +1118,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 case ExternalChange.Deleted:
                     _externalChangeAcknowledged = true;
                     _log.Warn("Binder file was deleted on disk", new { path = _current.Path });
-                    ShowResult(OperationResultKind.Warning, "The binder file was deleted. Your edits remain; saving will recreate it.");
+                    ShowResult(
+                        OperationResultKind.Warning,
+                        "The binder file was deleted. Your edits remain; saving will recreate it.",
+                        resultKey: BinderFileResultKey);
                     return;
 
                 case ExternalChange.Modified when !_dirty:
@@ -1100,7 +1131,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                         ShowResult(
                             OperationResultKind.Info,
                             "Reloaded after an external change.",
-                            resultKey: ExternalReloadResultKey);
+                            resultKey: BinderFileResultKey);
                     }
                     return;
 
@@ -1145,7 +1176,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         try
         {
             AdoptLoaded(_binderStore.Load(_current.Path), SelectedNote?.Note.Id);
-            ResolveShellResult(ExternalReloadResultKey);
+            ResolveShellResult(BinderFileResultKey);
             return true;
         }
         catch (Exception ex)
@@ -1154,7 +1185,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             ShowResult(
                 OperationResultKind.Error,
                 FailurePresentation.ReloadBinder(ex),
-                resultKey: ExternalReloadResultKey);
+                resultKey: BinderFileResultKey);
             return false;
         }
     }
@@ -1503,66 +1534,35 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void RefreshSelectedListItem() => SelectedNote?.Refresh();
 
-    private const int MaxShellResults = 4;
-    private static readonly TimeSpan TransientResultLifetime = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan TransientResultLifetime = TimeSpan.FromSeconds(5);
 
     public void DismissResult(OperationResultViewModel result) => Results.Remove(result);
 
-    private void ShowResult(
-        OperationResultKind kind,
-        string message,
-        bool persistent = false,
-        string? resultKey = null)
+    /// <summary>
+    /// Shows the current result for one subject. A subject holds at most one result: a later one
+    /// replaces it where it stands, and a new subject goes on top. Information needs no action, so
+    /// it clears itself; a warning or error stays until the user dismisses it or its owner resolves
+    /// it, and a result for another subject never removes it.
+    /// </summary>
+    private void ShowResult(OperationResultKind kind, string message, string resultKey)
     {
-        // Warnings and errors require attention, so elapsed time never clears them. Persistent
-        // shell information uses one replaceable channel, but it cannot evict an independent
-        // unresolved warning or error.
-        var isPersistent = persistent || kind is OperationResultKind.Warning or OperationResultKind.Error;
-        if (resultKey is not null)
+        var isPersistent = kind != OperationResultKind.Info;
+        var existing = Results.FirstOrDefault(result => result.ResultKey == resultKey);
+        if (isPersistent && existing is not null && existing.Kind == kind && existing.Message == message)
         {
-            var existing = Results.FirstOrDefault(result => result.ResultKey == resultKey);
-            if (existing is not null)
-            {
-                if (existing.Kind == kind
-                    && existing.Message == message
-                    && existing.IsPersistent == isPersistent)
-                {
-                    return;
-                }
-
-                // Preserve the result's position while publishing the most useful current
-                // message. ObservableCollection replacement gives the view one coherent update.
-                Results[Results.IndexOf(existing)] = new OperationResultViewModel(
-                    kind,
-                    message,
-                    isPersistent,
-                    resultKey);
-                return;
-            }
-        }
-
-        if (isPersistent && kind == OperationResultKind.Info)
-        {
-            foreach (var existing in Results
-                         .Where(result => result.IsPersistent && result.Kind == OperationResultKind.Info)
-                         .ToArray())
-            {
-                Results.Remove(existing);
-            }
+            // The same unresolved problem again: it is already on screen and already announced.
+            return;
         }
 
         var result = new OperationResultViewModel(kind, message, isPersistent, resultKey);
-        Results.Add(result);
-        while (Results.Count > MaxShellResults)
+        AnnouncedResult = result;
+        if (existing is null)
         {
-            var transient = Results.FirstOrDefault(existing => !existing.IsPersistent);
-            if (transient is null)
-            {
-                // A display-count cap cannot discard a problem that still requires attention.
-                break;
-            }
-
-            Results.Remove(transient);
+            Results.Insert(0, result);
+        }
+        else
+        {
+            Results[Results.IndexOf(existing)] = result;
         }
 
         if (isPersistent)

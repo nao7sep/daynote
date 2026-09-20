@@ -5,8 +5,8 @@ namespace DayNote.Views;
 /// window-chrome conventions: the minimum is the sum of the content panes' real minimums plus the
 /// fixed chrome — never a hand-typed magic constant. The pane Grid's four content columns drive
 /// the minimum width; the toolbar, status bar, and the tallest pane's content minimum drive the
-/// minimum height. The bounded result row is also reserved so visible results never steal the
-/// panes' minimum height. The side-pane distribution computes the displayed pixel widths from the
+/// minimum height. Notifications overlay the panes and therefore contribute no layout reserve.
+/// The side-pane distribution computes the displayed pixel widths from the
 /// user's drag intents, clamped to the current window — so the side panes stay fixed on resize and
 /// only the fill pane (the editor) absorbs the change.
 /// </summary>
@@ -64,9 +64,9 @@ public static class WindowMetrics
     public static double MinWidthFor(IEnumerable<double> columnMinWidths)
         => columnMinWidths.Sum() + (SplitterWidth * SplitterCount) + GridHorizontalMargin;
 
-    public static double MinHeightFor(double tallestPaneMinHeight, double resultViewportReserveHeight)
+    public static double MinHeightFor(double tallestPaneMinHeight)
         => ToolbarHeight + StatusBarHeight + PaneVerticalMargin
-            + tallestPaneMinHeight + resultViewportReserveHeight;
+            + tallestPaneMinHeight;
 
     /// <summary>
     /// The total pixel budget available for the three side panes (binders, notes, attachments)

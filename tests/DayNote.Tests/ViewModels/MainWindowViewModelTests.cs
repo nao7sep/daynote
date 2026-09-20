@@ -740,6 +740,259 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Shell_results_keep_one_card_per_subject_with_the_newest_on_top()
+    {
+        var vm = NewViewModel();
+        var travel = Path.Combine(_home, "travel.daynote");
+        _dialogs.BinderToCreate = travel;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        File.Delete(travel);
+        var missing = Assert.Single(vm.Binders, binder => PathKey.Equal(binder.Path, travel));
+
+        await vm.OpenKnownBinderCommand.ExecuteAsync(missing);
+        var warning = Assert.Single(vm.Results);
+        Assert.Equal(OperationResultKind.Warning, warning.Kind);
+        Assert.True(warning.IsPersistent);
+        Assert.Same(warning, vm.AnnouncedResult);
+
+        // The same unresolved problem again is neither a second card nor a second announcement.
+        await vm.OpenKnownBinderCommand.ExecuteAsync(missing);
+        Assert.Same(warning, Assert.Single(vm.Results));
+
+        // Another subject goes on top and leaves the warning in place; a repeat of that subject
+        // replaces its own card where it stands.
+        vm.CycleTextStyleCommand.Execute(null);
+        var firstStyle = vm.Results[0];
+        vm.CycleTextStyleCommand.Execute(null);
+        Assert.Equal(2, vm.Results.Count);
+        var style = vm.Results[0];
+        Assert.NotSame(firstStyle, style);
+        Assert.Equal(OperationResultKind.Info, style.Kind);
+        Assert.False(style.IsPersistent);
+        Assert.Same(warning, vm.Results[1]);
+        Assert.Same(style, vm.AnnouncedResult);
+
+        // A result that leaves stops being the announcement, so the same warning shown again after
+        // it was dismissed is a new card and a new announcement.
+        vm.DismissResult(style);
+        Assert.Null(vm.AnnouncedResult);
+        vm.DismissResult(warning);
+        await vm.OpenKnownBinderCommand.ExecuteAsync(missing);
+        var again = Assert.Single(vm.Results);
+        Assert.NotSame(warning, again);
+        Assert.Same(again, vm.AnnouncedResult);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_save_or_close_resolves_what_the_binder_file_did_on_disk()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        File.Delete(BinderPath);
+        await vm.CheckExternalChangeAsync();
+        Assert.Equal(OperationResultKind.Warning, Assert.Single(vm.Results).Kind);
+
+        // Saving recreates the file, which is exactly what the warning promised.
+        vm.Editor.Title = "Recreated";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.True(File.Exists(BinderPath));
+        Assert.Empty(vm.Results);
+
+        // Once the binder is closed, its file's fate no longer concerns the workspace.
+        File.Delete(BinderPath);
+        await vm.CheckExternalChangeAsync();
+        Assert.Single(vm.Results);
+        await vm.CloseBinderCommand.ExecuteAsync(null);
+        Assert.False(vm.HasBinder);
+        Assert.Empty(vm.Results);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Shell_results_float_over_the_panes_without_moving_them_or_reserving_window_space()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        var panes = new[] { "BindersPane", "NotesPane", "EditorPane", "AttachPane" }
+            .Select(name => Assert.IsType<Border>(window.FindControl<Border>(name)))
+            .ToArray();
+        var layout = Assert.IsType<Grid>(window.FindControl<Grid>("LayoutRoot"));
+        var before = panes.Select(pane => pane.Bounds).ToArray();
+        var minimums = (layout.MinWidth, layout.MinHeight, window.MinWidth, window.MinHeight);
+
+        await ShowEveryShellResultAsync(vm, window);
+        Assert.Equal(before, panes.Select(pane => pane.Bounds));
+        Assert.Equal(minimums, (layout.MinWidth, layout.MinHeight, window.MinWidth, window.MinHeight));
+
+        foreach (var close in ResultCards(window).Select(card => CloseButton(card)).ToArray())
+        {
+            close.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+            Assert.Equal(before, panes.Select(pane => pane.Bounds));
+        }
+
+        Assert.Empty(vm.Results);
+        await CloseResultsTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task Every_result_the_policy_allows_is_whole_and_clear_of_the_headers_at_the_default_size()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        await ShowEveryShellResultAsync(vm, window);
+        var viewport = Assert.IsType<ScrollViewer>(window.FindControl<ScrollViewer>("ResultsViewport"));
+        var cards = ResultCards(window);
+
+        Assert.Equal(1200, window.ClientSize.Width);
+        Assert.Equal(800, window.ClientSize.Height);
+        Assert.Equal(vm.Results.Count, cards.Count);
+        Assert.True(viewport.Extent.Height <= viewport.Viewport.Height, "The whole stack fits without scrolling.");
+        var headers = new[] { "AttachmentsHeader", "EditorHeader" }
+            .Select(name => BoundsIn(window, Assert.IsAssignableFrom<Control>(window.FindControl<Control>(name))))
+            .ToArray();
+        foreach (var card in cards)
+        {
+            var inViewport = BoundsIn(viewport, card);
+            Assert.True(inViewport.Top >= 0 && inViewport.Bottom <= viewport.Bounds.Height, "A card is shown whole.");
+            Assert.All(headers, header => Assert.False(BoundsIn(window, card).Intersects(header)));
+        }
+
+        // The stack lives in the window's own tree, not a popup window, so a modal dialog (an owned
+        // window) always sits above it.
+        Assert.Same(window, TopLevel.GetTopLevel(viewport));
+        Assert.Empty(viewport.GetVisualAncestors().OfType<Avalonia.Controls.Primitives.Popup>());
+
+        await CloseResultsTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task An_overflowing_stack_scrolls_below_the_headers_and_reaches_every_card_whole()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        window.Width = 900;
+        window.Height = 480;
+        await ShowEveryShellResultAsync(vm, window);
+        var viewport = Assert.IsType<ScrollViewer>(window.FindControl<ScrollViewer>("ResultsViewport"));
+
+        Assert.True(viewport.Extent.Height > viewport.Viewport.Height, "Six results outgrow a small window.");
+        var scrollBar = Assert.Single(
+            viewport.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ScrollBar>(),
+            bar => bar.Orientation == Avalonia.Layout.Orientation.Vertical);
+        Assert.True(scrollBar.IsEffectivelyVisible);
+        Assert.False(viewport.AllowAutoHide);
+        foreach (var name in new[] { "AttachmentsHeader", "EditorHeader" })
+        {
+            var header = BoundsIn(window, Assert.IsAssignableFrom<Control>(window.FindControl<Control>(name)));
+            Assert.True(BoundsIn(window, viewport).Top >= header.Bottom - 0.5, $"The stack stays below {name}.");
+        }
+
+        foreach (var card in ResultCards(window))
+        {
+            card.BringIntoView();
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+            var inViewport = BoundsIn(viewport, card);
+            Assert.True(
+                inViewport.Top >= -0.5 && inViewport.Bottom <= viewport.Bounds.Height + 0.5,
+                "Scrolling brings every card fully into view.");
+        }
+
+        await CloseResultsTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task A_one_line_result_is_balanced_and_the_close_mark_sits_on_the_first_line()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        await ShowEveryShellResultAsync(vm, window);
+        var cards = ResultCards(window);
+        var oneLine = cards.Single(card => card.DataContext == vm.Results.Single(r => r.Kind == OperationResultKind.Info));
+        var wrapped = cards.Single(card => card.DataContext is OperationResultViewModel { Message: var m }
+            && m.StartsWith("Your changes are still in DayNote", StringComparison.Ordinal));
+
+        foreach (var card in new[] { oneLine, wrapped })
+        {
+            var text = card.GetVisualDescendants().OfType<TextBlock>().First();
+            var textBounds = BoundsIn(card, text);
+            var close = BoundsIn(card, CloseButton(card));
+            var firstLineCenter = textBounds.Top + text.LineHeight / 2;
+            Assert.InRange(close.Center.Y, firstLineCenter - 0.5, firstLineCenter + 0.5);
+        }
+
+        // One line of text with equal room above and below it: the close target adds no height.
+        var line = BoundsIn(oneLine, oneLine.GetVisualDescendants().OfType<TextBlock>().First());
+        Assert.InRange(line.Height, 17.5, 18.5);
+        Assert.InRange(line.Top - (oneLine.Bounds.Height - line.Bottom), -0.5, 0.5);
+        var paragraph = BoundsIn(wrapped, wrapped.GetVisualDescendants().OfType<TextBlock>().First());
+        Assert.True(paragraph.Height >= 3 * 18 - 0.5, "The long result wraps onto several lines.");
+
+        await CloseResultsTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task Pointer_input_reaches_the_panes_everywhere_but_on_a_result_card()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        var host = Assert.IsType<Panel>(window.FindControl<Panel>("ResultsHost"));
+        // Hit testing reads the composed scene, which a render tick brings up to date.
+        bool HitsResults(Point point)
+        {
+            Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            return window.InputHitTest(point) is Visual hit
+                && (hit == host || hit.GetVisualAncestors().Contains(host));
+        }
+
+        var attachments = BoundsIn(window, Assert.IsType<Border>(window.FindControl<Border>("AttachPane")));
+        var corner = attachments.BottomRight - new Vector(40, 30);
+        Assert.False(HitsResults(corner));
+
+        vm.CycleTextStyleCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        var card = BoundsIn(window, Assert.Single(ResultCards(window)));
+        Assert.True(card.Contains(corner));
+        Assert.True(HitsResults(corner));
+        // The stack's padding beside and below the card belongs to the panes underneath.
+        Assert.False(HitsResults(new Point(card.Left - 6, card.Center.Y)));
+        Assert.False(HitsResults(new Point(card.Center.X, card.Bottom + 6)));
+
+        await CloseResultsTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task The_result_host_announces_the_latest_result_with_its_severity()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        var host = Assert.IsType<Panel>(window.FindControl<Panel>("ResultsHost"));
+        Assert.Null(AutomationProperties.GetName(host));
+
+        File.Delete(BinderPath);
+        Directory.CreateDirectory(BinderPath);
+        vm.Editor.Title = "Unsaved title";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var failure = Assert.Single(vm.Results);
+        Assert.Equal(AutomationLiveSetting.Assertive, AutomationProperties.GetLiveSetting(host));
+        Assert.Equal(failure.Message, AutomationProperties.GetName(host));
+
+        vm.CycleTextStyleCommand.Execute(null);
+        var style = vm.Results[0];
+        Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(host));
+        Assert.Equal(style.Message, AutomationProperties.GetName(host));
+
+        vm.DismissResult(style);
+        Assert.Null(AutomationProperties.GetName(host));
+
+        await CloseResultsTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
     public async Task Every_shortcut_action_routes_to_a_command_or_the_view()
     {
         // Guards against the old `default: return false` silently no-oping a newly-added
@@ -802,6 +1055,80 @@ public sealed class MainWindowViewModelTests : IDisposable
         window.UpdateLayout();
 
         return (vm, window, Assert.IsType<ListBox>(window.FindControl<ListBox>("AttachList")));
+    }
+
+    private async Task<(MainWindowViewModel Vm, MainWindow Window)> OpenWindowWithNoteAsync()
+    {
+        var vm = NewViewModel();
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        return (vm, window);
+    }
+
+    /// <summary>
+    /// Raises one result for every app-shell subject through its real trigger, oldest first, each
+    /// with the longest copy it carries: the most results the policy can show at once.
+    /// </summary>
+    private async Task ShowEveryShellResultAsync(MainWindowViewModel vm, MainWindow window)
+    {
+        var travel = Path.Combine(_home, "travel.daynote");
+        _dialogs.BinderToCreate = travel;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+
+        var pickerFailure = new IOException("picker unavailable");
+        _dialogs.OpenBinderPickerError = pickerFailure;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        _dialogs.NewBinderPickerError = pickerFailure;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        _dialogs.OpenBinderPickerError = null;
+        _dialogs.NewBinderPickerError = null;
+        File.Delete(travel);
+        await vm.OpenKnownBinderCommand.ExecuteAsync(
+            vm.Binders.Single(binder => PathKey.Equal(binder.Path, travel)));
+        File.Delete(BinderPath);
+        await vm.CheckExternalChangeAsync();
+        // A directory at the binder path makes every save fail until the test removes it.
+        Directory.CreateDirectory(BinderPath);
+        vm.Editor.Title = "Unsaved title";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        vm.CycleTextStyleCommand.Execute(null);
+
+        Assert.Equal(6, vm.Results.Select(result => result.ResultKey).Distinct().Count());
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+    }
+
+    private static IReadOnlyList<Border> ResultCards(MainWindow window) =>
+        Assert.IsType<ScrollViewer>(window.FindControl<ScrollViewer>("ResultsViewport"))
+            .GetVisualDescendants().OfType<Border>()
+            .Where(border => border.Classes.Contains("shellResult"))
+            .ToList();
+
+    private static Button CloseButton(Border card) =>
+        card.GetVisualDescendants().OfType<Button>().Single(button => button.Classes.Contains("resultClose"));
+
+    private static Rect BoundsIn(Visual target, Visual element) =>
+        new(element.TranslatePoint(default, target)!.Value, element.Bounds.Size);
+
+    private async Task CloseResultsTestWindowAsync(MainWindowViewModel vm, MainWindow window)
+    {
+        if (Directory.Exists(BinderPath))
+        {
+            Directory.Delete(BinderPath);
+        }
+
+        await CloseTestWindowAsync(vm, window);
     }
 
     private static async Task CloseTestWindowAsync(MainWindowViewModel vm, MainWindow window)

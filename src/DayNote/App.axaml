@@ -43,6 +43,10 @@
                     <SolidColorBrush x:Key="StatusReadyBrush" Color="#87500B"/>
                     <SolidColorBrush x:Key="StatusPublishedBrush" Color="#236A47"/>
                     <SolidColorBrush x:Key="StatusExpiredBrush" Color="#A32C45"/>
+                    <!-- App-shell result cards, tinted by severity (MainWindow pairs each with its edge). -->
+                    <SolidColorBrush x:Key="ResultInfoBackgroundBrush" Color="#F3EEFE"/>
+                    <SolidColorBrush x:Key="ResultWarningBackgroundBrush" Color="#FCF3E3"/>
+                    <SolidColorBrush x:Key="ResultErrorBackgroundBrush" Color="#FCEEF2"/>
                     <!-- Fluent form-control outlines: a field is identified by its outline alone, so it holds 3:1. -->
                     <SolidColorBrush x:Key="TextControlBorderBrush" Color="#8A7F95"/>
                     <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#6F6479"/>
@@ -78,6 +82,10 @@
                     <SolidColorBrush x:Key="StatusReadyBrush" Color="#E0A14A"/>
                     <SolidColorBrush x:Key="StatusPublishedBrush" Color="#5FB98B"/>
                     <SolidColorBrush x:Key="StatusExpiredBrush" Color="#F08A9C"/>
+                    <!-- App-shell result cards, tinted by severity (MainWindow pairs each with its edge). -->
+                    <SolidColorBrush x:Key="ResultInfoBackgroundBrush" Color="#2E2742"/>
+                    <SolidColorBrush x:Key="ResultWarningBackgroundBrush" Color="#352A1A"/>
+                    <SolidColorBrush x:Key="ResultErrorBackgroundBrush" Color="#3C2029"/>
                     <!-- Fluent form-control outlines: a field is identified by its outline alone, so it holds 3:1. -->
                     <SolidColorBrush x:Key="TextControlBorderBrush" Color="#7A6F85"/>
                     <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#968BA0"/>
@@ -250,7 +258,7 @@
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
         </Style>
 
-        <!-- Persistent results keep a quiet, always-present close affordance at their upper end. -->
+        <!-- A result keeps a quiet, always-present close affordance at its upper end. -->
         <Style Selector="Button.resultClose">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
