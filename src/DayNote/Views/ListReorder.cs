@@ -71,7 +71,7 @@ public sealed class ListReorder<T>
     private readonly Func<IReadOnlyList<T>> _snapshot;
     private readonly Func<IReadOnlyList<T>, bool> _restore;
 
-    private TaskCompletionSource<bool>? _intent;
+    private bool _pressed;
     private T? _item;
     private Point? _origin;
     private IReadOnlyList<T>? _startOrder;
@@ -111,16 +111,14 @@ public sealed class ListReorder<T>
     /// <summary>Abandons a press that has not yet become a drag, as when the window deactivates.</summary>
     public void CancelIntent()
     {
-        var intent = _intent;
-        if (intent is null)
+        if (!_pressed)
         {
             return;
         }
 
-        _intent = null;
+        _pressed = false;
         _item = null;
         _origin = null;
-        intent.TrySetResult(false);
     }
 
     /// <summary>Selects the item, brings it into view, and optionally gives its row focus.</summary>
@@ -141,7 +139,7 @@ public sealed class ListReorder<T>
         }
     }
 
-    private async void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         // A press on a row's button or text field clicks or edits instead of starting a drag.
         if (e.Source is Visual visual
@@ -150,7 +148,7 @@ public sealed class ListReorder<T>
             return;
         }
 
-        if (IsReordering || _intent is not null
+        if (IsReordering || _pressed
             || !e.GetCurrentPoint(_list).Properties.IsLeftButtonPressed
             || (e.Source as Control)?.DataContext is not T item)
         {
@@ -163,29 +161,12 @@ public sealed class ListReorder<T>
         (_list.ContainerFromIndex(_list.Items.IndexOf(item)) as Control)?.Focus();
         _item = item;
         _origin = e.GetPosition(_list);
-        var intent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _intent = intent;
-
-        var intended = await intent.Task;
-        if (!ReferenceEquals(_intent, intent))
-        {
-            return;
-        }
-
-        _intent = null;
-        _origin = null;
-        if (!intended || _item is not { } activeItem)
-        {
-            _item = null;
-            return;
-        }
-
-        await RunDragAsync(e, activeItem);
+        _pressed = true;
     }
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_intent is not { } intent || _origin is not { } origin)
+        if (!_pressed || _origin is not { } origin || _item is not { } item)
         {
             return;
         }
@@ -196,10 +177,28 @@ public sealed class ListReorder<T>
             return;
         }
 
-        if (ListReorder.ExceedsDragThreshold(origin, e.GetPosition(_list)))
+        if (!ListReorder.ExceedsDragThreshold(origin, e.GetPosition(_list))
+            || TopLevel.GetTopLevel(_list) is not { } topLevel)
         {
-            intent.TrySetResult(true);
+            return;
         }
+
+        // The session starts here, inside the live move, and is triggered by an event built from this
+        // pointer's current position with the list as its source. Avalonia 12 takes only a
+        // PointerPressedEventArgs, and the platform reads the drag image's origin from it: the press
+        // event cannot serve, because by now its own row may have been replaced (selecting a binder
+        // opens it, which rebuilds the list) and a detached source resolves to the window's corner.
+        _pressed = false;
+        var point = e.GetCurrentPoint(topLevel);
+        var trigger = new PointerPressedEventArgs(
+            _list,
+            e.Pointer,
+            topLevel,
+            point.Position,
+            e.Timestamp,
+            point.Properties,
+            e.KeyModifiers);
+        _ = RunDragAsync(trigger, item);
     }
 
     private async Task RunDragAsync(PointerPressedEventArgs trigger, T item)
