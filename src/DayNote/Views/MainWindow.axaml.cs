@@ -27,17 +27,11 @@ public partial class MainWindow : Window
     private double? _notesWidthIntent;
     private double? _attachmentsWidthIntent;
 
-    // Avalonia owns the attachment drag session. A serializable application format gives macOS a real
-    // pasteboard item; using an in-process-only object here previously crashed NSDraggingSession.
-    private static readonly DataFormat<string> AttachmentReorderFormat =
-        DataFormat.CreateStringApplicationFormat("com.nao7sep.daynote.attachment-reorder");
+    // Drag and Cmd/Ctrl+Shift+Up/Down reordering; Avalonia owns each drag session.
+    private readonly ListReorder<BinderListItemViewModel> _binderReorder;
+    private readonly ListReorder<AttachmentItemViewModel> _attachmentReorder;
 
-    private TaskCompletionSource<bool>? _attachDragIntent;
-    private AttachmentItemViewModel? _attachDragItem;
-    private Point? _attachDragOrigin;
-    private IReadOnlyList<AttachmentItemViewModel>? _attachStartOrder;
-    private bool _attachReordering;
-    private string? _attachDragToken;
+    private MainWindowViewModel? Vm => DataContext as MainWindowViewModel;
 
     private MainWindowViewModel? _themeSource;
 
@@ -72,25 +66,28 @@ public partial class MainWindow : Window
         AttachPane.AddHandler(DragDrop.DragLeaveEvent, OnAttachDragLeave);
         AttachPane.AddHandler(DragDrop.DropEvent, OnAttachDrop);
 
-        // Keep only the click-versus-drag intention threshold here. Once it is crossed, Avalonia owns
-        // pointer capture, cursor feedback, target routing, cancellation, and terminal cleanup.
-        AttachList.AddHandler(PointerPressedEvent, OnAttachItemPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
-        AttachList.AddHandler(PointerMovedEvent, OnAttachItemPointerMoved);
-        AttachList.AddHandler(PointerReleasedEvent, OnAttachItemPointerReleased, handledEventsToo: true);
-        AttachList.PointerCaptureLost += (_, _) => CancelAttachDragIntent();
-        AttachList.DetachedFromVisualTree += (_, _) =>
-        {
-            CancelAttachDragIntent();
-            ClearAttachDropHighlight();
-        };
-        AttachList.AddHandler(DragDrop.DragOverEvent, OnAttachReorderDragOver);
-        AttachList.AddHandler(DragDrop.DropEvent, OnAttachReorderDrop);
-        AttachList.AddHandler(KeyDownEvent, OnAttachListKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+        // Each list's reorder is one live move, one commit, and one restore on the view model; the
+        // attachments list's reorder drags stay distinct from external file drops onto the pane.
+        _binderReorder = new ListReorder<BinderListItemViewModel>(
+            BindersList,
+            (item, target) => Vm?.MoveBinder(item, target) ?? false,
+            () => Vm?.CommitBinderOrder(),
+            () => Vm?.BinderOrder() ?? [],
+            order => Vm?.RestoreBinderOrder(order) ?? false);
+        _attachmentReorder = new ListReorder<AttachmentItemViewModel>(
+            AttachList,
+            (item, target) => Vm is { } vm && vm.MoveAttachment(item, vm.Attachments.IndexOf(target)),
+            () => Vm?.CommitAttachmentOrder(),
+            () => Vm?.Attachments.ToArray() ?? [],
+            order => Vm?.RestoreAttachmentOrder(order) ?? false);
+        AttachList.DetachedFromVisualTree += (_, _) => ClearAttachDropHighlight();
         Deactivated += (_, _) =>
         {
-            CancelAttachDragIntent();
+            _binderReorder.CancelIntent();
+            _attachmentReorder.CancelIntent();
             ClearAttachDropHighlight();
         };
+
     }
 
     private void OnAttachDragOver(object? sender, DragEventArgs e)
@@ -131,227 +128,6 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
-    }
-
-    private async void OnAttachItemPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        // Ignore presses on a button (the row's ✕) so they click rather than start a drag.
-        if (e.Source is Visual v && (v is Button || v.GetVisualAncestors().OfType<Button>().Any()))
-        {
-            return;
-        }
-
-        if (_attachReordering || _attachDragIntent is not null
-            || !e.GetCurrentPoint(AttachList).Properties.IsLeftButtonPressed
-            || (e.Source as Control)?.DataContext is not AttachmentItemViewModel item)
-        {
-            return;
-        }
-
-        // The grabbed item is the active item for the whole transaction. Set this explicitly so a
-        // drag that crosses the platform's selection threshold still follows stable identity.
-        AttachList.SelectedItem = item;
-        (AttachList.ContainerFromIndex(AttachList.Items.IndexOf(item)) as Control)?.Focus();
-        _attachDragItem = item;
-        _attachDragOrigin = e.GetPosition(AttachList);
-        var intent = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _attachDragIntent = intent;
-
-        var intended = await intent.Task;
-        if (!ReferenceEquals(_attachDragIntent, intent))
-        {
-            return;
-        }
-
-        _attachDragIntent = null;
-        _attachDragOrigin = null;
-        if (!intended || _attachDragItem is not { } activeItem)
-        {
-            _attachDragItem = null;
-            return;
-        }
-
-        await RunAttachmentReorderAsync(e, activeItem);
-    }
-
-    private void OnAttachItemPointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (_attachDragIntent is not { } intent || _attachDragOrigin is not { } origin)
-        {
-            return;
-        }
-
-        if (!e.GetCurrentPoint(AttachList).Properties.IsLeftButtonPressed)
-        {
-            CancelAttachDragIntent();
-            return;
-        }
-
-        if (AttachmentReorder.ExceedsDragThreshold(origin, e.GetPosition(AttachList)))
-        {
-            intent.TrySetResult(true);
-        }
-    }
-
-    private void OnAttachItemPointerReleased(object? sender, PointerReleasedEventArgs e) =>
-        CancelAttachDragIntent();
-
-    private async Task RunAttachmentReorderAsync(
-        PointerPressedEventArgs trigger,
-        AttachmentItemViewModel item)
-    {
-        if (DataContext is not MainWindowViewModel vm || vm.Attachments.IndexOf(item) < 0)
-        {
-            _attachDragItem = null;
-            return;
-        }
-
-        _attachReordering = true;
-        _attachStartOrder = vm.Attachments.ToArray();
-        _attachDragToken = Guid.NewGuid().ToString("N");
-        using var transfer = new DataTransfer();
-        transfer.Add(DataTransferItem.Create(AttachmentReorderFormat, _attachDragToken));
-
-        var result = DragDropEffects.None;
-        try
-        {
-            result = await DragDrop.DoDragDropAsync(trigger, transfer, DragDropEffects.Move);
-        }
-        finally
-        {
-            FinishAttachDrag(commit: result == DragDropEffects.Move);
-        }
-    }
-
-    private void OnAttachReorderDragOver(object? sender, DragEventArgs e)
-    {
-        PreviewAttachmentReorder(e);
-    }
-
-    private void OnAttachReorderDrop(object? sender, DragEventArgs e)
-    {
-        PreviewAttachmentReorder(e);
-    }
-
-    private void PreviewAttachmentReorder(DragEventArgs e)
-    {
-        var isCurrentReorder = _attachReordering
-            && _attachDragToken is { } token
-            && e.DataTransfer.TryGetValue(AttachmentReorderFormat) == token;
-        if (!isCurrentReorder)
-        {
-            return; // external file delivery continues bubbling to AttachPane
-        }
-
-        e.Handled = true;
-        e.DragEffects = DragDropEffects.None;
-        if (DataContext is not MainWindowViewModel vm
-            || _attachDragItem is not { } item
-            || (e.Source as Control)?.DataContext is not AttachmentItemViewModel target)
-        {
-            return;
-        }
-
-        var targetIndex = vm.Attachments.IndexOf(target);
-        if (targetIndex < 0)
-        {
-            return;
-        }
-
-        var keepFocus = AttachList.IsKeyboardFocusWithin;
-        vm.MoveAttachment(item, targetIndex);
-        FollowAttachment(item, keepFocus);
-        e.DragEffects = DragDropEffects.Move;
-    }
-
-    private void OnAttachListKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (_attachReordering || ComposingTextBox.IsFocusedElementComposing(this)
-            || DataContext is not MainWindowViewModel vm
-            || AttachList.SelectedItem is not AttachmentItemViewModel item)
-        {
-            return;
-        }
-
-        var offset = AttachmentReorder.KeyboardOffset(e.Key, e.KeyModifiers);
-        var oldIndex = vm.Attachments.IndexOf(item);
-        if (offset == 0 || !vm.MoveAttachment(item, oldIndex + offset))
-        {
-            return;
-        }
-
-        // Keyboard reorder is one complete transaction: the same move operation as pointer preview,
-        // followed by one commit. The stable item remains selected and, because the list owns focus,
-        // follows its new container without adding a tab stop or stealing focus from another control.
-        vm.CommitAttachmentOrder();
-        FollowAttachment(item, AttachList.IsKeyboardFocusWithin);
-        e.Handled = true;
-    }
-
-    private void FinishAttachDrag(bool commit)
-    {
-        var activeItem = _attachDragItem;
-        var keepFocus = AttachList.IsKeyboardFocusWithin;
-        if (_attachReordering && DataContext is MainWindowViewModel vm)
-        {
-            if (commit)
-            {
-                vm.CommitAttachmentOrder();
-            }
-            else if (_attachStartOrder is { } startingOrder && !vm.RestoreAttachmentOrder(startingOrder))
-            {
-                // The list changed while captured (for example, a note reload). The snapshot no
-                // longer describes this rendered list, so explicitly commit its current order rather
-                // than applying stale item identities or leaving display and storage divergent.
-                vm.CommitAttachmentOrder();
-            }
-        }
-
-        ClearAttachDrag();
-        if (activeItem is not null)
-        {
-            FollowAttachment(activeItem, keepFocus);
-        }
-    }
-
-    private void FollowAttachment(AttachmentItemViewModel item, bool restoreFocus)
-    {
-        var index = AttachList.Items.IndexOf(item);
-        if (index < 0)
-        {
-            return;
-        }
-
-        AttachList.SelectedItem = item;
-        AttachList.ScrollIntoView(item);
-        AttachList.UpdateLayout();
-        if (restoreFocus)
-        {
-            (AttachList.ContainerFromIndex(index) as Control)?.Focus();
-        }
-    }
-
-    private void ClearAttachDrag()
-    {
-        _attachDragItem = null;
-        _attachDragOrigin = null;
-        _attachStartOrder = null;
-        _attachDragToken = null;
-        _attachReordering = false;
-    }
-
-    private void CancelAttachDragIntent()
-    {
-        var intent = _attachDragIntent;
-        if (intent is null)
-        {
-            return;
-        }
-
-        _attachDragIntent = null;
-        _attachDragItem = null;
-        _attachDragOrigin = null;
-        intent.TrySetResult(false);
     }
 
     private void ClearAttachDropHighlight()

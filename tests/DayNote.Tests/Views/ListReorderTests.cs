@@ -5,7 +5,7 @@ using Xunit;
 
 namespace DayNote.Tests.Views;
 
-public sealed class AttachmentReorderTests
+public sealed class ListReorderTests
 {
     [Theory]
     [InlineData(2.9, 0, false)]
@@ -18,7 +18,7 @@ public sealed class AttachmentReorderTests
         double y,
         bool expected)
     {
-        Assert.Equal(expected, AttachmentReorder.ExceedsDragThreshold(default, new Point(x, y)));
+        Assert.Equal(expected, ListReorder.ExceedsDragThreshold(default, new Point(x, y)));
     }
 
     [Theory]
@@ -33,13 +33,13 @@ public sealed class AttachmentReorderTests
         KeyModifiers modifiers,
         int expected)
     {
-        Assert.Equal(expected, AttachmentReorder.KeyboardOffset(key, modifiers));
+        Assert.Equal(expected, ListReorder.KeyboardOffset(key, modifiers));
     }
 
     [Fact]
     public void KeyboardLabel_uses_the_running_platform_command_word_once()
     {
-        Assert.Equal("Cmd+Shift+Up/Down", AttachmentReorder.KeyboardLabel("Cmd"));
-        Assert.Equal("Ctrl+Shift+Up/Down", AttachmentReorder.KeyboardLabel("Ctrl"));
+        Assert.Equal("Cmd+Shift+Up/Down", ListReorder.KeyboardLabel("Cmd"));
+        Assert.Equal("Ctrl+Shift+Up/Down", ListReorder.KeyboardLabel("Ctrl"));
     }
 }

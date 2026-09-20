@@ -1280,6 +1280,65 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Live reorder step: moves <paramref name="item"/> to <paramref name="target"/>'s place in the
+    /// master list and re-applies the filter, so a filtered view moves past hidden rows by visible
+    /// neighbour. Nothing is persisted until <see cref="CommitBinderOrder"/>.
+    /// </summary>
+    public bool MoveBinder(BinderListItemViewModel item, BinderListItemViewModel target)
+    {
+        var from = _allBinders.IndexOf(item);
+        var to = _allBinders.IndexOf(target);
+        if (from < 0 || to < 0 || from == to)
+        {
+            return false;
+        }
+
+        _allBinders.RemoveAt(from);
+        _allBinders.Insert(to, item);
+        ApplyBinderFilter();
+        return true;
+    }
+
+    /// <summary>The master binder order, hidden rows included, for restoring a cancelled drag.</summary>
+    public IReadOnlyList<BinderListItemViewModel> BinderOrder() => _allBinders.ToArray();
+
+    /// <summary>
+    /// Restores a captured master order. Returns false when the known binders changed meanwhile, so the
+    /// caller commits the current order instead of applying stale identities.
+    /// </summary>
+    public bool RestoreBinderOrder(IReadOnlyList<BinderListItemViewModel> order)
+    {
+        if (order.Count != _allBinders.Count || order.Any(item => !_allBinders.Contains(item)))
+        {
+            return false;
+        }
+
+        _allBinders.Clear();
+        _allBinders.AddRange(order);
+        ApplyBinderFilter();
+        return true;
+    }
+
+    /// <summary>Persists the master binder order to app state once; a no-op when it is unchanged.</summary>
+    public void CommitBinderOrder()
+    {
+        var order = _allBinders.Select(item => item.Path).ToList();
+        if (_state.Binders.Select(entry => entry.Path).SequenceEqual(order))
+        {
+            return;
+        }
+
+        var reordered = _allBinders
+            .Select(item => _state.Binders.Find(entry => PathKey.Equal(entry.Path, item.Path)))
+            .OfType<KnownBinder>()
+            .ToList();
+        reordered.AddRange(_state.Binders.Except(reordered));
+        _state.Binders = reordered;
+        PersistState();
+        _log.Info("Reordered binders", new { count = order.Count });
+    }
+
+    /// <summary>
     /// Reconciles <paramref name="target"/> to the subset of <paramref name="source"/> that matches the
     /// filter (case-insensitively), keeping all items when the filter is blank and any item matched by
     /// <paramref name="alwaysKeep"/>. The reconcile is done in place — surviving rows (and the bound

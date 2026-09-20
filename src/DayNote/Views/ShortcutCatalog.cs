@@ -111,8 +111,8 @@ public static class ShortcutCatalog
             Display(ShortcutGroup.Navigation, "Move the selection up or down a list", "Up / Down"),
             Display(
                 ShortcutGroup.Navigation,
-                "Move the selected attachment up or down",
-                AttachmentReorder.KeyboardLabel(cmdLabel)),
+                "Move the selected binder, attachment, or text style up or down",
+                ListReorder.KeyboardLabel(cmdLabel)),
 
             // Editor — the open note.
             Command(ShortcutGroup.Editor, "Cycle text style", cmd, cmdLabel, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),

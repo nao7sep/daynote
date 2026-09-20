@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Automation;
@@ -647,6 +648,72 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(note.Attachments, new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
 
         await CloseTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task Keyboard_binder_move_passes_hidden_rows_and_persists_the_order_once()
+    {
+        var vm = NewViewModel();
+        foreach (var name in new[] { "alpha", "hidden", "alpine" })
+        {
+            _dialogs.BinderToCreate = Path.Combine(_home, name + ".daynote");
+            await vm.NewBinderCommand.ExecuteAsync(null);
+        }
+
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var list = Assert.IsType<ListBox>(window.FindControl<ListBox>("BindersList"));
+        Assert.True(DragDrop.GetAllowDrop(list));
+        vm.BindersFilter = "a";
+        Dispatcher.UIThread.RunJobs();
+        var moved = Assert.Single(vm.Binders, binder => binder.Name == "alpine");
+        Assert.Equal(new[] { "alpine", "alpha" }, vm.Binders.Select(binder => binder.Name));
+        Assert.Same(moved, list.SelectedItem);
+        Assert.IsAssignableFrom<Control>(list.ContainerFromIndex(0)).Focus();
+        var command = ShortcutCatalog.CommandModifier(window) == KeyModifiers.Meta
+            ? RawInputModifiers.Meta
+            : RawInputModifiers.Control;
+
+        window.KeyPress(Key.Down, command | RawInputModifiers.Shift, PhysicalKey.ArrowDown, null);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(new[] { "alpha", "alpine" }, vm.Binders.Select(binder => binder.Name));
+        Assert.Same(moved, list.SelectedItem);
+        Assert.True(list.IsKeyboardFocusWithin);
+        var saved = JsonSerializer.Deserialize<AppState>(
+            File.ReadAllText(Path.Combine(_home, "state.json")), DayNoteJson.Options)!;
+        Assert.Equal(
+            new[] { "hidden.daynote", "alpha.daynote", "alpine.daynote" },
+            saved.Binders.Select(entry => Path.GetFileName(entry.Path)));
+
+        await CloseTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
+    public async Task Cancelling_a_binder_drag_restores_the_master_order_without_persisting()
+    {
+        var vm = NewViewModel();
+        foreach (var name in new[] { "one", "two", "three" })
+        {
+            _dialogs.BinderToCreate = Path.Combine(_home, name + ".daynote");
+            await vm.NewBinderCommand.ExecuteAsync(null);
+        }
+
+        var statePath = Path.Combine(_home, "state.json");
+        var before = File.ReadAllText(statePath);
+        var start = vm.BinderOrder();
+
+        Assert.True(vm.MoveBinder(start[0], start[2]));
+        Assert.Equal(new[] { start[1], start[2], start[0] }, vm.BinderOrder());
+        Assert.True(vm.RestoreBinderOrder(start));
+        vm.CommitBinderOrder();
+
+        Assert.Equal(start, vm.BinderOrder());
+        Assert.Equal(start, vm.Binders);
+        Assert.Equal(before, File.ReadAllText(statePath));
+
+        await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]

@@ -223,7 +223,7 @@
                         <ctl:ComposingTextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
                         <Panel>
                             <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
-                            <ListBox ItemsSource="{Binding Binders}"
+                            <ListBox x:Name="BindersList" ItemsSource="{Binding Binders}" DragDrop.AllowDrop="True"
                                      SelectedItem="{Binding SelectedBinder}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate DataType="vm:BinderListItemViewModel">
