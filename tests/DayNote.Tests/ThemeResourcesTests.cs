@@ -75,7 +75,8 @@ public sealed class ThemeResourcesTests
         }
 
         var rows = new[] { "ListBackgroundBrush", "ListSelectionBrush", "ListSelectionHoverBrush" };
-        foreach (var surface in new[] { "AppBackgroundBrush", "SurfaceBrush", "UtilityBrush", "UtilityHoverBrush" }.Concat(rows))
+        var utility = new[] { "UtilityBrush", "UtilityHoverBrush", "UtilityPressedBrush" };
+        foreach (var surface in new[] { "AppBackgroundBrush", "SurfaceBrush" }.Concat(utility).Concat(rows))
             Check("TextPrimaryBrush", surface, 4.5);
         foreach (var surface in new[] { "AppBackgroundBrush", "SurfaceBrush", "UtilityBrush" }.Concat(rows))
             Check("TextSecondaryBrush", surface, 4.5);
@@ -85,8 +86,8 @@ public sealed class ThemeResourcesTests
                 Check(status, row, 4.5);
         foreach (var surface in new[] { "AppBackgroundBrush", "SurfaceBrush" })
             Check("DangerTextBrush", surface, 4.5);
-        Check("AccentForegroundBrush", "AccentBrush", 4.5);
-        Check("AccentForegroundBrush", "AccentHoverBrush", 4.5);
+        foreach (var fill in new[] { "AccentBrush", "AccentHoverBrush", "AccentPressedBrush" })
+            Check("AccentForegroundBrush", fill, 4.5);
         // Marks: a field's outline, the accent focus and drop border, the save-state dot, result frames.
         foreach (var surface in new[] { "AppBackgroundBrush", "SurfaceBrush", "ListBackgroundBrush" })
             foreach (var mark in new[] { "FieldBorderBrush", "TextControlBorderBrush", "AccentBrush", "PositiveBrush", "WarningBrush", "DangerTextBrush" })
@@ -142,8 +143,8 @@ public sealed class ThemeResourcesTests
     public void WhiteLabelsKeepHighContrastOnTheDangerFill(string theme)
     {
         var b = ThemeBrushes(theme);
-        Assert.True(Contrast(Colors.White, b["DangerBrush"]) >= 4.5, $"{theme}: white on DangerBrush");
-        Assert.True(Contrast(Colors.White, b["DangerHoverBrush"]) >= 4.5, $"{theme}: white on DangerHoverBrush");
+        foreach (var fill in new[] { "DangerBrush", "DangerHoverBrush", "DangerPressedBrush" })
+            Assert.True(Contrast(Colors.White, b[fill]) >= 4.5, $"{theme}: white on {fill}");
     }
 
     [Fact]

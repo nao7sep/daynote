@@ -93,6 +93,40 @@ public sealed class AppStylesTests
         }
     }
 
+    // Pressed is a step of the control's own surface, distinct from both resting and hover. A class
+    // that leaves it unsaid gets Fluent's grey under the finger instead — or, where an app style
+    // already pins the fill, no change at all, which is a button that does not answer the click.
+    [AvaloniaTheory]
+    [InlineData("accent", "AccentPressedBrush")]
+    [InlineData("utility", "UtilityPressedBrush")]
+    [InlineData("destructive", "DangerPressedBrush")]
+    [InlineData("danger", "DangerBrush")]
+    public void A_pressed_button_is_a_step_of_its_own_surface(string variant, string pressedBrush)
+    {
+        var resting = Classed(variant, enabled: true);
+        var hovered = Classed(variant, enabled: true);
+        var pressed = Classed(variant, enabled: true);
+        var window = new Window { Content = new StackPanel { Children = { resting, hovered, pressed } } };
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            // The pseudo-classes are set after the template is applied; the control resets them on attach.
+            ((IPseudoClasses)hovered.Classes).Set(":pointerover", true);
+            ((IPseudoClasses)pressed.Classes).Set(":pressed", true);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(Color(Brush(pressedBrush)), Fill(pressed));
+            Assert.NotEqual(Fill(resting), Fill(pressed));
+            Assert.NotEqual(Fill(hovered), Fill(pressed));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static Button Classed(string variant, bool enabled)
     {
         var button = new Button { Content = "Remove", IsEnabled = enabled };

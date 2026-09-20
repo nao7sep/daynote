@@ -28,15 +28,18 @@
                     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5F5669"/>
                     <SolidColorBrush x:Key="AccentBrush" Color="#7352D6"/>
                     <SolidColorBrush x:Key="AccentHoverBrush" Color="#6444C4"/>
+                    <SolidColorBrush x:Key="AccentPressedBrush" Color="#5536B2"/>
                     <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="DangerBrush" Color="#B93650"/>
                     <SolidColorBrush x:Key="DangerHoverBrush" Color="#A32C45"/>
+                    <SolidColorBrush x:Key="DangerPressedBrush" Color="#8D223A"/>
                     <SolidColorBrush x:Key="DangerTextBrush" Color="#A32C45"/>
                     <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#F7E4E9"/>
                     <SolidColorBrush x:Key="WarningBrush" Color="#87500B"/>
                     <SolidColorBrush x:Key="PositiveBrush" Color="#236A47"/>
                     <SolidColorBrush x:Key="UtilityBrush" Color="#ECE7F1"/>
                     <SolidColorBrush x:Key="UtilityHoverBrush" Color="#E1DAE8"/>
+                    <SolidColorBrush x:Key="UtilityPressedBrush" Color="#D6CDDF"/>
                     <SolidColorBrush x:Key="ListBackgroundBrush" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="ListSelectionBrush" Color="#EDE5FA"/>
                     <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="#E4D9F6"/>
@@ -68,15 +71,18 @@
                     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#AFA3B1"/>
                     <SolidColorBrush x:Key="AccentBrush" Color="#A78BFA"/>
                     <SolidColorBrush x:Key="AccentHoverBrush" Color="#B69CFF"/>
+                    <SolidColorBrush x:Key="AccentPressedBrush" Color="#C5ADFF"/>
                     <SolidColorBrush x:Key="AccentForegroundBrush" Color="#1B1425"/>
                     <SolidColorBrush x:Key="DangerBrush" Color="#B93650"/>
                     <SolidColorBrush x:Key="DangerHoverBrush" Color="#C2415D"/>
+                    <SolidColorBrush x:Key="DangerPressedBrush" Color="#A82F47"/>
                     <SolidColorBrush x:Key="DangerTextBrush" Color="#F08A9C"/>
                     <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#3C2029"/>
                     <SolidColorBrush x:Key="WarningBrush" Color="#E0A14A"/>
                     <SolidColorBrush x:Key="PositiveBrush" Color="#5FB98B"/>
                     <SolidColorBrush x:Key="UtilityBrush" Color="#3A3347"/>
                     <SolidColorBrush x:Key="UtilityHoverBrush" Color="#484054"/>
+                    <SolidColorBrush x:Key="UtilityPressedBrush" Color="#564D61"/>
                     <SolidColorBrush x:Key="ListBackgroundBrush" Color="#121015"/>
                     <SolidColorBrush x:Key="ListSelectionBrush" Color="#3B2F51"/>
                     <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="#413456"/>
@@ -154,6 +160,16 @@
             <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
+        <!-- Pressed is a further step of the control's own surface, one beyond hover in whichever
+             direction that theme's hover moves. A filled class that leaves it unsaid gets Fluent's
+             grey instead, so the accent button gave no feedback at all under the finger and the
+             others turned grey at the moment of the click. The dark theme's danger fill is the one
+             exception: it cannot lighten past its hover without the white label dropping under the
+             contrast floor, so there the press deepens rather than lifts. -->
+        <Style Selector="Button.accent:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
+        </Style>
         <Style Selector="Button.accent:disabled /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
@@ -212,6 +228,10 @@
             <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
+        <Style Selector="Button.utility:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UtilityPressedBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
         <Style Selector="Button.utility:disabled /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -261,6 +281,10 @@
         </Style>
         <Style Selector="Button.destructive:focus /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource DangerHoverBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.destructive:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerPressedBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
 
