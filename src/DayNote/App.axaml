@@ -105,6 +105,11 @@
                  below binds it via DynamicResource so the change applies live across every window. -->
             <!-- The collection URI, not the bare name: bare "Inter" falls back to the platform font. -->
             <FontFamily x:Key="AppFontFamily">fonts:Inter#Inter</FontFamily>
+
+            <!-- How far a disabled control fades. One value for the app, outside the theme
+                 dictionaries: a fade is a proportion of whatever the control already is, so it
+                 lands the same in both themes without a second set of colours to keep in step. -->
+            <x:Double x:Key="DisabledOpacity">0.45</x:Double>
         </ResourceDictionary>
     </Application.Resources>
 
@@ -149,6 +154,10 @@
             <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
+        <Style Selector="Button.accent:disabled /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
+        </Style>
 
         <!-- A button states everything it requires of its label: that the content is
              centred, and that the padding around it is symmetric. Avalonia's stock button
@@ -168,6 +177,17 @@
             <!-- One radius for every button; a class that omits it must not fall back to
                  the theme's smaller default, which reads as square beside these. -->
             <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <!-- A disabled button is the resting button, faded: it keeps its own fill, outline, ink and
+             size, and the whole control is drawn at DisabledOpacity. It stays recognisably the
+             control that will come back, and the classes stay told apart while they are off.
+             Fluent instead swaps the fill and the ink for greys of its own, which turns a filled
+             button into a grey slab heavier than its resting self, and strips the outlined danger
+             button down to bare grey letters — a link where a button should be. So every class that
+             can be disabled restates below what it keeps; a class that is never disabled says
+             nothing. The fade is on the button, not the presenter, so it carries the outline too. -->
+        <Style Selector="Button:disabled">
+            <Setter Property="Opacity" Value="{DynamicResource DisabledOpacity}"/>
         </Style>
         <Style Selector="TextBox">
             <!-- A single-line field states that its text centres and that its padding is
@@ -190,6 +210,10 @@
         </Style>
         <Style Selector="Button.utility:focus /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="Button.utility:disabled /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 
@@ -216,8 +240,13 @@
             <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
+        <!-- Off, it is still the red outlined button: same outline, same letters, same footprint,
+             faded by the rule above. Red is what says the action destroys something, and that does
+             not stop being true while the action is unavailable. -->
         <Style Selector="Button.danger:disabled /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
         </Style>
 
         <Style Selector="Button.destructive">
