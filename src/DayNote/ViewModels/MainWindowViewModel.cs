@@ -943,7 +943,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         ApplyTextStyle();
-        var label = TextStyleLabels.For(_config.TextStyles, UiFont.EditorFamilyName)[nextIndex];
+        var label = TextStyleLabels.For(_config.TextStyles)[nextIndex];
         _log.Info("Cycled text style", new { style = label });
         if (IsReady)
         {

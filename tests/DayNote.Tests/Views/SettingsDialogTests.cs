@@ -1,3 +1,4 @@
+using System;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -167,6 +168,31 @@ public sealed class SettingsDialogTests
     }
 
     [AvaloniaFact]
+    public void A_styles_row_says_what_was_typed_even_when_no_such_font_is_installed()
+    {
+        var config = new AppConfig();
+        var dialog = new SettingsDialog(config, _ => true, _ => Task.FromResult(true));
+        dialog.Show();
+        Dispatcher.UIThread.RunJobs();
+        var list = Named<ListBox>(dialog, "TextStylesList");
+        Named<Button>(dialog, "AddTextStyleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        var family = Named<TextBox>(dialog, "TextStyleFontFamily");
+
+        // \u904a (U+904A) is the IME's usual answer for \u3086\u3046; no font declares this name.
+        family.Text = "\u904a\u660e\u671d\u4f53";
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("\u904a\u660e\u671d\u4f53", RowLabel(list, 2));
+
+        // A name given as a list goes by its first family, so the built-in default reads as Menlo.
+        family.Text = EditorTextStyle.DefaultFixedWidthFamilies;
+        Dispatcher.UIThread.RunJobs();
+        Assert.StartsWith("Menlo", RowLabel(list, 2), StringComparison.Ordinal);
+        dialog.Close();
+    }
+
+    [AvaloniaFact]
     public void Removing_a_style_asks_first_and_a_refusal_keeps_it()
     {
         var config = new AppConfig();
@@ -225,6 +251,9 @@ public sealed class SettingsDialogTests
         Assert.True(glyphs[0].Height < glyphs[1].Height / 4, $"The minus is {glyphs[0].Height:0.##} tall.");
         dialog.Close();
     }
+
+    private static string RowLabel(ListBox list, int index) =>
+        list.ContainerFromIndex(index)!.GetLogicalDescendants().OfType<TextBlock>().First().Text!;
 
     private static bool[] DefaultBadges(ListBox list) =>
         Enumerable.Range(0, list.ItemCount)

@@ -429,7 +429,7 @@ public sealed class SettingsDialog : DialogBase
 
     private void RefreshStyleRows()
     {
-        var labels = TextStyleLabels.For(_config.TextStyles, UiFont.EditorFamilyName);
+        var labels = TextStyleLabels.For(_config.TextStyles);
         for (var index = 0; index < _styleRows.Count; index++)
         {
             _styleRows[index].Refresh(labels[index]);

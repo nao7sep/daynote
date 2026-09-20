@@ -666,9 +666,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         vm.CycleTextStyleCommand.Execute(null);
 
-        Assert.Equal(
-            "Text style: " + UiFont.EditorFamilyName(EditorTextStyle.DefaultFixedWidthFamilies),
-            vm.TextStyleStatusText);
+        Assert.Equal("Text style: Menlo", vm.TextStyleStatusText);
         Assert.Empty(vm.Results);
         saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
         Assert.Equal(new[] { true, false }, saved.TextStyles.Select(style => style.IsDefault));

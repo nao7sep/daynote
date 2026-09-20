@@ -72,8 +72,6 @@ public sealed class UiFontTests
             Assert.True(FontManager.Current.TryGetGlyphTypeface(new Typeface(resolved), out var face));
             Assert.True(IsFamily(face, family), $"{name} resolved to {face.FamilyName}.");
         }
-
-        Assert.Equal(name, UiFont.EditorFamilyName(name));
     }
 
     [AvaloniaFact]
@@ -88,7 +86,6 @@ public sealed class UiFontTests
         {
             Assert.Equal(fixedWidth, UiFont.ResolveEditor(misspelled).Name);
             Assert.Equal(AppConfig.DefaultUiFontFamily, UiFont.Resolve(misspelled).Name);
-            Assert.NotEqual(misspelled, UiFont.EditorFamilyName(misspelled));
         }
     }
 

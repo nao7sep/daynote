@@ -57,14 +57,6 @@ public static class UiFont
         // Neither Menlo nor Consolas: the generic name, which fontconfig resolves on Linux.
         ?? new FontFamily("monospace");
 
-    /// <summary>
-    /// The name a text-style preset goes by: the family <see cref="ResolveEditor"/> uses, as the user
-    /// wrote it, so a Japanese name stays Japanese and a list naming several families shows the one
-    /// actually installed.
-    /// </summary>
-    public static string EditorFamilyName(string? value) =>
-        (FindFirst(value) ?? FindFirst(EditorTextStyle.DefaultFixedWidthFamilies))?.Name ?? "monospace";
-
     private static (FontFamily Family, string Name)? FindFirst(string? value)
     {
         foreach (var name in ParseFamilies(value))

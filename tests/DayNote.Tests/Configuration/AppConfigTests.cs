@@ -81,13 +81,15 @@ public sealed class AppConfigTests
         var styles = new[]
         {
             new EditorTextStyle { FontFamily = "Menlo", FontSize = 14 },
-            new EditorTextStyle { FontFamily = "Menlo", FontSize = 18.5 },
+            new EditorTextStyle { FontFamily = "Menlo, Consolas, monospace", FontSize = 18.5 },
             new EditorTextStyle { FontFamily = "Inter", FontSize = 15 },
             new EditorTextStyle { FontFamily = " ", FontSize = 15 },
+            // A family no system has still goes by the name it was given, not by what it falls back to.
+            new EditorTextStyle { FontFamily = "\u904a\u660e\u671d\u4f53", FontSize = 15 },
         };
 
         Assert.Equal(
-            new[] { "Menlo 14", "Menlo 18.5", "Inter", TextStyleLabels.NoFontFamily },
-            TextStyleLabels.For(styles, family => family));
+            new[] { "Menlo 14", "Menlo 18.5", "Inter", TextStyleLabels.NoFontFamily, "\u904a\u660e\u671d\u4f53" },
+            TextStyleLabels.For(styles));
     }
 }
