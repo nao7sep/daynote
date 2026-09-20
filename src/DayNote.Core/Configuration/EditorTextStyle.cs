@@ -1,14 +1,17 @@
+using System.Text.Json.Serialization;
+
 namespace DayNote.Core.Configuration;
 
 /// <summary>
-/// A named editor text-style preset, chosen by <see cref="Name"/>. It bundles the full set of
-/// typographic settings applied to the note body: family, size, line spacing, padding, and weight/
-/// slant. The binder's stored text never carries styling — a preset is a view-only preference for
-/// how the plain-text body is rendered, so switching presets never changes saved content.
+/// An editor text-style preset. It bundles the full set of typographic settings applied to the note
+/// body: family, size, line spacing, padding, and weight/slant. A preset has no name of its own; it
+/// goes by its font family. The binder's stored text never carries styling — a preset is a view-only
+/// preference for how the plain-text body is rendered, so switching presets never changes saved content.
 /// </summary>
 public sealed class EditorTextStyle
 {
-    public string Name { get; set; } = "Default";
+    /// <summary>Whether this is the preset the editor uses; exactly one preset in a config is.</summary>
+    public bool IsDefault { get; set; }
 
     /// <summary>
     /// The fixed-width default (app-chrome-conventions): Menlo on macOS, Consolas on Windows, and the
@@ -34,9 +37,16 @@ public sealed class EditorTextStyle
 
     public bool Italic { get; set; }
 
+    /// <summary>
+    /// The name presets carried before they went by their font family. It is read only so that
+    /// <see cref="AppConfig"/> can find the preset an older config selected by name, and never written.
+    /// </summary>
+    [JsonInclude, JsonPropertyName("name"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    internal string? LegacyName { get; set; }
+
     public EditorTextStyle Copy() => new()
     {
-        Name = Name,
+        IsDefault = IsDefault,
         FontFamily = FontFamily,
         FontSize = FontSize,
         LineSpacing = LineSpacing,

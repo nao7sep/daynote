@@ -30,6 +30,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private const string SaveFailureResultKey = "binder-save-failure";
     private const string NewBinderPickerResultKey = "new-binder-picker";
     private const string OpenBinderPickerResultKey = "open-binder-picker";
+    private const string TextStyleResultKey = "text-style";
     private const string AttachmentPickerResultKey = "attachment-picker";
     private const string ExternalReloadResultKey = "external-reload";
 
@@ -877,17 +878,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var index = _config.TextStyles.FindIndex(s => string.Equals(s.Name, _config.SelectedTextStyle, StringComparison.OrdinalIgnoreCase));
-        var next = _config.TextStyles[(index + 1) % _config.TextStyles.Count];
-        _config.SelectedTextStyle = next.Name;
+        var index = _config.TextStyles.IndexOf(_config.ResolveDefaultStyle()!);
+        var nextIndex = (index + 1) % _config.TextStyles.Count;
+        for (var i = 0; i < _config.TextStyles.Count; i++)
+        {
+            _config.TextStyles[i].IsDefault = i == nextIndex;
+        }
+
         ApplyTextStyle();
-        _log.Info("Cycled text style", new { style = next.Name });
+        var label = TextStyleLabels.For(_config.TextStyles, UiFont.EditorFamilyName)[nextIndex];
+        _log.Info("Cycled text style", new { style = label });
         if (IsReady)
         {
             TrySaveConfig();
         }
 
-        ShowResult(OperationResultKind.Info, "Text style: " + next.Name);
+        ShowResult(OperationResultKind.Info, "Text style: " + label, resultKey: TextStyleResultKey);
     }
 
     // ----- Binder open / close / save ----------------------------------------------------------
@@ -1716,7 +1722,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// <summary>Applies the selected text-style preset (or the first available) to the editor properties.</summary>
     private void ApplyTextStyle()
     {
-        var style = _config.ResolveSelectedStyle();
+        var style = _config.ResolveDefaultStyle();
         if (style is null)
         {
             return;
@@ -1811,7 +1817,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         uiFontFamily = config.UiFontFamily,
         theme = config.Theme,
-        selectedTextStyle = config.SelectedTextStyle,
+        defaultTextStyle = config.TextStyles.FindIndex(style => style.IsDefault),
         textStyleCount = config.TextStyles.Count,
         autosaveDelaySeconds = config.AutosaveDelaySeconds,
         displayTimeZone = config.DisplayTimeZone,

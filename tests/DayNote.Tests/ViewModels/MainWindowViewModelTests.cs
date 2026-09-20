@@ -651,6 +651,29 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Cycling_text_styles_moves_the_default_flag_and_names_the_family()
+    {
+        var vm = NewViewModel();
+        var configPath = Path.Combine(_home, "config.json");
+
+        vm.CycleTextStyleCommand.Execute(null);
+
+        Assert.Equal("Text style: Inter", Assert.Single(vm.Results).Message);
+        var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
+        Assert.Equal(new[] { false, true }, saved.TextStyles.Select(style => style.IsDefault));
+
+        vm.CycleTextStyleCommand.Execute(null);
+
+        Assert.Equal(
+            "Text style: " + UiFont.EditorFamilyName(EditorTextStyle.DefaultFixedWidthFamilies),
+            Assert.Single(vm.Results).Message);
+        saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
+        Assert.Equal(new[] { true, false }, saved.TextStyles.Select(style => style.IsDefault));
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Keyboard_binder_move_passes_hidden_rows_and_persists_the_order_once()
     {
         var vm = NewViewModel();

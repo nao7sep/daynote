@@ -1,20 +1,24 @@
-using System.Text.Json;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+using Avalonia.Data;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using DayNote.Controls;
 using DayNote.Core.Configuration;
-using DayNote.Core.Time;
 
 namespace DayNote.Views;
 
 /// <summary>
-/// The custom settings dialog. Edits a working copy of <see cref="AppConfig"/> in place: controls
-/// write straight to that copy, so the caller applies the edits by keeping the copy on Save and
-/// discards it on Cancel. Every text-style preset is an independent editable card; exactly one is the
-/// default and the default cannot be removed, which guarantees at least one preset always remains.
+/// The custom settings dialog. It edits a working copy of <see cref="AppConfig"/> in place: the caller
+/// keeps the copy on Save and discards it on Cancel. Text-style presets are one list, whose order is
+/// durable and is the order Cmd/Ctrl+J cycles through, and one editor for the selected preset. A preset
+/// goes by its font family; one preset is the default, marked in the list, and cannot be removed.
 /// </summary>
 public sealed class SettingsDialog : DialogBase
 {
@@ -27,8 +31,16 @@ public sealed class SettingsDialog : DialogBase
 
     private readonly AppConfig _config;
     private readonly AppConfig _original;
-    private readonly StackPanel _styleItems = new() { Spacing = 8 };
-    private readonly Dictionary<EditorTextStyle, StyleEditorControls> _styleEditors = [];
+    private readonly ObservableCollection<StyleRow> _styleRows = [];
+    private readonly ListBox _styleList;
+    private readonly ComposingTextBox _styleFontFamily;
+    private readonly NumericUpDown _styleFontSize;
+    private readonly NumericUpDown _styleLineSpacing;
+    private readonly NumericUpDown _stylePadding;
+    private readonly CheckBox _styleBold;
+    private readonly CheckBox _styleItalic;
+    private readonly Button _setDefault;
+    private readonly Button _removeStyle;
     private readonly IReadOnlyList<RadioButton> _themeButtons;
     private readonly TextBox _uiFont;
     private readonly NumericUpDown _autosave;
@@ -36,7 +48,7 @@ public sealed class SettingsDialog : DialogBase
     private readonly Button _saveButton;
     private readonly TextBlock _saveError;
     private readonly Func<AppConfig, bool> _trySave;
-    private EditorTextStyle? _defaultStyle;
+    private bool _loadingStyleEditor;
 
     public SettingsDialog(AppConfig config, Func<AppConfig, bool> trySave)
     {
@@ -45,41 +57,67 @@ public sealed class SettingsDialog : DialogBase
         Title = "Settings";
         Width = 600;
 
-        var styleActions = new StackPanel
+        // The preset list. Add belongs to the list; the selected preset's own actions sit with its
+        // editor. Drag or Cmd/Ctrl+Shift+Up/Down reorders it, which is also the cycling order.
+        _styleList = new ListBox
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            HorizontalAlignment = HorizontalAlignment.Right,
+            Name = "TextStylesList",
+            ItemsSource = _styleRows,
+            ItemTemplate = new FuncDataTemplate<StyleRow>((_, _) => StyleRowView()),
         };
-        styleActions.Children.Add(Utility("Add", AddStyle));
+        AutomationProperties.SetName(_styleList, "Text styles");
+        DragDrop.SetAllowDrop(_styleList, true);
+        _styleList.SelectionChanged += (_, _) => LoadSelectedStyle();
+        _ = new ListReorder<StyleRow>(_styleList, MoveStyle, Revalidate, () => _styleRows.ToArray(), RestoreStyles);
 
-        var styleHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var styleLabel = Label("Text styles");
-        styleLabel.VerticalAlignment = VerticalAlignment.Bottom; // sit on the baseline of the taller Add button
-        styleLabel.Margin = new Thickness(0, 0, 0, 4);
-        styleHeader.Children.Add(styleLabel);
-        Grid.SetColumn(styleActions, 1);
-        styleHeader.Children.Add(styleActions);
+        var addStyle = Utility("Add", AddStyle, "AddTextStyleButton");
+        addStyle.HorizontalAlignment = HorizontalAlignment.Left;
+        addStyle.Margin = new Thickness(0, 8, 0, 0);
+        var listColumn = new DockPanel();
+        DockPanel.SetDock(addStyle, Dock.Bottom);
+        listColumn.Children.Add(addStyle);
+        listColumn.Children.Add(_styleList);
 
-        // The presets live in a bordered, padded list container; the cards are its rows.
-        var styleList = new Border
+        _styleFontFamily = new ComposingTextBox
         {
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(8),
-            Child = new ScrollViewer
-            {
-                Height = 320,
-                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-                Content = _styleItems,
-            },
-        }.Themed(Border.BorderBrushProperty, "BorderBrush");
+            Name = "TextStyleFontFamily",
+            PlaceholderText = "Font family (e.g. Menlo)",
+        };
+        _styleFontSize = Numeric((decimal)SettingsValidator.MinFontSize, (decimal)SettingsValidator.MaxFontSize, 1);
+        _styleLineSpacing = Numeric((decimal)SettingsValidator.MinLineSpacing, (decimal)SettingsValidator.MaxLineSpacing, 0.1m);
+        _stylePadding = Numeric((decimal)SettingsValidator.MinPadding, (decimal)SettingsValidator.MaxPadding, 1);
+        _styleBold = new CheckBox { Content = "Bold" };
+        _styleItalic = new CheckBox { Content = "Italic" };
+        _setDefault = Utility("Set as default", MakeSelectedDefault, "SetDefaultTextStyleButton");
+        _removeStyle = Utility("Remove", RemoveSelectedStyle, "RemoveTextStyleButton");
 
-        // The platform radio group: one tab stop, arrow keys move and select (composite-control
-        // conventions). App-wide, applied on Save like every other field here. The buttons group by
-        // their shared parent rather than a GroupName, which Avalonia tracks across every dialog not
-        // yet in a window, so one Settings dialog's radios could uncheck another's.
+        var decorations = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
+        decorations.Children.Add(_styleBold);
+        decorations.Children.Add(_styleItalic);
+
+        var styleActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
+        styleActions.Children.Add(_setDefault);
+        styleActions.Children.Add(_removeStyle);
+
+        var editor = new StackPanel { Spacing = 10 };
+        editor.Children.Add(Field("Font family", _styleFontFamily));
+        editor.Children.Add(Row(
+            ("*", Field("Font size", _styleFontSize)),
+            ("*", Field("Line spacing", _styleLineSpacing)),
+            ("*", Field("Padding", _stylePadding))));
+        editor.Children.Add(decorations);
+        editor.Children.Add(styleActions);
+
+        var styleSurface = new Grid
+        {
+            Height = 240,
+            ColumnDefinitions = new ColumnDefinitions("180,*"),
+            ColumnSpacing = 16,
+        };
+        styleSurface.Children.Add(listColumn);
+        Grid.SetColumn(editor, 1);
+        styleSurface.Children.Add(editor);
+
         _themeButtons = ThemeChoices
             .Select(choice => new RadioButton { Content = choice.Label, IsChecked = choice.Value == config.Theme })
             .ToList();
@@ -99,10 +137,8 @@ public sealed class SettingsDialog : DialogBase
         _timeZone = new ComposingTextBox { Text = config.DisplayTimeZone };
 
         var panel = new StackPanel { Spacing = 8, Width = 540 };
-        panel.Children.Add(styleHeader);
-        panel.Children.Add(styleList);
-        // The theme and the UI (chrome) font sit with the appearance settings, just below the editor
-        // text styles; they govern the whole app's chrome, while the styles above govern the note body.
+        panel.Children.Add(Label("Text styles"));
+        panel.Children.Add(styleSurface);
         panel.Children.Add(Label("Theme"));
         panel.Children.Add(themeRow);
         panel.Children.Add(themeHint);
@@ -125,10 +161,8 @@ public sealed class SettingsDialog : DialogBase
         var buttons = SetButtons([new DialogButton("Cancel", "cancel"), new DialogButton("Save", "ok", DialogButtonKind.Primary)]);
         _saveButton = buttons["ok"];
 
-        RebuildStyleCards(_config.ResolveSelectedStyle());
-
-        // Snapshot the baseline AFTER the load canonicalizes SelectedTextStyle to the resolved preset's
-        // name; otherwise opening the dialog and changing nothing could leave Save enabled (phantom dirt).
+        BuildStyleList();
+        WireStyleEditor();
         _original = _config.Copy();
 
         _autosave.ValueChanged += (_, _) =>
@@ -160,16 +194,12 @@ public sealed class SettingsDialog : DialogBase
 
         _uiFont.TextChanged += (_, _) =>
         {
-            // Free text; blank is allowed and resolves to the bundled default at apply time.
             _config.UiFontFamily = (_uiFont.Text ?? string.Empty).Trim();
             Revalidate();
         };
 
         Revalidate();
-        if (_defaultStyle is not null && _styleEditors.TryGetValue(_defaultStyle, out var editor))
-        {
-            SetInitialFocus(editor.Name);
-        }
+        SetInitialFocus(_styleList);
     }
 
     public bool Applied => ResultTag == "ok";
@@ -193,235 +223,217 @@ public sealed class SettingsDialog : DialogBase
         return false;
     }
 
-    private Border BuildStyleCard(EditorTextStyle style)
+    private void BuildStyleList()
     {
-        var heading = new TextBlock
+        foreach (var style in _config.TextStyles)
         {
-            Text = DisplayName(style.Name),
-            FontWeight = FontWeight.SemiBold,
-            FontSize = 14,
-        };
+            _styleRows.Add(new StyleRow(style));
+        }
 
-        var name = new ComposingTextBox { Text = style.Name, PlaceholderText = "Preset name" };
-        var fontFamily = new ComposingTextBox { Text = style.FontFamily, PlaceholderText = "Font family (e.g. Menlo)" };
-        var fontSize = Numeric((decimal)SettingsValidator.MinFontSize, (decimal)SettingsValidator.MaxFontSize, 1);
-        fontSize.Value = (decimal)style.FontSize;
-        var lineSpacing = Numeric((decimal)SettingsValidator.MinLineSpacing, (decimal)SettingsValidator.MaxLineSpacing, 0.1m);
-        lineSpacing.Value = (decimal)style.LineSpacing;
-        var padding = Numeric((decimal)SettingsValidator.MinPadding, (decimal)SettingsValidator.MaxPadding, 1);
-        padding.Value = (decimal)style.Padding;
-        var bold = new CheckBox { Content = "Bold", IsChecked = style.Bold };
-        var italic = new CheckBox { Content = "Italic", IsChecked = style.Italic };
-
-        // The default control sits bottom-right: a "Set as default" button that becomes a colored
-        // "Default" pill once this preset is the chosen one (a pill reads better than plain text here).
-        var setDefault = Utility("Set as default", () => MakeDefault(style));
-        var defaultLabel = new Border
-        {
-            Child = new TextBlock
-            {
-                Text = "Default",
-                FontSize = 13,
-                FontWeight = FontWeight.SemiBold,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextAlignment = TextAlignment.Center,
-            }.Themed(TextBlock.ForegroundProperty, "AccentForegroundBrush"),
-        };
-        defaultLabel.Classes.Add("pill");
-        var remove = Utility("Remove", () => RemoveStyle(style));
-
-        var decorations = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 16,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        decorations.Children.Add(bold);
-        decorations.Children.Add(italic);
-
-        var actions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        actions.Children.Add(setDefault);
-        actions.Children.Add(defaultLabel);
-        actions.Children.Add(remove);
-
-        var bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        bottom.Children.Add(decorations);
-        Grid.SetColumn(actions, 1);
-        bottom.Children.Add(actions);
-
-        var body = new StackPanel { Spacing = 8 };
-        body.Children.Add(heading);
-        body.Children.Add(Row(("*", Field("Name", name)), ("*", Field("Font family", fontFamily))));
-        body.Children.Add(Row(
-            ("*", Field("Font size", fontSize)),
-            ("*", Field("Line spacing", lineSpacing)),
-            ("*", Field("Padding", padding))));
-        body.Children.Add(bottom);
-
-        var card = new Border { Child = body };
-        card.Classes.Add("stylePreset");
-
-        _styleEditors[style] = new StyleEditorControls(
-            name, fontFamily, fontSize, lineSpacing, padding, setDefault, defaultLabel, remove);
-
-        name.TextChanged += (_, _) =>
-        {
-            style.Name = (name.Text ?? string.Empty).Trim();
-            heading.Text = DisplayName(style.Name);
-            if (ReferenceEquals(style, _defaultStyle))
-            {
-                _config.SelectedTextStyle = style.Name;
-            }
-
-            Revalidate();
-        };
-        fontFamily.TextChanged += (_, _) =>
-        {
-            style.FontFamily = (fontFamily.Text ?? string.Empty).Trim();
-            Revalidate();
-        };
-        fontSize.ValueChanged += (_, _) =>
-        {
-            if (fontSize.Value is { } value)
-            {
-                style.FontSize = (double)value;
-            }
-
-            Revalidate();
-        };
-        lineSpacing.ValueChanged += (_, _) =>
-        {
-            if (lineSpacing.Value is { } value)
-            {
-                style.LineSpacing = (double)value;
-            }
-
-            Revalidate();
-        };
-        padding.ValueChanged += (_, _) =>
-        {
-            if (padding.Value is { } value)
-            {
-                style.Padding = (double)value;
-            }
-
-            Revalidate();
-        };
-        bold.IsCheckedChanged += (_, _) =>
-        {
-            style.Bold = bold.IsChecked == true;
-            Revalidate();
-        };
-        italic.IsCheckedChanged += (_, _) =>
-        {
-            style.Italic = italic.IsChecked == true;
-            Revalidate();
-        };
-
-        return card;
+        RefreshStyleRows();
+        _styleList.SelectedItem = _styleRows.FirstOrDefault(row => row.Style.IsDefault) ?? _styleRows.FirstOrDefault();
     }
 
-    private void MakeDefault(EditorTextStyle style)
+    private void WireStyleEditor()
     {
-        _defaultStyle = style;
-        _config.SelectedTextStyle = style.Name;
-        UpdateDefaultIndicators();
-        Revalidate();
+        _styleFontFamily.TextChanged += (_, _) => UpdateSelectedStyle(style =>
+            style.FontFamily = (_styleFontFamily.Text ?? string.Empty).Trim());
+        WireNumber(_styleFontSize, (style, value) => style.FontSize = value, style => style.FontSize);
+        WireNumber(_styleLineSpacing, (style, value) => style.LineSpacing = value, style => style.LineSpacing);
+        WireNumber(_stylePadding, (style, value) => style.Padding = value, style => style.Padding);
+        _styleBold.IsCheckedChanged += (_, _) => UpdateSelectedStyle(style => style.Bold = _styleBold.IsChecked == true);
+        _styleItalic.IsCheckedChanged += (_, _) => UpdateSelectedStyle(style => style.Italic = _styleItalic.IsChecked == true);
     }
 
-    private void AddStyle()
+    // A cleared number box keeps the preset's last value and shows it again when focus leaves, so a
+    // number is never stored that the field does not show.
+    private void WireNumber(NumericUpDown box, Action<EditorTextStyle, double> set, Func<EditorTextStyle, double> get)
     {
-        var template = _defaultStyle ?? _config.TextStyles.FirstOrDefault();
-        var style = template?.Copy() ?? new EditorTextStyle();
-        style.Name = UniqueName(template is null ? "New style" : template.Name + " copy");
-        _config.TextStyles.Add(style);
-        // Adding a preset does not change which one is the default.
-        RebuildStyleCards(_defaultStyle);
-        Revalidate();
+        box.ValueChanged += (_, _) =>
+        {
+            if (box.Value is { } value)
+            {
+                UpdateSelectedStyle(style => set(style, (double)value));
+            }
+        };
+        box.LostFocus += (_, _) =>
+        {
+            if (box.Value is null && SelectedStyleRow() is { } row)
+            {
+                _loadingStyleEditor = true;
+                box.Value = (decimal)get(row.Style);
+                _loadingStyleEditor = false;
+            }
+        };
     }
 
-    private void RemoveStyle(EditorTextStyle style)
+    private void UpdateSelectedStyle(Action<EditorTextStyle> update)
     {
-        // The default preset is undeletable, which guarantees at least one preset always remains.
-        if (ReferenceEquals(style, _defaultStyle) || _config.TextStyles.Count <= 1)
+        if (_loadingStyleEditor || SelectedStyleRow() is not { } row)
         {
             return;
         }
 
-        _config.TextStyles.Remove(style);
-        RebuildStyleCards(_defaultStyle);
+        update(row.Style);
+        RefreshStyleRows();
         Revalidate();
     }
 
-    private void RebuildStyleCards(EditorTextStyle? @default)
+    private void LoadSelectedStyle()
     {
-        _defaultStyle = @default ?? _config.TextStyles.FirstOrDefault();
-        if (_defaultStyle is not null)
+        _loadingStyleEditor = true;
+        if (SelectedStyleRow() is { } row)
         {
-            _config.SelectedTextStyle = _defaultStyle.Name;
+            var style = row.Style;
+            _styleFontFamily.Text = style.FontFamily;
+            _styleFontSize.Value = (decimal)style.FontSize;
+            _styleLineSpacing.Value = (decimal)style.LineSpacing;
+            _stylePadding.Value = (decimal)style.Padding;
+            _styleBold.IsChecked = style.Bold;
+            _styleItalic.IsChecked = style.Italic;
         }
 
-        _styleEditors.Clear();
-        _styleItems.Children.Clear();
-        foreach (var style in _config.TextStyles)
-        {
-            _styleItems.Children.Add(BuildStyleCard(style));
-        }
-
-        UpdateDefaultIndicators();
+        _loadingStyleEditor = false;
+        UpdateStyleActions();
     }
 
-    /// <summary>Reflects the current default across every card: the default pill / Set-as-default
-    /// button, and which cards may be removed (never the default, never the last remaining one).</summary>
-    private void UpdateDefaultIndicators()
+    private StyleRow? SelectedStyleRow() => _styleList.SelectedItem as StyleRow;
+
+    /// <summary>
+    /// Appends a preset with the app's built-in values, selects and reveals it, and puts the caret in
+    /// its font family, the field that names it.
+    /// </summary>
+    private void AddStyle()
     {
-        foreach (var (style, editor) in _styleEditors)
+        var row = new StyleRow(new EditorTextStyle());
+        _config.TextStyles.Add(row.Style);
+        _styleRows.Add(row);
+        RefreshStyleRows();
+        _styleList.SelectedItem = row;
+        _styleList.ScrollIntoView(row);
+        Revalidate();
+
+        Dispatcher.UIThread.Post(() =>
         {
-            var isDefault = ReferenceEquals(style, _defaultStyle);
-            editor.SetDefault.IsVisible = !isDefault;
-            editor.DefaultLabel.IsVisible = isDefault;
-            editor.Remove.IsEnabled = !isDefault && _config.TextStyles.Count > 1;
+            _styleList.ScrollIntoView(row);
+            _styleFontFamily.Focus();
+            _styleFontFamily.SelectAll();
+        });
+    }
+
+    private bool MoveStyle(StyleRow row, StyleRow target)
+    {
+        var from = _styleRows.IndexOf(row);
+        var to = _styleRows.IndexOf(target);
+        if (from < 0 || to < 0 || from == to)
+        {
+            return false;
+        }
+
+        _styleRows.Move(from, to);
+        _config.TextStyles.RemoveAt(from);
+        _config.TextStyles.Insert(to, row.Style);
+        return true;
+    }
+
+    private bool RestoreStyles(IReadOnlyList<StyleRow> order)
+    {
+        if (order.Count != _styleRows.Count || order.Any(row => !_styleRows.Contains(row)))
+        {
+            return false;
+        }
+
+        for (var index = 0; index < order.Count; index++)
+        {
+            MoveStyle(order[index], _styleRows[index]);
+        }
+
+        return true;
+    }
+
+    private void MakeSelectedDefault()
+    {
+        if (SelectedStyleRow() is not { } selected)
+        {
+            return;
+        }
+
+        foreach (var row in _styleRows)
+        {
+            row.Style.IsDefault = ReferenceEquals(row, selected);
+        }
+
+        RefreshStyleRows();
+        UpdateStyleActions();
+        Revalidate();
+    }
+
+    private void RemoveSelectedStyle()
+    {
+        if (SelectedStyleRow() is not { } row || row.Style.IsDefault || _styleRows.Count <= 1)
+        {
+            return;
+        }
+
+        var index = _styleRows.IndexOf(row);
+        _config.TextStyles.Remove(row.Style);
+        _styleRows.Remove(row);
+        RefreshStyleRows();
+        _styleList.SelectedItem = _styleRows[Math.Min(index, _styleRows.Count - 1)];
+        Revalidate();
+    }
+
+    private void RefreshStyleRows()
+    {
+        var labels = TextStyleLabels.For(_config.TextStyles, UiFont.EditorFamilyName);
+        for (var index = 0; index < _styleRows.Count; index++)
+        {
+            _styleRows[index].Refresh(labels[index]);
         }
     }
 
-    private string UniqueName(string baseName) =>
-        SettingsValidator.UniqueName(baseName, _config.TextStyles.Select(s => s.Name));
+    private void UpdateStyleActions()
+    {
+        var row = SelectedStyleRow();
+        _setDefault.IsEnabled = row is not null && !row.Style.IsDefault;
+        _removeStyle.IsEnabled = row is not null && !row.Style.IsDefault && _styleRows.Count > 1;
+    }
 
     private void Revalidate() => _saveButton.IsEnabled = IsValid() && SettingsValidator.IsDirty(_config, _original);
 
     private bool IsValid()
     {
-        // UI invariant: every style must have a matching editor before we can read its
-        // controls; a mismatch (or no styles) is not a savable state.
-        if (_config.TextStyles.Count == 0 || _styleEditors.Count != _config.TextStyles.Count)
-        {
-            return false;
-        }
-
-        var styles = _config.TextStyles.Select(style =>
-        {
-            var controls = _styleEditors[style];
-            return new TextStyleDraft(
-                controls.Name.Text ?? string.Empty,
-                controls.FontFamily.Text ?? string.Empty,
-                (double)(controls.FontSize.Value ?? 0),
-                (double)(controls.LineSpacing.Value ?? 0),
-                (double)(controls.Padding.Value ?? 0));
-        }).ToList();
-
+        var styles = _config.TextStyles.Select(style => new TextStyleDraft(
+            style.FontFamily,
+            style.FontSize,
+            style.LineSpacing,
+            style.Padding)).ToList();
         var draft = new SettingsDraft(
             _timeZone.Text ?? string.Empty,
             (double)(_autosave.Value ?? 0),
             styles,
-            _defaultStyle is not null);
-
+            _config.TextStyles.Count(style => style.IsDefault) == 1);
         return SettingsValidator.IsValid(draft);
+    }
+
+    // One row: the preset's label, and a "Default" badge on the default preset so it shows without
+    // selecting each row in turn.
+    private static Control StyleRowView()
+    {
+        var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        label.Bind(TextBlock.TextProperty, new Binding(nameof(StyleRow.Label)));
+        var badge = new Border
+        {
+            Child = new TextBlock { Text = "Default", FontSize = 11, FontWeight = FontWeight.SemiBold }
+                .Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"),
+        };
+        badge.Classes.Add("badge");
+        badge.Bind(IsVisibleProperty, new Binding(nameof(StyleRow.IsDefault)));
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+        row.Children.Add(label);
+        Grid.SetColumn(badge, 1);
+        row.Children.Add(badge);
+        return row;
     }
 
     private static NumericUpDown Numeric(decimal min, decimal max, decimal increment) => new()
@@ -432,9 +444,9 @@ public sealed class SettingsDialog : DialogBase
         HorizontalAlignment = HorizontalAlignment.Stretch,
     };
 
-    private static Button Utility(string text, Action onClick)
+    private static Button Utility(string text, Action onClick, string? name = null)
     {
-        var button = new Button { Content = text };
+        var button = new Button { Content = text, Name = name };
         button.Classes.Add("utility");
         button.Click += (_, _) => onClick();
         return button;
@@ -452,13 +464,13 @@ public sealed class SettingsDialog : DialogBase
     {
         var grid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions(string.Join(",", cells.Select(c => c.Width))),
+            ColumnDefinitions = new ColumnDefinitions(string.Join(",", cells.Select(cell => cell.Width))),
             ColumnSpacing = 8,
         };
-        for (var i = 0; i < cells.Length; i++)
+        for (var index = 0; index < cells.Length; index++)
         {
-            Grid.SetColumn(cells[i].Child, i);
-            grid.Children.Add(cells[i].Child);
+            Grid.SetColumn(cells[index].Child, index);
+            grid.Children.Add(cells[index].Child);
         }
 
         return grid;
@@ -466,15 +478,19 @@ public sealed class SettingsDialog : DialogBase
 
     private static TextBlock Label(string text) => new() { Text = text, FontWeight = FontWeight.SemiBold };
 
-    private static string DisplayName(string name) => string.IsNullOrWhiteSpace(name) ? "Unnamed style" : name;
+    private sealed class StyleRow(EditorTextStyle style) : INotifyPropertyChanged
+    {
+        public EditorTextStyle Style { get; } = style;
+        public string Label { get; private set; } = string.Empty;
+        public bool IsDefault => Style.IsDefault;
 
-    private sealed record StyleEditorControls(
-        TextBox Name,
-        TextBox FontFamily,
-        NumericUpDown FontSize,
-        NumericUpDown LineSpacing,
-        NumericUpDown Padding,
-        Button SetDefault,
-        Border DefaultLabel,
-        Button Remove);
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public void Refresh(string label)
+        {
+            Label = label;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDefault)));
+        }
+    }
 }

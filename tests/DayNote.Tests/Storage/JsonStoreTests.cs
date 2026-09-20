@@ -52,18 +52,19 @@ public sealed class JsonStoreTests : IDisposable
         {
             TextStyles = new()
             {
-                new EditorTextStyle { Name = "Custom", FontFamily = "Cascadia Code", FontSize = 17, LineSpacing = 1.6, Padding = 10, Bold = true },
+                new EditorTextStyle { FontFamily = "Menlo", FontSize = 14 },
+                new EditorTextStyle { IsDefault = true, FontFamily = "Cascadia Code", FontSize = 17, LineSpacing = 1.6, Padding = 10, Bold = true },
             },
-            SelectedTextStyle = "Custom",
             DisplayTimeZone = "Europe/London",
         });
 
         var loaded = _store.Load();
 
         Assert.NotNull(loaded);
-        Assert.Equal("Custom", loaded!.SelectedTextStyle);
-        Assert.Equal("Europe/London", loaded.DisplayTimeZone);
-        var style = Assert.Single(loaded.TextStyles);
+        Assert.Equal("Europe/London", loaded!.DisplayTimeZone);
+        Assert.Equal(2, loaded.TextStyles.Count);
+        var style = loaded.ResolveDefaultStyle()!;
+        Assert.Same(loaded.TextStyles[1], style);
         Assert.Equal("Cascadia Code", style.FontFamily);
         Assert.Equal(17, style.FontSize);
         Assert.Equal(1.6, style.LineSpacing);
@@ -81,10 +82,10 @@ public sealed class JsonStoreTests : IDisposable
     [Fact]
     public void Save_overwrites_an_existing_file()
     {
-        _store.Save(new AppConfig { SelectedTextStyle = "First" });
-        _store.Save(new AppConfig { SelectedTextStyle = "Second" });
+        _store.Save(new AppConfig { AutosaveDelaySeconds = 3 });
+        _store.Save(new AppConfig { AutosaveDelaySeconds = 4 });
 
-        Assert.Equal("Second", _store.Load()!.SelectedTextStyle);
+        Assert.Equal(4, _store.Load()!.AutosaveDelaySeconds);
     }
 
     [Fact]
@@ -120,16 +121,16 @@ public sealed class JsonStoreTests : IDisposable
     [Fact]
     public void CreateIfMissing_never_touches_an_existing_file()
     {
-        _store.Save(new AppConfig { SelectedTextStyle = "Mine" });
+        _store.Save(new AppConfig { AutosaveDelaySeconds = 3 });
         var before = File.ReadAllText(_path);
 
         // A different value must not overwrite: the single trigger is absence, so a good (possibly
         // hand-edited) file is left byte-for-byte as it was.
-        var created = _store.CreateIfMissing(new AppConfig { SelectedTextStyle = "Default" });
+        var created = _store.CreateIfMissing(new AppConfig { AutosaveDelaySeconds = 4 });
 
         Assert.False(created);
         Assert.Equal(before, File.ReadAllText(_path));
-        Assert.Equal("Mine", _store.Load()!.SelectedTextStyle);
+        Assert.Equal(3, _store.Load()!.AutosaveDelaySeconds);
     }
 
     public void Dispose()

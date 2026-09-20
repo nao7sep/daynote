@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DayNote.Core.Configuration;
 
 /// <summary>
@@ -5,13 +7,10 @@ namespace DayNote.Core.Configuration;
 /// in a deliberate, grouped order so the serialized file is canonical: app appearance, then editor
 /// appearance, then editing behavior, then display.
 /// </summary>
-public sealed class AppConfig
+public sealed class AppConfig : IJsonOnDeserialized
 {
     /// <summary>The bundled default UI (chrome) font, registered via <c>.WithInterFont()</c>.</summary>
     public const string DefaultUiFontFamily = "Inter";
-
-    /// <summary>The name of the built-in text-style preset selected by default.</summary>
-    public const string DefaultSelectedTextStyle = "Mono";
 
     /// <summary>
     /// The built-in text-style presets — the first-run seed, used by the <see cref="TextStyles"/>
@@ -20,8 +19,8 @@ public sealed class AppConfig
     /// </summary>
     public static List<EditorTextStyle> DefaultTextStyles() => new()
     {
-        new EditorTextStyle { Name = "Mono", FontFamily = EditorTextStyle.DefaultFixedWidthFamilies, FontSize = 14, LineSpacing = 1.4, Padding = 12 },
-        new EditorTextStyle { Name = "Sans", FontFamily = "Inter", FontSize = 15, LineSpacing = 1.5, Padding = 14 },
+        new EditorTextStyle { IsDefault = true, FontFamily = EditorTextStyle.DefaultFixedWidthFamilies, FontSize = 14, LineSpacing = 1.4, Padding = 12 },
+        new EditorTextStyle { FontFamily = "Inter", FontSize = 15, LineSpacing = 1.5, Padding = 14 },
     };
 
     // App appearance — the UI (chrome) font family. Family only; an empty value falls back to the
@@ -33,10 +32,16 @@ public sealed class AppConfig
     // exists and again on each Save.
     public ThemePreference Theme { get; set; } = ThemePreference.System;
 
-    // Editor appearance — named text-style presets and the one currently selected (by name).
-    // Both seed from the built-in defaults on first run; from then on they are the user's to edit.
+    // Editor appearance — the text-style presets, one of them flagged as the default. They seed from
+    // the built-in defaults on first run; from then on they are the user's to edit.
     public List<EditorTextStyle> TextStyles { get; set; } = DefaultTextStyles();
-    public string SelectedTextStyle { get; set; } = DefaultSelectedTextStyle;
+
+    /// <summary>
+    /// The preset an older config selected by name, before the default became a flag on the preset.
+    /// Read only for that migration, and never written.
+    /// </summary>
+    [JsonInclude, JsonPropertyName("selectedTextStyle"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    internal string? LegacySelectedTextStyle { get; set; }
 
     // Editing behavior.
     public double AutosaveDelaySeconds { get; set; } = 2;
@@ -44,13 +49,28 @@ public sealed class AppConfig
     // Display.
     public string DisplayTimeZone { get; set; } = "Asia/Tokyo";
 
+    /// <summary>The preset the editor uses: the flagged default, or the first when none is flagged.</summary>
+    public EditorTextStyle? ResolveDefaultStyle() =>
+        TextStyles.FirstOrDefault(style => style.IsDefault) ?? TextStyles.FirstOrDefault();
+
     /// <summary>
-    /// The active text-style preset: the one whose name matches <see cref="SelectedTextStyle"/>
-    /// (case-insensitively), falling back to the first preset, or null when there are none.
+    /// Makes exactly one preset the default after a load. An older config names its selection, so the
+    /// preset with that name becomes the default; the names themselves are then dropped.
     /// </summary>
-    public EditorTextStyle? ResolveSelectedStyle() =>
-        TextStyles.FirstOrDefault(s => string.Equals(s.Name, SelectedTextStyle, StringComparison.OrdinalIgnoreCase))
-        ?? TextStyles.FirstOrDefault();
+    void IJsonOnDeserialized.OnDeserialized()
+    {
+        var chosen = TextStyles.FirstOrDefault(style => style.IsDefault)
+            ?? TextStyles.FirstOrDefault(style =>
+                string.Equals(style.LegacyName, LegacySelectedTextStyle, StringComparison.OrdinalIgnoreCase))
+            ?? TextStyles.FirstOrDefault();
+        foreach (var style in TextStyles)
+        {
+            style.IsDefault = ReferenceEquals(style, chosen);
+            style.LegacyName = null;
+        }
+
+        LegacySelectedTextStyle = null;
+    }
 
     /// <summary>Returns a deep copy, used to give the settings dialog an editable working copy.</summary>
     public AppConfig Copy() => new()
@@ -58,7 +78,6 @@ public sealed class AppConfig
         UiFontFamily = UiFontFamily,
         Theme = Theme,
         TextStyles = TextStyles.Select(style => style.Copy()).ToList(),
-        SelectedTextStyle = SelectedTextStyle,
         AutosaveDelaySeconds = AutosaveDelaySeconds,
         DisplayTimeZone = DisplayTimeZone,
     };

@@ -267,24 +267,6 @@
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 
-        <!-- Text-style preset cards are uniform; the default one is marked by its "Default" pill,
-             not a whole-card highlight (that read as a selection). -->
-        <Style Selector="Border.stylePreset">
-            <Setter Property="Background" Value="{DynamicResource ListBackgroundBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="7"/>
-            <Setter Property="Padding" Value="12"/>
-        </Style>
-
-        <!-- A small colored pill (e.g. the "Default" text-style marker); its text is set by the caller. -->
-        <Style Selector="Border.pill">
-            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="11,5"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-
         <!-- A muted, neutral badge (e.g. the editor's "Read-only" hint). -->
         <Style Selector="Border.badge">
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
