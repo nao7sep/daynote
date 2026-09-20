@@ -44,64 +44,83 @@ public static class UiFont
     /// <summary>
     /// The first requested family that is actually installed, or the bundled default when none match.
     /// </summary>
-    public static FontFamily Resolve(string? value)
-    {
-        foreach (var name in ParseFamilies(value))
-        {
-            if (IsInstalled(name))
-            {
-                return new FontFamily(name);
-            }
-        }
-
-        return new FontFamily(BundledUiFontUri);
-    }
+    public static FontFamily Resolve(string? value) =>
+        FindFirst(value)?.Family ?? new FontFamily(BundledUiFontUri);
 
     /// <summary>
-    /// The editor's family for a text-style preset. Inter means the bundled Inter, which a bare name
-    /// never reaches; otherwise the first requested family actually installed; and when none is, the
-    /// fixed-width default, so a preset naming a face one platform lacks (Menlo on Windows) still gets
-    /// a fixed-width face rather than the platform's proportional one.
+    /// The editor's family for a text-style preset: the first requested family actually installed,
+    /// and when none is, the fixed-width default, so a preset naming a face one platform lacks (Menlo
+    /// on Windows) still gets a fixed-width face rather than the platform's proportional one.
     /// </summary>
-    public static FontFamily ResolveEditor(string? value)
+    public static FontFamily ResolveEditor(string? value) =>
+        (FindFirst(value) ?? FindFirst(EditorTextStyle.DefaultFixedWidthFamilies))?.Family
+        // Neither Menlo nor Consolas: the generic name, which fontconfig resolves on Linux.
+        ?? new FontFamily("monospace");
+
+    /// <summary>
+    /// The name a text-style preset goes by: the family <see cref="ResolveEditor"/> uses, as the user
+    /// wrote it, so a Japanese name stays Japanese and a list naming several families shows the one
+    /// actually installed.
+    /// </summary>
+    public static string EditorFamilyName(string? value) =>
+        (FindFirst(value) ?? FindFirst(EditorTextStyle.DefaultFixedWidthFamilies))?.Name ?? "monospace";
+
+    private static (FontFamily Family, string Name)? FindFirst(string? value)
     {
         foreach (var name in ParseFamilies(value))
         {
+            // Inter always means the bundled Inter. A system-reached "Inter" lacks the bundled weights,
+            // and drawing bold text with it throws.
             if (string.Equals(name, AppConfig.DefaultUiFontFamily, StringComparison.OrdinalIgnoreCase))
             {
-                return new FontFamily(BundledUiFontUri);
+                return (new FontFamily(BundledUiFontUri), AppConfig.DefaultUiFontFamily);
             }
 
-            if (IsInstalled(name))
+            if (FindInstalled(name) is { } installed)
             {
-                return new FontFamily(name);
+                return (installed, name);
             }
         }
 
-        foreach (var name in ParseFamilies(EditorTextStyle.DefaultFixedWidthFamilies))
-        {
-            if (IsInstalled(name))
-            {
-                return new FontFamily(name);
-            }
-        }
-
-        // Neither Menlo nor Consolas: the generic name, which fontconfig resolves on Linux.
-        return new FontFamily("monospace");
+        return null;
     }
 
-    private static bool IsInstalled(string name)
+    // A family name no font uses, whose lookup yields the platform's default face.
+    private const string UnknownFamilyProbe = "DayNote Unknown Family Probe";
+
+    private static FontFamily? FindInstalled(string name)
     {
         try
         {
-            return FontManager.Current.SystemFonts.Any(
-                family => string.Equals(family.Name, name, StringComparison.OrdinalIgnoreCase));
+            // Avalonia's own view of fonts is partial. Its font list grows with every name ever
+            // requested, fallbacks included, so a name looked up once appears installed from then on;
+            // and a face exposes its localized per-weight names (ヒラギノ角ゴシック W3) but not its
+            // localized family name (ヒラギノ角ゴシック). The platform's matcher knows every name a font
+            // declares in any language, and a name it does not know yields its default face. So a name
+            // is installed when the matcher answers with any other face, or with the default face when
+            // that face itself declares the name (Helvetica, say, typed on purpose).
+            var fonts = FontManager.Current;
+            var family = new FontFamily(name);
+            if (!fonts.TryGetGlyphTypeface(new Typeface(family), out var face))
+            {
+                return null;
+            }
+
+            var isDefaultFace = fonts.TryGetGlyphTypeface(new Typeface(new FontFamily(UnknownFamilyProbe)), out var fallback)
+                && string.Equals(face.FamilyName, fallback.FamilyName, StringComparison.Ordinal);
+            return isDefaultFace && !Declares(face, name) ? null : family;
         }
         catch
         {
             // A font-manager hiccup must never crash settings; treat the family as absent so the
-            // caller falls back to the bundled default.
-            return false;
+            // caller falls back to its default.
+            return null;
         }
     }
+
+    /// <summary>True when the face declares <paramref name="name"/> as a family name in any language.</summary>
+    internal static bool Declares(GlyphTypeface face, string name) =>
+        string.Equals(face.FamilyName, name, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(face.TypographicFamilyName, name, StringComparison.OrdinalIgnoreCase)
+        || face.FamilyNames.Values.Any(alias => string.Equals(alias, name, StringComparison.OrdinalIgnoreCase));
 }

@@ -51,4 +51,58 @@ public sealed class UiFontTests
         // An absent family listed first is skipped in favor of the installed one.
         Assert.Equal(installed.Name, UiFont.Resolve($"No Such Font 99999, {installed.Name}").Name);
     }
+
+    // The localized family names Avalonia does not expose, which only the platform matcher knows.
+    [AvaloniaTheory]
+    [InlineData("メイリオ", "Meiryo")]
+    [InlineData("ヒラギノ角ゴシック", "Hiragino Sans")]
+    [InlineData("游明朝体", "YuMincho")]
+    [InlineData("游ゴシック体", "YuGothic")]
+    [InlineData("ヒラギノ明朝 ProN", "Hiragino Mincho ProN")]
+    public void A_Japanese_family_name_resolves_for_both_ui_and_editor_fonts(string name, string family)
+    {
+        if (!FontManager.Current.TryGetGlyphTypeface(new Typeface(new FontFamily(family)), out var expected)
+            || !IsFamily(expected, family))
+        {
+            Assert.Skip($"{family} is not installed.");
+        }
+
+        foreach (var resolved in new[] { UiFont.Resolve(name), UiFont.ResolveEditor(name) })
+        {
+            Assert.True(FontManager.Current.TryGetGlyphTypeface(new Typeface(resolved), out var face));
+            Assert.True(IsFamily(face, family), $"{name} resolved to {face.FamilyName}.");
+        }
+
+        Assert.Equal(name, UiFont.EditorFamilyName(name));
+    }
+
+    [AvaloniaFact]
+    public void A_name_no_font_declares_falls_back_every_time_it_is_looked_up()
+    {
+        // 遊 (U+904A) is what an IME usually gives for ゆう; the installed font is 游明朝体 (U+6E38).
+        // Avalonia lists every name ever requested, so a second lookup must not find the first one.
+        const string misspelled = "遊明朝体";
+        var fixedWidth = UiFont.ResolveEditor(EditorTextStyle.DefaultFixedWidthFamilies).Name;
+
+        for (var lookup = 0; lookup < 3; lookup++)
+        {
+            Assert.Equal(fixedWidth, UiFont.ResolveEditor(misspelled).Name);
+            Assert.Equal(AppConfig.DefaultUiFontFamily, UiFont.Resolve(misspelled).Name);
+            Assert.NotEqual(misspelled, UiFont.EditorFamilyName(misspelled));
+        }
+    }
+
+    [AvaloniaFact]
+    public void Inter_always_means_the_bundled_font_with_its_bold_weight()
+    {
+        foreach (var family in new[] { UiFont.Resolve("Inter"), UiFont.ResolveEditor("inter") })
+        {
+            Assert.True(FontManager.Current.TryGetGlyphTypeface(
+                new Typeface(family, FontStyle.Normal, FontWeight.Bold), out var face));
+            Assert.Equal("Inter", face.FamilyName);
+        }
+    }
+
+    private static bool IsFamily(GlyphTypeface face, string family) =>
+        face.TypographicFamilyName == family || face.FamilyName == family;
 }
