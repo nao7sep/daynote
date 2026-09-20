@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
@@ -161,6 +163,42 @@ public sealed class SettingsDialogTests
 
         Assert.Equal(before, config.TextStyles[0].FontSize);
         Assert.Equal((decimal)before, size.Value);
+        dialog.Close();
+    }
+
+    [AvaloniaFact]
+    public void Removing_a_style_asks_first_and_a_refusal_keeps_it()
+    {
+        var config = new AppConfig();
+        var asked = new List<string>();
+        var answer = false;
+        var dialog = new SettingsDialog(config, _ => true, label =>
+        {
+            asked.Add(label);
+            return Task.FromResult(answer);
+        });
+        dialog.Show();
+        Dispatcher.UIThread.RunJobs();
+        var list = Named<ListBox>(dialog, "TextStylesList");
+        list.SelectedIndex = 1;
+        Dispatcher.UIThread.RunJobs();
+        var remove = Named<Button>(dialog, "RemoveTextStyleButton");
+        var removed = config.TextStyles[1].FontFamily;
+
+        remove.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        // The trigger of a destructive path asks, and a no leaves the list alone.
+        Assert.Equal([removed], asked);
+        Assert.Equal(2, config.TextStyles.Count);
+        Assert.Contains("danger", remove.Classes);
+
+        answer = true;
+        remove.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(2, asked.Count);
+        Assert.DoesNotContain(config.TextStyles, style => style.FontFamily == removed);
         dialog.Close();
     }
 

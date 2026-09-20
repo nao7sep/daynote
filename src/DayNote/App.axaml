@@ -32,6 +32,7 @@
                     <SolidColorBrush x:Key="DangerBrush" Color="#B93650"/>
                     <SolidColorBrush x:Key="DangerHoverBrush" Color="#A32C45"/>
                     <SolidColorBrush x:Key="DangerTextBrush" Color="#A32C45"/>
+                    <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#F7E4E9"/>
                     <SolidColorBrush x:Key="WarningBrush" Color="#87500B"/>
                     <SolidColorBrush x:Key="PositiveBrush" Color="#236A47"/>
                     <SolidColorBrush x:Key="UtilityBrush" Color="#ECE7F1"/>
@@ -71,6 +72,7 @@
                     <SolidColorBrush x:Key="DangerBrush" Color="#B93650"/>
                     <SolidColorBrush x:Key="DangerHoverBrush" Color="#C2415D"/>
                     <SolidColorBrush x:Key="DangerTextBrush" Color="#F08A9C"/>
+                    <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#3C2029"/>
                     <SolidColorBrush x:Key="WarningBrush" Color="#E0A14A"/>
                     <SolidColorBrush x:Key="PositiveBrush" Color="#5FB98B"/>
                     <SolidColorBrush x:Key="UtilityBrush" Color="#3A3347"/>
@@ -189,6 +191,33 @@
         <Style Selector="Button.utility:focus /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+
+        <!-- The button that OPENS a destructive path is outlined, never filled: red letters in a red
+             outline over at most a faint tint, deepening on hover and press. Only the button that
+             commits it, in the dialog that asks, is filled (interface-styling conventions). -->
+        <Style Selector="Button.danger">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="11,5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.danger /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerSurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
+        </Style>
+        <Style Selector="Button.danger:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.danger:disabled /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
         </Style>
 
         <Style Selector="Button.destructive">

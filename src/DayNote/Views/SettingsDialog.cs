@@ -48,12 +48,21 @@ public sealed class SettingsDialog : DialogBase
     private readonly Button _saveButton;
     private readonly TextBlock _saveError;
     private readonly Func<AppConfig, bool> _trySave;
+    private readonly Func<string, Task<bool>> _askBeforeRemoving;
     private bool _loadingStyleEditor;
 
-    public SettingsDialog(AppConfig config, Func<AppConfig, bool> trySave)
+    /// <param name="askBeforeRemoving">
+    /// Asks whether the named style may go. The default asks in a dialog stacked over this one, which
+    /// is what the trigger of a destructive path owes; a caller passes its own to answer without one.
+    /// </param>
+    public SettingsDialog(
+        AppConfig config,
+        Func<AppConfig, bool> trySave,
+        Func<string, Task<bool>>? askBeforeRemoving = null)
     {
         _config = config;
         _trySave = trySave;
+        _askBeforeRemoving = askBeforeRemoving ?? AskBeforeRemovingAsync;
         Title = "Settings";
         Width = 660;
 
@@ -93,7 +102,9 @@ public sealed class SettingsDialog : DialogBase
         _styleBold = new CheckBox { Content = "Bold" };
         _styleItalic = new CheckBox { Content = "Italic" };
         _setDefault = Utility("Set as default", MakeSelectedDefault, "SetDefaultTextStyleButton");
-        _removeStyle = Utility("Remove", RemoveSelectedStyle, "RemoveTextStyleButton");
+        _removeStyle = new Button { Content = "Remove", Name = "RemoveTextStyleButton" };
+        _removeStyle.Classes.Add("danger");
+        _removeStyle.Click += (_, _) => RemoveSelectedStyle();
 
         var decorations = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
         decorations.Children.Add(_styleBold);
@@ -377,9 +388,20 @@ public sealed class SettingsDialog : DialogBase
         Revalidate();
     }
 
-    private void RemoveSelectedStyle()
+    private async void RemoveSelectedStyle()
     {
         if (SelectedStyleRow() is not { } row || row.Style.IsDefault || _styleRows.Count <= 1)
+        {
+            return;
+        }
+
+        if (!await _askBeforeRemoving(row.Label))
+        {
+            return;
+        }
+
+        // The list may have moved while the question stood.
+        if (!_styleRows.Contains(row) || row.Style.IsDefault || _styleRows.Count <= 1)
         {
             return;
         }
@@ -390,6 +412,19 @@ public sealed class SettingsDialog : DialogBase
         RefreshStyleRows();
         _styleList.SelectedItem = _styleRows[Math.Min(index, _styleRows.Count - 1)];
         Revalidate();
+    }
+
+    private async Task<bool> AskBeforeRemovingAsync(string label)
+    {
+        var dialog = new MessageDialog(
+            "Remove text style",
+            $"Remove \u201C{label}\u201D? The notes that used it fall back to the default.",
+            [
+                new DialogButton("Cancel", "cancel"),
+                new DialogButton("Remove", "confirm", DialogButtonKind.Destructive),
+            ]);
+        await dialog.ShowDialog(this);
+        return dialog.ResultTag == "confirm";
     }
 
     private void RefreshStyleRows()
