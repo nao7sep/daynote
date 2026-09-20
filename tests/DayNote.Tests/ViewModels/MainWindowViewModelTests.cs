@@ -846,6 +846,44 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_binder_deleted_outside_the_app_shows_on_its_row_and_can_be_removed()
+    {
+        var vm = NewViewModel();
+        var travel = Path.Combine(_home, "travel.daynote");
+        _dialogs.BinderToCreate = travel;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var missing = vm.Binders.Single(binder => PathKey.Equal(binder.Path, travel));
+        var open = vm.Binders.Single(binder => PathKey.Equal(binder.Path, BinderPath));
+
+        // Deleting the file in Finder, with the binder never opened here.
+        File.Delete(travel);
+        vm.RefreshKnownBinders();
+        Assert.True(missing.IsMissing);
+        Assert.Empty(vm.Results);
+
+        // The open binder's file is reported with its recovery instead, so the row stays quiet.
+        File.Delete(BinderPath);
+        vm.RefreshKnownBinders();
+        Assert.False(open.IsMissing);
+
+        // Removing the entry needs no file, and it does not come back.
+        await vm.RemoveBinderCommand.ExecuteAsync(missing);
+        Assert.DoesNotContain(vm.Binders, binder => PathKey.Equal(binder.Path, travel));
+        var state = JsonSerializer.Deserialize<AppState>(
+            File.ReadAllText(Path.Combine(_home, "state.json")), DayNoteJson.Options)!;
+        Assert.DoesNotContain(state.Binders, entry => PathKey.Equal(entry.Path, travel));
+
+        // A file that comes back clears the marker on the next look.
+        File.WriteAllText(travel, "{}");
+        vm.RefreshKnownBinders();
+        Assert.DoesNotContain(vm.Binders, binder => binder.IsMissing);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task A_missing_binder_is_reported_on_its_own_row()
     {
         var vm = NewViewModel();

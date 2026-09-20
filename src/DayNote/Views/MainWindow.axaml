@@ -268,6 +268,7 @@
                                         <!-- Remove from the list (revealed on hover/selection). If it's the open
                                              binder, this closes it (flushing edits) first; closing == forgetting. -->
                                         <Button Grid.Column="2" Classes="rowAction" Click="RemoveBinderRow_Click"
+                                                Classes.revealed="{Binding IsMissing}"
                                                 ToolTip.Tip="Remove from list">
                                             <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>

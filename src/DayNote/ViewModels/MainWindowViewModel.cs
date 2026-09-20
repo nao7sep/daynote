@@ -125,7 +125,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         };
 
         _externalTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        _externalTimer.Tick += async (_, _) => await CheckExternalChangeAsync();
+        _externalTimer.Tick += async (_, _) =>
+        {
+            RefreshKnownBinders();
+            await CheckExternalChangeAsync();
+        };
 
         if (_loadError is null)
         {
@@ -1365,6 +1369,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _allBinders.Insert(to, item);
         ApplyBinderFilter();
         return true;
+    }
+
+    /// <summary>
+    /// Re-reads which known binders are still on disk, so a file deleted or restored outside the app
+    /// shows on its row within a tick: the row that wants removing says so without being opened
+    /// first. The open binder is left out — while it is open, its file's fate is reported with the
+    /// recovery that goes with it, and one condition is reported in one place.
+    /// </summary>
+    internal void RefreshKnownBinders()
+    {
+        foreach (var item in _allBinders)
+        {
+            var missing = _current is not null && PathKey.Equal(_current.Path, item.Path)
+                ? false
+                : !File.Exists(item.Path);
+            if (item.IsMissing != missing)
+            {
+                item.IsMissing = missing;
+            }
+        }
     }
 
     /// <summary>The master binder order, hidden rows included, for restoring a cancelled drag.</summary>

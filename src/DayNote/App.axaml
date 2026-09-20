@@ -245,6 +245,11 @@
                  hidden, opacity-0 icon). The keyboard path is Delete on the selected row. -->
             <Setter Property="IsTabStop" Value="False"/>
         </Style>
+        <!-- A row that states a problem keeps its action in sight: the ✕ on a missing binder is what
+             clears the entry, so it does not wait for the pointer to find it. -->
+        <Style Selector="Button.rowAction.revealed">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
         <Style Selector="ListBoxItem:pointerover Button.rowAction">
             <Setter Property="Opacity" Value="1"/>
         </Style>
