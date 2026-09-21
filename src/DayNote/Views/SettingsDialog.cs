@@ -66,6 +66,10 @@ public sealed class SettingsDialog : DialogBase
         Title = "Settings";
         Width = 660;
 
+        // A working surface: the text-style list grows with the user's own presets, so the bound is
+        // where it opens rather than a ceiling (modal-dialog conventions).
+        CanResize = true;
+
         // The preset list. Add belongs to the list; the selected preset's own actions sit with its
         // editor. Drag or Cmd/Ctrl+Shift+Up/Down reorders it, which is also the cycling order.
         _styleList = new ListBox
@@ -106,13 +110,20 @@ public sealed class SettingsDialog : DialogBase
         _removeStyle.Classes.Add("danger");
         _removeStyle.Click += (_, _) => RemoveSelectedStyle();
 
-        var decorations = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
+        var decorations = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, VerticalAlignment = VerticalAlignment.Center };
         decorations.Children.Add(_styleBold);
         decorations.Children.Add(_styleItalic);
 
-        var styleActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
+        var styleActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
         styleActions.Children.Add(_setDefault);
         styleActions.Children.Add(_removeStyle);
+
+        // The preset's marks and the preset's own actions share one line: the checkboxes read left,
+        // the actions sit at the trailing edge where every other action row in this app puts them.
+        var decorationRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 16 };
+        decorationRow.Children.Add(decorations);
+        Grid.SetColumn(styleActions, 1);
+        decorationRow.Children.Add(styleActions);
 
         var editor = new StackPanel { Spacing = 10 };
         editor.Children.Add(Field("Font family", _styleFontFamily));
@@ -120,15 +131,19 @@ public sealed class SettingsDialog : DialogBase
             ("*", Field("Font size", _styleFontSize)),
             ("*", Field("Line spacing", _styleLineSpacing)),
             ("*", Field("Padding", _stylePadding))));
-        editor.Children.Add(decorations);
-        editor.Children.Add(styleActions);
+        editor.Children.Add(decorationRow);
 
         // The list's header and the editor's first field start on one line, so the right half has no
-        // empty band over it, and the list's own bounds are drawn rather than left to its rows.
+        // empty band over it, and the list's own bounds are drawn rather than left to its rows. The
+        // editor spans both rows, so the second row takes the star: with two Auto rows the grid pads
+        // the header's row to share the editor's height, which pushes "Text styles" down the surface
+        // and leaves a band of nothing under it. The star row instead puts the header at the top and
+        // closes the list level with the editor's last line, so the settings below the surface start
+        // where the editor ends rather than under a column of nothing.
         var styleSurface = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("200,*"),
-            RowDefinitions = new RowDefinitions("Auto,240"),
+            RowDefinitions = new RowDefinitions("Auto,*"),
             ColumnSpacing = 16,
             RowSpacing = 6,
         };
@@ -423,7 +438,7 @@ public sealed class SettingsDialog : DialogBase
                 new DialogButton("Cancel", "cancel"),
                 new DialogButton("Remove", "confirm", DialogButtonKind.Destructive),
             ]);
-        await dialog.ShowDialog(this);
+        await dialog.ShowBoundedAsync(this);
         return dialog.ResultTag == "confirm";
     }
 

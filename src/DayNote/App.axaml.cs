@@ -38,10 +38,9 @@ public partial class App : Application
 
             if (StartupFailureMessage is { } startupFailure)
             {
-                desktop.MainWindow = new MessageDialog(
+                desktop.MainWindow = MessageDialog.CreateStartupFailure(
                     "DayNote could not start",
-                    startupFailure,
-                    [new DialogButton("Close", "close", DialogButtonKind.Primary)]);
+                    startupFailure);
                 base.OnFrameworkInitializationCompleted();
                 return;
             }

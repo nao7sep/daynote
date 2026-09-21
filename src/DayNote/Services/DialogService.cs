@@ -74,33 +74,33 @@ public sealed class DialogService : IDialogService
             new DialogButton("Cancel", "cancel"),
             new DialogButton(confirmLabel, "confirm", destructive ? DialogButtonKind.Destructive : DialogButtonKind.Primary),
         });
-        await dialog.ShowDialog(RequireOwner());
+        await dialog.ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag == "confirm";
     }
 
     public async Task ShowErrorAsync(string title, string message)
     {
         var dialog = new MessageDialog(title, message, new[] { new DialogButton("OK", "ok", DialogButtonKind.Primary) });
-        await dialog.ShowDialog(RequireOwner());
+        await dialog.ShowBoundedAsync(RequireOwner());
     }
 
     public async Task ShowAboutAsync()
     {
         var dialog = new AboutDialog(_log);
-        await dialog.ShowDialog(RequireOwner());
+        await dialog.ShowBoundedAsync(RequireOwner());
     }
 
     public async Task ShowShortcutsAsync()
     {
         var owner = RequireOwner();
         var dialog = new ShortcutsDialog(ShortcutCatalog.Build(owner));
-        await dialog.ShowDialog(owner);
+        await dialog.ShowBoundedAsync(owner);
     }
 
     public async Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
     {
         var dialog = new SettingsDialog(config, trySave);
-        await dialog.ShowDialog(RequireOwner());
+        await dialog.ShowBoundedAsync(RequireOwner());
         return dialog.Applied;
     }
 
@@ -118,7 +118,7 @@ public sealed class DialogService : IDialogService
                 // "Keep my version" instead of the edit-losing button.
                 new DialogButton("Reload from disk", "reload", DialogButtonKind.Destructive),
             });
-        await dialog.ShowDialog(RequireOwner());
+        await dialog.ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag == "reload" ? ExternalChangeChoice.ReloadFromDisk : ExternalChangeChoice.KeepMine;
     }
 

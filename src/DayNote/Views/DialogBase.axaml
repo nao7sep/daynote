@@ -7,32 +7,31 @@
         ShowInTaskbar="False"
         Background="{DynamicResource AppBackgroundBrush}">
 
-    <DockPanel Margin="24">
-        <!-- Header: the window Title rendered as a prominent in-dialog heading, so every dialog
-             (confirm, error, settings, about) reads with a clear header above its body. -->
-        <TextBlock DockPanel.Dock="Top"
-                   x:Name="HeaderText"
-                   Text="{Binding $parent[Window].Title}"
-                   FontSize="18"
-                   FontWeight="Bold"
-                   TextWrapping="Wrap"
-                   Margin="0,0,0,16"/>
-
+    <!-- Two bands, because the OS title bar is the header (modal-dialog conventions). Each band carries
+         its own padding: the body's is inside the scroll region, so the region fills the band and its
+         bar sits at the dialog's edge rather than against a control. A margin here instead would leave
+         a gap where the bar should start. -->
+    <DockPanel>
         <StackPanel DockPanel.Dock="Bottom"
                     x:Name="ButtonPanel"
                     Orientation="Horizontal"
                     Spacing="8"
                     HorizontalAlignment="Right"
-                    Margin="0,20,0,0"/>
+                    Margin="24,20,24,20"/>
 
-        <!-- The shell grows naturally until OnOpened bounds it to the current
-             screen. Only the body scrolls at that cap, so the authored header
-             and every footer action remain available for long messages and
-             large user fonts. -->
+        <!-- The line that opens the footer band, and the bottom edge of the scrolling body. -->
+        <Border DockPanel.Dock="Bottom"
+                x:Name="FooterSeparator"
+                Height="1"
+                Background="{DynamicResource BorderBrush}"/>
+
+        <!-- The sole scroll region. The footer is docked outside it, so it stays reachable at any
+             height the dialog is bounded or dragged to. -->
         <ScrollViewer x:Name="DialogScroll"
+                      AllowAutoHide="True"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-            <ContentPresenter x:Name="DialogContent"/>
+            <ContentPresenter x:Name="DialogContent" Margin="24"/>
         </ScrollViewer>
     </DockPanel>
 

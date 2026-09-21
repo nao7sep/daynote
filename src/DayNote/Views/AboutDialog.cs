@@ -77,7 +77,8 @@ public sealed class AboutDialog : DialogBase
                 new TextBlock
                 {
                     Text = $"{AppInfo.Name} {AppInfo.Version}",
-                    FontSize = 13,
+                    FontSize = 18,
+                    FontWeight = FontWeight.SemiBold,
                     Margin = new Thickness(0, 0, 0, 12),
                 }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"),
                 new TextBlock

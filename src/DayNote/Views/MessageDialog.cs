@@ -36,4 +36,18 @@ public sealed class MessageDialog : DialogBase
             SetInitialFocus(focus);
         }
     }
+
+    /// <summary>
+    /// A startup failure notice used as the main window. It has no owner to be bounded by, so the
+    /// screen bounds it, and the lifetime shows it once it is returned.
+    /// </summary>
+    public static Window CreateStartupFailure(string title, string message)
+    {
+        var dialog = new MessageDialog(
+            title,
+            message,
+            [new DialogButton("Close", "close", DialogButtonKind.Primary)]);
+        dialog.BoundHeightToScreen();
+        return dialog;
+    }
 }

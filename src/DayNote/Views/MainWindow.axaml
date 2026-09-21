@@ -272,8 +272,8 @@
                                         <Button Grid.Column="2" Classes="rowAction" Click="RemoveBinderRow_Click"
                                                 Classes.revealed="{Binding IsMissing}"
                                                 ToolTip.Tip="Remove from list">
-                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
-                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                            <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M1,1 L9,9 M9,1 L1,9"/>
                                         </Button>
                                     </Grid>
                                     </DataTemplate>
@@ -329,8 +329,8 @@
                                         </StackPanel>
                                         <!-- Per-row delete, revealed on hover/selection (replaces the Delete button). -->
                                         <Button Grid.Column="2" Classes="rowAction" Click="DeleteNoteRow_Click" ToolTip.Tip="Delete note">
-                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
-                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                            <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M1,1 L9,9 M9,1 L1,9"/>
                                         </Button>
                                     </Grid>
                                     </DataTemplate>
@@ -455,8 +455,8 @@
                                         <Button Grid.Column="2" Classes="rowAction" Click="RemoveAttachment_Click"
                                                 IsVisible="{Binding $parent[ListBox].DataContext.CanEditNote}"
                                                 ToolTip.Tip="Remove attachment">
-                                            <Path Width="11" Height="11" Stroke="{Binding $parent[Button].Foreground}"
-                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M0,0 L11,11 M11,0 L0,11"/>
+                                            <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
+                                                  StrokeThickness="1.6" StrokeLineCap="Round" Data="M1,1 L9,9 M9,1 L1,9"/>
                                         </Button>
                                     </Grid>
                                     <Border Padding="8,6" Background="{DynamicResource AppBackgroundBrush}"
