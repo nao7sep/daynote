@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Platform;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
@@ -69,7 +70,7 @@ public partial class DialogBase : Window
     /// </summary>
     public Task ShowBoundedAsync(Window owner)
     {
-        BoundHeight(owner);
+        BoundHeight(owner.Screens.ScreenFromWindow(owner) ?? owner.Screens.Primary);
         return ShowDialog(owner);
     }
 
@@ -77,47 +78,19 @@ public partial class DialogBase : Window
     /// Bounds a dialog that will be shown without an owner — the startup-failure shell, which is the
     /// application's only window — to the screen alone. Call it before the window is shown.
     /// </summary>
-    protected void BoundHeightToScreen() => BoundHeight(null);
+    protected void BoundHeightToScreen() => BoundHeight(Screens.Primary);
 
-    private void BoundHeight(Window? owner)
-    {
-        // Before Show this window has no screen of its own, so the owner's is the one it will open on.
-        var screen = owner is null
-            ? Screens.Primary
-            : owner.Screens.ScreenFromWindow(owner) ?? owner.Screens.Primary;
-
+    private void BoundHeight(Screen? screen) =>
         MaxHeight = WindowMetrics.DialogMaxHeight(
-            owner?.ClientSize.Height ?? 0,
             screen?.WorkingArea.Height ?? 0,
             screen?.Scaling ?? 0);
-    }
 
-    /// <summary>
-    /// Hands a resizable dialog's height to the user, once it has opened at the bound size
-    /// (modal-dialog conventions). Runs after the window is sized and placed, so lifting the bound
-    /// moves nothing and the minimums take over keeping the footer reachable.
-    /// </summary>
-    private void ReleaseHeightToUser()
-    {
-        var chrome = Bounds.Height - DialogScroll.Bounds.Height;
-
-        SizeToContent = SizeToContent.Manual;
-        MaxHeight = double.PositiveInfinity;
-        MinHeight = WindowMetrics.DialogMinHeight(chrome);
-        MinWidth = Bounds.Width;
-    }
 
     /// <summary>Allows a feature dialog to finish its commit before the shell closes.</summary>
     protected virtual bool TryCommit(string tag) => true;
 
     private void OnOpened(object? sender, EventArgs e)
     {
-        // A dialog declares itself resizable by setting CanResize; the shell makes that mean something.
-        if (CanResize)
-        {
-            ReleaseHeightToUser();
-        }
-
         if (_initialFocusControl is not null)
         {
             Dispatcher.UIThread.Post(() => _initialFocusControl.Focus());

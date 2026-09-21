@@ -66,10 +66,6 @@ public sealed class SettingsDialog : DialogBase
         Title = "Settings";
         Width = 660;
 
-        // A working surface: the text-style list grows with the user's own presets, so the bound is
-        // where it opens rather than a ceiling (modal-dialog conventions).
-        CanResize = true;
-
         // The preset list. Add belongs to the list; the selected preset's own actions sit with its
         // editor. Drag or Cmd/Ctrl+Shift+Up/Down reorders it, which is also the cycling order.
         _styleList = new ListBox

@@ -24,9 +24,8 @@
                     <SolidColorBrush x:Key="SurfaceBrush" Color="#FCFBFD"/>
                     <SolidColorBrush x:Key="BorderBrush" Color="#DCD5E3"/>
                     <SolidColorBrush x:Key="FieldBorderBrush" Color="#8A7F95"/>
-                    <!-- The scroll-bar thumb in the app's palette. Fluent reads a different key for a bar
-                         that takes layout space and one that floats, so both are set (app-chrome conventions). -->
-                    <SolidColorBrush x:Key="ScrollBarThumbBackgroundColor" Color="#8A7F95"/>
+                    <!-- The scroll-bar thumb in the app's palette: every region here floats its bar,
+                         which is the brush that one reads (app-chrome conventions). -->
                     <SolidColorBrush x:Key="ScrollBarPanningThumbBackground" Color="#8A7F95"/>
                     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#221D29"/>
                     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5F5669"/>
@@ -71,9 +70,8 @@
                     <SolidColorBrush x:Key="SurfaceBrush" Color="#211E28"/>
                     <SolidColorBrush x:Key="BorderBrush" Color="#3A3442"/>
                     <SolidColorBrush x:Key="FieldBorderBrush" Color="#7A6F85"/>
-                    <!-- The scroll-bar thumb in the app's palette. Fluent reads a different key for a bar
-                         that takes layout space and one that floats, so both are set (app-chrome conventions). -->
-                    <SolidColorBrush x:Key="ScrollBarThumbBackgroundColor" Color="#7A6F85"/>
+                    <!-- The scroll-bar thumb in the app's palette: every region here floats its bar,
+                         which is the brush that one reads (app-chrome conventions). -->
                     <SolidColorBrush x:Key="ScrollBarPanningThumbBackground" Color="#7A6F85"/>
                     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F1ECF4"/>
                     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#AFA3B1"/>
@@ -393,17 +391,5 @@
             <Setter Property="Background" Value="{DynamicResource ListBackgroundBrush}"/>
         </Style>
 
-        <!-- The binder, note and attachment lists, the editor and the window viewport all hold content
-             out to their own edges, so their bars take layout space rather than floating over it
-             (app-chrome conventions). The dialog body insets its content and opts back in; see
-             DialogBase.axaml. -->
-        <Style Selector="ScrollViewer">
-            <Setter Property="AllowAutoHide" Value="False"/>
-        </Style>
-        <!-- For the one region that floats: no delay arriving, the framework's two seconds leaving. -->
-        <Style Selector="ScrollBar">
-            <Setter Property="ShowDelay" Value="00:00:00"/>
-            <Setter Property="HideDelay" Value="00:00:02"/>
-        </Style>
     </Application.Styles>
 </Application>

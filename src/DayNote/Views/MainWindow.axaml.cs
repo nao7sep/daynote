@@ -46,7 +46,7 @@ public partial class MainWindow : Window
         }
 
         Loaded += OnLoaded;
-        WindowViewport.PropertyChanged += (_, e) =>
+        LayoutRoot.PropertyChanged += (_, e) =>
         {
             if (e.Property == ScrollViewer.ViewportProperty)
                 ClampPanesToWindow();
@@ -237,7 +237,7 @@ public partial class MainWindow : Window
             return;
 
         var cols = PaneGrid.ColumnDefinitions;
-        var budget = WindowMetrics.SidePaneBudget(Math.Max(WindowViewport.Viewport.Width, LayoutRoot.MinWidth), cols[4].MinWidth);
+        var budget = WindowMetrics.SidePaneBudget(Math.Max(LayoutRoot.Bounds.Width, LayoutRoot.MinWidth), cols[4].MinWidth);
         var intents = new[] { binders, notes, attachments };
         var mins = new[] { cols[0].MinWidth, cols[2].MinWidth, cols[6].MinWidth };
         var displays = WindowMetrics.DistributeSidePanes(intents, mins, budget);

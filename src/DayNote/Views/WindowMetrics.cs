@@ -68,41 +68,21 @@ public static class WindowMetrics
         => ToolbarHeight + StatusBarHeight + PaneVerticalMargin
             + tallestPaneMinHeight;
 
-    // A dialog takes this much of what bounds it, never all of it: the web half of the modal-dialog
-    // conventions caps at a fraction of the viewport, and a dialog filling its owner's content height
-    // exactly reads as bursting out of the window rather than sitting inside it.
+    // A dialog takes this much of the screen it opens on, never all of it. Not a share of its owner:
+    // a dialog is a separate window, and an owner that happens to be small says nothing about how much
+    // room the dialog has (modal-dialog conventions).
     public const double DialogHeightFraction = 0.85;
 
     /// <summary>
-    /// The tallest a dialog's content may be: <see cref="DialogHeightFraction"/> of the content height
-    /// of the window that owns it, and no more than the same fraction of the screen's working height.
-    /// Pass 0 for <paramref name="ownerContentHeight"/> when the dialog has no owner — the
-    /// startup-failure shell — and the screen alone bounds it. A working area that cannot be read
-    /// leaves the dialog unbounded rather than guessing a height for it.
+    /// The tallest a dialog's content may be: <see cref="DialogHeightFraction"/> of the working area of
+    /// the screen it opens on. A working area that cannot be read leaves the dialog unbounded rather
+    /// than guessing a height for it.
     /// </summary>
-    public static double DialogMaxHeight(double ownerContentHeight, double workingAreaHeight, double scale)
-    {
-        var screenBound = workingAreaHeight > 0 && scale > 0 && double.IsFinite(scale)
+    public static double DialogMaxHeight(double workingAreaHeight, double scale) =>
+        workingAreaHeight > 0 && scale > 0 && double.IsFinite(scale)
             ? workingAreaHeight / scale * DialogHeightFraction
             : double.PositiveInfinity;
-        var ownerBound = ownerContentHeight > 0
-            ? ownerContentHeight * DialogHeightFraction
-            : double.PositiveInfinity;
 
-        return Math.Min(ownerBound, screenBound);
-    }
-
-    // The least room a dialog body is worth giving, its own padding included: a labelled field and a
-    // little of the row under it. The only declared number here — the chrome around the body is
-    // measured from the live shell, so a padding change or a new band cannot leave the minimum behind.
-    public const double DialogBodyMinHeight = 120;
-
-    /// <summary>
-    /// The shortest a resizable dialog may be dragged. <paramref name="chromeHeight"/> is the window
-    /// height its body is not occupying.
-    /// </summary>
-    public static double DialogMinHeight(double chromeHeight) =>
-        Math.Max(0, chromeHeight) + DialogBodyMinHeight;
 
     /// <summary>
     /// The total pixel budget available for the three side panes (binders, notes, attachments)
