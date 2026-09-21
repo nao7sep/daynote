@@ -48,6 +48,7 @@ public sealed class MessageDialog : DialogBase
             message,
             [new DialogButton("Close", "close", DialogButtonKind.Primary)]);
         dialog.BoundHeightToScreen();
+        ShowAsOnlyWindow(dialog);
         return dialog;
     }
 }
