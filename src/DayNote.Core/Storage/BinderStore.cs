@@ -23,10 +23,21 @@ public sealed class BinderStore
     }
 
     /// <summary>Serializes and atomically writes a binder, returning the new baseline and text.</summary>
-    public SavedBinder Save(string path, Binder binder)
+    public SavedBinder Save(string path, Binder binder) => SaveText(path, Serialize(binder));
+
+    /// <summary>Serializes a binder to its TOML text — pure and in-memory, no I/O.</summary>
+    public static string Serialize(Binder binder) => BinderTomlWriter.Write(binder);
+
+    /// <summary>
+    /// Atomically writes already-serialized binder text and returns the new baseline. Split out from
+    /// <see cref="Save"/> so a caller can serialize the (mutable, UI-owned) <see cref="Binder"/> to an
+    /// immutable string synchronously and then move only the I/O — the atomic write, fsync, and backup
+    /// insert — to a background thread, with no risk of a concurrent edit touching the binder while it
+    /// is being written.
+    /// </summary>
+    public SavedBinder SaveText(string path, string text)
     {
         var fullPath = Path.GetFullPath(path);
-        var text = BinderTomlWriter.Write(binder);
         AtomicFile.WriteAllText(fullPath, text);
         return new SavedBinder(fullPath, ContentHash.Sha256Hex(text), text);
     }

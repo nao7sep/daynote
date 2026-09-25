@@ -67,7 +67,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.NewNoteCommand.Execute(null);
         var source = Path.Combine(_home, "remove-me.txt");
         File.WriteAllText(source, "attachment content");
-        vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
         var item = Assert.Single(vm.Attachments);
 
         await vm.RemoveAttachmentCommand.ExecuteAsync(item);
@@ -247,6 +247,33 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Overlapping_saves_of_the_same_binder_never_lose_the_latest_edit()
+    {
+        // The binder write now runs on a background thread (DN-1); a manual Save landing while the
+        // autosave timer's own save is still writing must queue behind it rather than starting a second,
+        // overlapping write to the same file. Simulate that by starting one save, dirtying the note
+        // again before it can possibly have finished its background I/O, and starting a second save
+        // without awaiting the first — exactly what a stray extra Ctrl+S or a timer tick can do.
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Title = "First";
+        vm.Editor.Body = "first body";
+
+        var firstSave = vm.SaveNowCommand.ExecuteAsync(null);
+        vm.Editor.Body = "second body";
+        var secondSave = vm.SaveNowCommand.ExecuteAsync(null);
+
+        await Task.WhenAll(firstSave, secondSave);
+
+        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Empty(vm.Results);
+        var reloaded = new BinderStore().Load(BinderPath);
+        Assert.Equal("second body", reloaded.Binder.Notes[0].Body);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Closing_a_binder_flushes_pending_edits_before_forgetting_it()
     {
         var vm = await OpenNewBinderAsync();
@@ -339,7 +366,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         File.WriteAllText(b, "different content");
 
         // Within one batch, the second identical file dedups against the first.
-        vm.AddDroppedFiles(new[] { a, aCopy, b });
+        await vm.AddDroppedFiles(new[] { a, aCopy, b });
         Assert.Equal(2, note.Attachments.Count);
         var firstResult = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Info, firstResult.Kind);
@@ -350,7 +377,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         // A later file whose content the note already holds is not copied again.
         var c = Path.Combine(sources, "c.txt");
         File.WriteAllText(c, "same content");
-        vm.AddDroppedFiles(new[] { c });
+        await vm.AddDroppedFiles(new[] { c });
         Assert.Equal(2, note.Attachments.Count);
         var replacement = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.True(replacement.IsPersistent);
@@ -373,7 +400,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var assetsDirectory = BinderStore.AssetsDirectory(BinderPath);
         File.WriteAllText(assetsDirectory, "blocked");
 
-        vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
 
         var error = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Error, error.Kind);
@@ -382,8 +409,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(AutomationLiveSetting.Assertive, error.LiveSetting);
 
         File.Delete(assetsDirectory);
-        vm.AddDroppedFiles(new[] { source });
-        vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
 
         var information = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Info, information.Kind);
@@ -403,18 +430,18 @@ public sealed class MainWindowViewModelTests : IDisposable
         var note = vm.SelectedNote!.Note;
 
         // Establish a pane-owned attachment result alongside the independent shell save result.
-        vm.AddDroppedFiles([], unavailable: 1);
+        await vm.AddDroppedFiles([], unavailable: 1);
 
         var source = Path.Combine(_home, "source.txt");
         File.WriteAllText(source, "attachment content");
         var noteAssets = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
         Directory.CreateDirectory(Path.GetDirectoryName(noteAssets)!);
         File.WriteAllText(noteAssets, "blocks the attachment directory");
-        vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
 
         File.Delete(noteAssets);
-        vm.AddDroppedFiles(new[] { source });
-        vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
         Assert.NotNull(vm.AttachmentResult);
         Assert.Empty(vm.Results);
 
@@ -454,7 +481,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         // Occupy the assets-directory path with a file so Directory.CreateDirectory must fail.
         File.WriteAllText(BinderStore.AssetsDirectory(BinderPath), "blocked");
 
-        var exception = Record.Exception(() => vm.AddDroppedFiles(new[] { source }));
+        var exception = await Record.ExceptionAsync(() => vm.AddDroppedFiles(new[] { source }));
 
         Assert.Null(exception);
         Assert.Empty(note.Attachments);
@@ -471,7 +498,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var vm = await OpenNewBinderAsync();
         vm.NewNoteCommand.Execute(null);
 
-        vm.AddDroppedFiles([], unavailable: 2);
+        await vm.AddDroppedFiles([], unavailable: 2);
 
         Assert.Empty(vm.Attachments);
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
@@ -491,7 +518,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var source = Path.Combine(_home, "open-me.txt");
         File.WriteAllText(source, "attachment content");
-        vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
         var item = Assert.Single(vm.Attachments);
 
         _dialogs.OpenPathError = new IOException("test open failure");
@@ -506,7 +533,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var anotherSource = Path.Combine(_home, "another.txt");
         File.WriteAllText(anotherSource, "different attachment content");
-        vm.AddDroppedFiles(new[] { anotherSource });
+        await vm.AddDroppedFiles(new[] { anotherSource });
 
         Assert.Contains(item, vm.Attachments);
         Assert.Same(failure, item.Result);
@@ -528,7 +555,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var source = Path.Combine(_home, "goes-missing.txt");
         File.WriteAllText(source, "attachment content");
-        vm.AddDroppedFiles(new[] { source });
+        await vm.AddDroppedFiles(new[] { source });
         var selectedNote = vm.SelectedNote;
         var originalItem = Assert.Single(vm.Attachments);
         File.Delete(originalItem.FullPath);
@@ -562,7 +589,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var vm = await OpenNewBinderAsync();
         vm.NewNoteCommand.Execute(null);
         var note = vm.SelectedNote!.Note;
-        AddThreeAttachments(vm);
+        await AddThreeAttachmentsAsync(vm);
         var startingItems = vm.Attachments.ToArray();
         var startingNames = note.Attachments.ToArray();
 
@@ -613,10 +640,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         Dispatcher.UIThread.RunJobs();
         Assert.True(vm.IsAttachmentDropActive);
 
+        // The drop handler now hashes and copies the file on a background thread (DN-3), so the
+        // attachment lands asynchronously; pump the dispatcher until the background add's UI-thread
+        // continuation has run rather than asserting immediately after one synchronous RunJobs.
         window.DragDrop(panePoint.Value, RawDragEventType.Drop, transfer, DragDropEffects.Copy, RawInputModifiers.None);
         Dispatcher.UIThread.RunJobs();
         Assert.False(vm.IsAttachmentDropActive);
-        Assert.Contains(vm.Attachments, attachment => attachment.FileName == "headless-drop.txt");
+        await PumpUntilAsync(() => vm.Attachments.Any(attachment => attachment.FileName == "headless-drop.txt"));
 
         var count = vm.Attachments.Count;
         window.DragDrop(toolbarPoint.Value, RawDragEventType.Drop, transfer, DragDropEffects.Copy, RawInputModifiers.None);
@@ -893,7 +923,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.False(vm.MoveAttachment(vm.Attachments[1], 0));
         _dialogs.AttachmentPaths = [late];
         await vm.AddAttachmentCommand.ExecuteAsync(null);
-        vm.AddDroppedFiles([late]);
+        await vm.AddDroppedFiles([late]);
         await vm.RemoveAttachmentCommand.ExecuteAsync(vm.Attachments[0]);
         Assert.Equal(published, vm.Attachments.Select(attachment => attachment.FileName));
 
@@ -901,7 +931,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Status = NoteStatus.Draft;
         Assert.True(vm.CanEditNote);
         Assert.True(vm.MoveAttachment(vm.Attachments[1], 0));
-        vm.AddDroppedFiles([late]);
+        await vm.AddDroppedFiles([late]);
         Assert.Equal(3, vm.Attachments.Count);
 
         await vm.ShutdownAsync();
@@ -1212,7 +1242,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         return Convert.ToInt32(command.ExecuteScalar());
     }
 
-    private void AddThreeAttachments(MainWindowViewModel vm)
+    private async Task AddThreeAttachmentsAsync(MainWindowViewModel vm)
     {
         var sources = Path.Combine(_home, "reorder-sources");
         Directory.CreateDirectory(sources);
@@ -1224,7 +1254,7 @@ public sealed class MainWindowViewModelTests : IDisposable
             File.WriteAllText(file, Path.GetFileName(file));
         }
 
-        vm.AddDroppedFiles(files);
+        await vm.AddDroppedFiles(files);
         Assert.Equal(3, vm.Attachments.Count);
     }
 
@@ -1238,7 +1268,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         vm.NewNoteCommand.Execute(null);
-        AddThreeAttachments(vm);
+        await AddThreeAttachmentsAsync(vm);
         Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();
 
@@ -1329,6 +1359,27 @@ public sealed class MainWindowViewModelTests : IDisposable
         }
 
         await CloseTestWindowAsync(vm, window);
+    }
+
+    /// <summary>
+    /// Pumps the headless dispatcher until <paramref name="condition"/> holds, for asserting on the
+    /// result of work that finishes on a background thread (its UI-thread continuation is not queued
+    /// yet at the moment a real drag-drop event handler returns). Fails the test rather than hanging if
+    /// the condition never becomes true.
+    /// </summary>
+    private static async Task PumpUntilAsync(Func<bool> condition, int timeoutMs = 2000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                Assert.Fail("Condition was not met within the timeout.");
+            }
+
+            await Task.Delay(10);
+            Dispatcher.UIThread.RunJobs();
+        }
     }
 
     private static async Task CloseTestWindowAsync(MainWindowViewModel vm, MainWindow window)

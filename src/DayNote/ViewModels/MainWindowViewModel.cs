@@ -66,6 +66,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _externalCheckInProgress;
     private SaveState _saveState = SaveState.Saved;
 
+    // Serializes the binder write itself (the atomic file write + fsync + backup insert, which now
+    // runs on a background thread) so two saves of the same binder — e.g. the autosave timer's tick
+    // and a manual Ctrl+S landing while it is still in flight — never overlap on the same file. The UI
+    // thread stays the only place that starts a save or reads its result; the lock only ever guards the
+    // background I/O between those two points.
+    private readonly SemaphoreSlim _saveLock = new(1, 1);
+
+    // Bumped by every MarkDirty call. A save snapshots this right before it hands its text to the
+    // background writer; if it changes before that write returns, an edit landed mid-save, and the
+    // save must not clear _dirty/_dirtyNoteIds on completion — doing so unconditionally would silently
+    // discard that newer edit (it would never be written, and never be flagged as unsaved again).
+    private long _dirtyGeneration;
+
     public MainWindowViewModel(
         AppPaths paths,
         IDialogService dialogs,
@@ -607,12 +620,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        AddAttachmentFiles(files);
+        await AddAttachmentFilesAsync(files);
     }
 
     /// <summary>Adds files dropped onto the attachments pane (same path as the Add button).</summary>
-    public void AddDroppedFiles(IReadOnlyList<string> files, int unavailable = 0) =>
-        AddAttachmentFiles(files, Math.Max(0, unavailable));
+    public Task AddDroppedFiles(IReadOnlyList<string> files, int unavailable = 0) =>
+        AddAttachmentFilesAsync(files, Math.Max(0, unavailable));
 
     /// <summary>
     /// Live reorder step during a drag: moves <paramref name="item"/> to <paramref name="newIndex"/> in
@@ -676,7 +689,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _log.Info("Reordered attachments", new { noteId = note.Id });
     }
 
-    private void AddAttachmentFiles(IReadOnlyList<string> files, int unavailable = 0)
+    private async Task AddAttachmentFilesAsync(IReadOnlyList<string> files, int unavailable = 0)
     {
         if (!IsReady || _current is null || SelectedNote is null || !CanEditNote)
         {
@@ -705,16 +718,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var directory = BinderStore.NoteAssetsDirectory(_current.Path, note.Id);
+        // A snapshot of the note's current attachment names, taken on the UI thread: the background
+        // step below only reads the filesystem and this list, and never touches the (UI-owned) note
+        // object, so nothing races a concurrent edit while the batch is hashed and copied.
+        var existingAttachmentNames = note.Attachments.ToList();
+        var noteId = note.Id;
+
+        _log.Info("Adding attachments", new { noteId, requested = files.Count });
+
+        AttachmentImportOutcome outcome;
         try
         {
-            Directory.CreateDirectory(directory);
+            outcome = await Task.Run(
+                () => ImportAttachments(directory, existingAttachmentNames, noteId, files));
         }
         catch (Exception ex)
         {
             // A binder can live on a read-only, disconnected, or otherwise unavailable volume.
             // Attachment setup is an edge failure, not a reason for a file drop to escape into the
             // UI event loop and terminate the app.
-            _log.Error("Failed to prepare attachment directory", new { noteId = note.Id, path = directory }, ex);
+            _log.Error("Failed to prepare attachment directory", new { noteId, path = directory }, ex);
             AttachmentResult = new OperationResultViewModel(
                 OperationResultKind.Error,
                 "Could not prepare the attachment folder. Check that the binder location is writable, then try again.",
@@ -722,61 +745,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        // Hash the note's current attachments so a file whose content the note already has is not
-        // copied again; a later identical file in the same batch dedups against earlier ones too.
-        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var existing in note.Attachments)
+        // The binder may have been reloaded or closed while the batch was hashed and copied in the
+        // background. The files already landed safely under the note's own id either way; there is
+        // just no live note left to attach them to, so the UI update is dropped rather than mutating
+        // a stale object (same rule CheckExternalChangeAsync/RemoveAttachment follow for a late result).
+        if (!IsLiveNote(note))
         {
-            var existingPath = Path.Combine(directory, existing);
-            if (!File.Exists(existingPath))
-            {
-                continue;
-            }
-
-            try
-            {
-                hashes.TryAdd(ContentHash.Sha256HexFile(existingPath), existing);
-            }
-            catch (Exception ex)
-            {
-                _log.Warn("Could not hash existing attachment for dedup", new { noteId = note.Id, file = existing }, ex);
-            }
+            _log.Info("Discarding attachment-add result: note is no longer live", new { noteId });
+            return;
         }
 
-        _log.Info("Adding attachments", new { noteId = note.Id, requested = files.Count });
-        var added = 0;
-        var duplicateNames = new List<string>();
-        var failures = new List<string>();
-        foreach (var source in files)
+        foreach (var name in outcome.AddedNames)
         {
-            try
-            {
-                var hash = ContentHash.Sha256HexFile(source);
-                if (hashes.ContainsKey(hash))
-                {
-                    duplicateNames.Add(Path.GetFileName(source));
-                    continue;
-                }
-
-                var existing = Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName)!;
-                var name = UniqueFileName.Pick(existing!, Path.GetFileName(source));
-                // not recorded: attachments are copied binary content; the binder text records the
-                // durable attachment reference, while binary writes stay outside the text history.
-                File.Copy(source, Path.Combine(directory, name));
-                note.Attachments.Add(name);
-                hashes[hash] = name;
-                added++;
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Failed to add attachment", new { noteId = note.Id, source }, ex);
-                failures.Add(Path.GetFileName(source));
-            }
+            note.Attachments.Add(name);
         }
+
+        var added = outcome.AddedNames.Count;
+        var duplicateNames = outcome.DuplicateNames;
+        var failures = outcome.FailedNames;
 
         _log.Info("Attachments added", new
         {
-            noteId = note.Id,
+            noteId,
             added,
             duplicates = duplicateNames.Count,
             unavailable,
@@ -784,7 +774,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         });
         if (unavailable > 0)
         {
-            _log.Warn("Attachment admission contained unreadable items", new { noteId = note.Id, unavailable });
+            _log.Warn("Attachment admission contained unreadable items", new { noteId, unavailable });
         }
 
         var addedText = added > 0
@@ -832,6 +822,77 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             LoadAttachments(note);
             MarkDirty(note.Id);
         }
+    }
+
+    private readonly record struct AttachmentImportOutcome(
+        IReadOnlyList<string> AddedNames,
+        IReadOnlyList<string> DuplicateNames,
+        IReadOnlyList<string> FailedNames);
+
+    /// <summary>
+    /// The background half of an attachment add: prepares the note's assets directory, then hashes and
+    /// copies each source file into it. Pure with respect to view-model state — it reads only its
+    /// parameters and the filesystem, and returns what happened rather than mutating the note directly,
+    /// so it is safe to run off the UI thread while the note keeps being edited. Directory creation is
+    /// deliberately not wrapped in its own try/catch: that failure is distinct (nothing could be
+    /// attempted at all) and is handled by the caller.
+    /// </summary>
+    private AttachmentImportOutcome ImportAttachments(
+        string directory, IReadOnlyList<string> existingAttachmentNames, string noteId, IReadOnlyList<string> sources)
+    {
+        Directory.CreateDirectory(directory);
+
+        // Hash the note's current attachments so a file whose content the note already has is not
+        // copied again; a later identical file in the same batch dedups against earlier ones too.
+        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var existing in existingAttachmentNames)
+        {
+            var existingPath = Path.Combine(directory, existing);
+            if (!File.Exists(existingPath))
+            {
+                continue;
+            }
+
+            try
+            {
+                hashes.TryAdd(ContentHash.Sha256HexFile(existingPath), existing);
+            }
+            catch (Exception ex)
+            {
+                _log.Warn("Could not hash existing attachment for dedup", new { noteId, file = existing }, ex);
+            }
+        }
+
+        var addedNames = new List<string>();
+        var duplicateNames = new List<string>();
+        var failures = new List<string>();
+        foreach (var source in sources)
+        {
+            try
+            {
+                var hash = ContentHash.Sha256HexFile(source);
+                if (hashes.ContainsKey(hash))
+                {
+                    duplicateNames.Add(Path.GetFileName(source));
+                    continue;
+                }
+
+                var existingEntries = Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName)!;
+                var name = UniqueFileName.Pick(existingEntries!, Path.GetFileName(source));
+                // not recorded: attachments are copied binary content; the binder text records the
+                // durable attachment reference, while binary writes stay outside the text history.
+                File.Copy(source, Path.Combine(directory, name));
+                addedNames.Add(name);
+                hashes[hash] = name;
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Failed to add attachment", new { noteId, source }, ex);
+                failures.Add(Path.GetFileName(source));
+            }
+        }
+
+        return new AttachmentImportOutcome(addedNames, duplicateNames, failures);
     }
 
     private static string SummarizeFileNames(IEnumerable<string> fileNames)
@@ -1137,13 +1198,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return true;
         }
 
-        var stopwatch = Stopwatch.StartNew();
+        // Serializes the write itself: a second call arriving while one save's background I/O is still
+        // in flight (the autosave tick and a manual Ctrl+S can land back to back) queues here instead of
+        // starting an overlapping write to the same file. Awaited before touching any save state, so the
+        // UI thread is never blocked — it just yields until its turn.
+        await _saveLock.WaitAsync();
         try
         {
+            // Re-check: whoever held the lock before this call may have already flushed these very
+            // edits (or the binder may have been closed while this call was queued).
+            if (!IsReady || _current is null || !_dirty)
+            {
+                return true;
+            }
+
+            var stopwatch = Stopwatch.StartNew();
             SetSaveState(SaveState.Saving);
             var now = DateTimeOffset.UtcNow;
             var binder = _current.Binder;
-            _log.Info("Saving binder", new { path = _current.Path, noteCount = binder.Notes.Count });
+            var path = _current.Path;
+            _log.Info("Saving binder", new { path, noteCount = binder.Notes.Count });
 
             foreach (var id in _dirtyNoteIds)
             {
@@ -1156,30 +1230,56 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
             binder.Modified = now;
 
-            var saved = _binderStore.Save(_current.Path, binder);
-            _baselineHash = saved.ContentHash;
-            _externalChangeAcknowledged = false;
-            _dirty = false;
-            _dirtyNoteIds.Clear();
+            // Serializing the binder to text is pure, in-memory work over the (UI-owned, mutable)
+            // Binder object, so it stays on the UI thread; only the text — an immutable snapshot — and
+            // the I/O that writes it (the atomic write, fsync, and backup insert) move to a background
+            // thread, so a keystroke landing mid-save can never race a background reader of the binder.
+            var text = BinderStore.Serialize(binder);
+            var generationAtSnapshot = _dirtyGeneration;
 
-            Editor.RefreshMetadata();
-            RefreshSelectedListItem();
-            SetSaveState(SaveState.Saved);
-            ResolveShellResult(SaveFailureResultKey);
-            // The file now holds this version, which settles any deletion or reload problem.
-            ResolveShellResult(BinderFileResultKey);
-            _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
-            return true;
+            try
+            {
+                var saved = await Task.Run(() => _binderStore.SaveText(path, text));
+                _baselineHash = saved.ContentHash;
+                _externalChangeAcknowledged = false;
+
+                // Only clear the dirty flags when nothing edited the binder while this save's background
+                // write was in flight. A newer edit already re-set them (MarkDirty), possibly re-adding a
+                // note this save just stamped Modified for — redundant on the next save, never lost. The
+                // save-state dot follows the same check: a newer, still-unsaved edit means the true state
+                // is Unsaved, not Saved, even though this write itself succeeded.
+                var settled = _dirtyGeneration == generationAtSnapshot;
+                if (settled)
+                {
+                    _dirty = false;
+                    _dirtyNoteIds.Clear();
+                }
+
+                Editor.RefreshMetadata();
+                RefreshSelectedListItem();
+                SetSaveState(settled ? SaveState.Saved : SaveState.Unsaved);
+                ResolveShellResult(SaveFailureResultKey);
+                // The file now holds this version, which settles any deletion or reload problem.
+                ResolveShellResult(BinderFileResultKey);
+                _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // The write failed: _dirty and _dirtyNoteIds are untouched above, so the edit is still
+                // considered unsaved and the autosave timer will retry it.
+                _log.Error("Failed to save binder", new { path }, ex);
+                SetSaveState(SaveState.Error);
+                ShowResult(
+                    OperationResultKind.Error,
+                    FailurePresentation.SaveBinder(ex),
+                    resultKey: SaveFailureResultKey);
+                return false;
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            _log.Error("Failed to save binder", new { path = _current?.Path }, ex);
-            SetSaveState(SaveState.Error);
-            ShowResult(
-                OperationResultKind.Error,
-                FailurePresentation.SaveBinder(ex),
-                resultKey: SaveFailureResultKey);
-            return false;
+            _saveLock.Release();
         }
     }
 
@@ -1194,7 +1294,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _externalCheckInProgress = true;
         try
         {
-            var change = _binderStore.CheckExternalChange(_current.Path, _baselineHash);
+            // The whole-file read and SHA-256 hash are the slow part (not the property reads above),
+            // so only that step moves to a background thread; the path and baseline are plain strings
+            // captured on the UI thread, so there is nothing left for the background call to race.
+            var path = _current.Path;
+            var baselineHash = _baselineHash;
+            var change = await Task.Run(() => _binderStore.CheckExternalChange(path, baselineHash));
             switch (change)
             {
                 case ExternalChange.None:
@@ -1627,6 +1732,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         _dirty = true;
+        _dirtyGeneration++;
         if (noteId is not null)
         {
             _dirtyNoteIds.Add(noteId);

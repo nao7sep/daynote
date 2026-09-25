@@ -111,7 +111,7 @@ public partial class MainWindow : Window
         ClearAttachDropHighlight();
     }
 
-    private void OnAttachDrop(object? sender, DragEventArgs e)
+    private async void OnAttachDrop(object? sender, DragEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm)
         {
@@ -126,12 +126,13 @@ public partial class MainWindow : Window
             .Where(p => !string.IsNullOrEmpty(p))
             .Select(p => p!)
             .ToList();
+        e.Handled = true;
         if (deliveredItems.Length > 0)
         {
-            vm.AddDroppedFiles(paths, deliveredItems.Length - paths.Count);
+            // Hashing and copying the dropped files runs off the UI thread; e.Handled is already set
+            // above so the drop is accepted immediately regardless of how long the copy takes.
+            await vm.AddDroppedFiles(paths, deliveredItems.Length - paths.Count);
         }
-
-        e.Handled = true;
     }
 
     private void ClearAttachDropHighlight()
