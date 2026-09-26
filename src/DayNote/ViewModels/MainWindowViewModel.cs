@@ -66,12 +66,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _externalCheckInProgress;
     private SaveState _saveState = SaveState.Saved;
 
-    // Serializes the binder write itself (the atomic file write + fsync + backup insert, which now
-    // runs on a background thread) so two saves of the same binder — e.g. the autosave timer's tick
-    // and a manual Ctrl+S landing while it is still in flight — never overlap on the same file. The UI
-    // thread stays the only place that starts a save or reads its result; the lock only ever guards the
-    // background I/O between those two points.
-    private readonly SemaphoreSlim _saveLock = new(1, 1);
+    // The one owner of the open binder's file and its baseline hash. A save holds it from its snapshot
+    // until its result is applied, and the external-change check holds it from its read until its
+    // reload or re-baseline is applied, so neither ever acts on the file or the baseline while the
+    // other is between its I/O and its result: two saves never overlap on the file, a check never
+    // mistakes the app's own in-flight write for an external edit, and a save never lands on top of
+    // content the check just reloaded. The UI thread stays the only place that takes or releases it.
+    private readonly SemaphoreSlim _binderFileLock = new(1, 1);
 
     // Bumped by every MarkDirty call. A save snapshots this right before it hands its text to the
     // background writer; if it changes before that write returns, an edit landed mid-save, and the
@@ -1198,11 +1199,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return true;
         }
 
-        // Serializes the write itself: a second call arriving while one save's background I/O is still
-        // in flight (the autosave tick and a manual Ctrl+S can land back to back) queues here instead of
-        // starting an overlapping write to the same file. Awaited before touching any save state, so the
-        // UI thread is never blocked — it just yields until its turn.
-        await _saveLock.WaitAsync();
+        // A second call arriving while one save's background I/O is still in flight (the autosave tick
+        // and a manual Ctrl+S can land back to back) queues here instead of starting an overlapping write
+        // to the same file. Awaited before touching any save state, so the UI thread is never blocked —
+        // it just yields until its turn.
+        await _binderFileLock.WaitAsync();
         try
         {
             // Re-check: whoever held the lock before this call may have already flushed these very
@@ -1279,7 +1280,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
         finally
         {
-            _saveLock.Release();
+            _binderFileLock.Release();
         }
     }
 
@@ -1291,15 +1292,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        // A save is writing this file and has not yet recorded its new baseline, so the file would read
+        // as changed by someone else. Skip this tick; the next one compares against the save's baseline.
+        if (!_binderFileLock.Wait(0))
+        {
+            return;
+        }
+
         _externalCheckInProgress = true;
+        var checkedBinder = _current;
         try
         {
             // The whole-file read and SHA-256 hash are the slow part (not the property reads above),
             // so only that step moves to a background thread; the path and baseline are plain strings
             // captured on the UI thread, so there is nothing left for the background call to race.
-            var path = _current.Path;
+            var path = checkedBinder.Path;
             var baselineHash = _baselineHash;
             var change = await Task.Run(() => _binderStore.CheckExternalChange(path, baselineHash));
+            if (!ReferenceEquals(_current, checkedBinder))
+            {
+                // The binder was closed or switched while its file was being read.
+                return;
+            }
+
             switch (change)
             {
                 case ExternalChange.None:
@@ -1307,7 +1322,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
                 case ExternalChange.Deleted:
                     _externalChangeAcknowledged = true;
-                    _log.Warn("Binder file was deleted on disk", new { path = _current.Path });
+                    _log.Warn("Binder file was deleted on disk", new { path });
                     ShowResult(
                         OperationResultKind.Warning,
                         "The binder file was deleted. Your edits remain; saving will recreate it.",
@@ -1315,8 +1330,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     return;
 
                 case ExternalChange.Modified when !_dirty:
-                    _log.Info("Binder changed on disk; reloading", new { path = _current.Path });
-                    if (ReloadFromDisk())
+                    _log.Info("Binder changed on disk; reloading", new { path });
+                    if (await ReloadFromDiskAsync(checkedBinder, yieldToNewEdits: true))
                     {
                         ShowResult(
                             OperationResultKind.Info,
@@ -1326,19 +1341,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     return;
 
                 case ExternalChange.Modified:
-                    var choice = await _dialogs.AskExternalChangeAsync(TitleFor(_current.Path));
+                    var choice = await _dialogs.AskExternalChangeAsync(TitleFor(path));
+                    if (!ReferenceEquals(_current, checkedBinder))
+                    {
+                        return;
+                    }
+
                     if (choice == ExternalChangeChoice.ReloadFromDisk)
                     {
-                        _log.Info("External change: reloading from disk, discarding local edits", new { path = _current.Path });
-                        ReloadFromDisk();
+                        _log.Info("External change: reloading from disk, discarding local edits", new { path });
+                        await ReloadFromDiskAsync(checkedBinder, yieldToNewEdits: false);
                     }
                     else
                     {
                         // Keep the in-memory edits: re-baseline to the current on-disk content so the
                         // next save overwrites it, and so any *further* external change is still
                         // detected rather than silently suppressed.
-                        _log.Info("External change: keeping local edits", new { path = _current.Path });
-                        _baselineHash = _binderStore.ComputeHash(_current.Path);
+                        _log.Info("External change: keeping local edits", new { path });
+                        var diskHash = await Task.Run(() => _binderStore.ComputeHash(path));
+                        if (ReferenceEquals(_current, checkedBinder))
+                        {
+                            _baselineHash = diskHash;
+                        }
                     }
 
                     return;
@@ -1348,36 +1372,51 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             // A transient read failure during polling (the file briefly locked by a sync client,
             // antivirus, or an external editor) must not crash the app; skip this tick and retry.
-            _log.Debug("External-change check skipped", new { path = _current?.Path }, ex);
+            _log.Debug("External-change check skipped", new { path = checkedBinder.Path }, ex);
         }
         finally
         {
             _externalCheckInProgress = false;
+            _binderFileLock.Release();
         }
     }
 
-    internal bool ReloadFromDisk()
+    /// <summary>
+    /// Reads the binder file on a background thread and adopts it only if the same binder is still open.
+    /// With <paramref name="yieldToNewEdits"/>, an edit typed while the file was being read also cancels
+    /// the reload, so the next check asks about it instead of silently dropping it.
+    /// </summary>
+    private async Task<bool> ReloadFromDiskAsync(LoadedBinder reloading, bool yieldToNewEdits)
     {
-        if (_current is null)
+        var path = reloading.Path;
+        var generation = _dirtyGeneration;
+        LoadedBinder loaded;
+        try
+        {
+            loaded = await Task.Run(() => _binderStore.Load(path));
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to reload binder", new { path }, ex);
+            if (ReferenceEquals(_current, reloading))
+            {
+                ShowResult(
+                    OperationResultKind.Error,
+                    FailurePresentation.ReloadBinder(ex),
+                    resultKey: BinderFileResultKey);
+            }
+
+            return false;
+        }
+
+        if (!ReferenceEquals(_current, reloading) || (yieldToNewEdits && _dirtyGeneration != generation))
         {
             return false;
         }
 
-        try
-        {
-            AdoptLoaded(_binderStore.Load(_current.Path), SelectedNote?.Note.Id);
-            ResolveShellResult(BinderFileResultKey);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to reload binder", new { path = _current.Path }, ex);
-            ShowResult(
-                OperationResultKind.Error,
-                FailurePresentation.ReloadBinder(ex),
-                resultKey: BinderFileResultKey);
-            return false;
-        }
+        AdoptLoaded(loaded, SelectedNote?.Note.Id);
+        ResolveShellResult(BinderFileResultKey);
+        return true;
     }
 
     // ----- View-model plumbing -------------------------------------------------------------------

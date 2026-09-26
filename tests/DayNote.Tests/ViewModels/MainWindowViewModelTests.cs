@@ -274,6 +274,40 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task An_external_change_check_waits_out_a_save_in_flight_instead_of_acting_on_it()
+    {
+        // The file differs from the baseline twice over while a save is writing: someone else changed
+        // it, and the save is about to replace it. A check that ran now would ask about a conflict and,
+        // on Reload, adopt a file the in-flight save then overwrites with the older text, reporting
+        // Saved over content the user chose to keep. The check skips the tick instead.
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        var store = new BinderStore();
+        var outside = store.Load(BinderPath).Binder;
+        outside.Notes[0].Title = "Changed outside";
+        store.Save(BinderPath, outside);
+
+        vm.Editor.Body = "local edit";
+        _dialogs.ExternalChoice = ExternalChangeChoice.ReloadFromDisk;
+        var save = vm.SaveNowCommand.ExecuteAsync(null);
+        await vm.CheckExternalChangeAsync();
+        await save;
+
+        Assert.Equal(0, _dialogs.ExternalChangeQuestions);
+        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal("local edit", store.Load(BinderPath).Binder.Notes[0].Body);
+
+        // The next tick compares against the save's own baseline, so the app's write is not news.
+        await vm.CheckExternalChangeAsync();
+        Assert.Equal(0, _dialogs.ExternalChangeQuestions);
+        Assert.Empty(vm.Results);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Closing_a_binder_flushes_pending_edits_before_forgetting_it()
     {
         var vm = await OpenNewBinderAsync();
@@ -1435,7 +1469,12 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task ShowShortcutsAsync() => Task.CompletedTask;
         public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave) =>
             Task.FromResult(SettingsApplied && trySave(config));
-        public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName) => Task.FromResult(ExternalChoice);
+        public int ExternalChangeQuestions { get; private set; }
+        public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
+        {
+            ExternalChangeQuestions++;
+            return Task.FromResult(ExternalChoice);
+        }
         public Task OpenPathExternallyAsync(string path)
         {
             LastOpenedPath = path;
