@@ -66,12 +66,20 @@ public sealed class DayNoteTimeTests
     public void ZoneIds_keeps_a_saved_zone_selectable() =>
         Assert.Contains("Etc/GMT+5", DayNoteTime.ZoneIds("Etc/GMT+5"));
 
-    [Fact]
-    public void ToDisplay_renders_in_the_given_zone()
+    private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en");
+
+    [Theory]
+    // ICU puts a narrow no-break space before the English day period.
+    [InlineData("en", "6/11/2026 11:23\u202FPM")]
+    [InlineData("de", "11.06.2026 23:23")]
+    [InlineData("ja", "2026/06/11 23:23")]
+    public void ToDisplay_renders_in_the_given_zone_and_culture(string culture, string expected)
     {
         var instant = new DateTimeOffset(2026, 6, 11, 14, 23, 5, TimeSpan.Zero);
 
-        Assert.Equal("2026-06-11 23:23:05", DayNoteTime.ToDisplay(instant, TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo")));
+        Assert.Equal(
+            expected,
+            DayNoteTime.ToDisplay(instant, TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo"), CultureInfo.GetCultureInfo(culture)));
     }
 
     private static readonly DateTimeOffset SmartNow = new(2026, 6, 21, 10, 0, 0, TimeSpan.Zero);
@@ -81,7 +89,7 @@ public sealed class DayNoteTimeTests
     {
         var value = new DateTimeOffset(2026, 6, 21, 14, 30, 0, TimeSpan.Zero);
 
-        Assert.Equal("14:30", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, SmartNow));
+        Assert.Equal("2:30\u202FPM", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, English, SmartNow));
     }
 
     [Fact]
@@ -89,7 +97,7 @@ public sealed class DayNoteTimeTests
     {
         var value = new DateTimeOffset(2026, 6, 18, 9, 0, 0, TimeSpan.Zero);
 
-        Assert.Equal("Jun 18", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, SmartNow));
+        Assert.Equal("Jun 18", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, English, SmartNow));
     }
 
     [Fact]
@@ -97,7 +105,7 @@ public sealed class DayNoteTimeTests
     {
         var value = new DateTimeOffset(2024, 12, 1, 9, 0, 0, TimeSpan.Zero);
 
-        Assert.Equal("2024-12-01", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, SmartNow));
+        Assert.Equal("12/1/2024", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, English, SmartNow));
     }
 
     [Fact]
@@ -108,29 +116,27 @@ public sealed class DayNoteTimeTests
         var now = new DateTimeOffset(2026, 6, 21, 17, 0, 0, TimeSpan.Zero);
         var value = new DateTimeOffset(2026, 6, 21, 16, 0, 0, TimeSpan.Zero);
 
-        Assert.Equal("01:00", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo"), now));
+        Assert.Equal("1:00\u202FAM", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo"), English, now));
     }
 
     [Theory]
-    [InlineData("de-DE")]
-    [InlineData("ar-SA")]
-    [InlineData("ja-JP")]
-    [InlineData("fr-FR")]
-    public void ToSmartDisplay_is_identical_regardless_of_system_locale(string culture)
+    [InlineData("de", "18. Juni", "14:30", "01.12.2024")]
+    [InlineData("ja", "6月18日", "14:30", "2024/12/01")]
+    [InlineData("fr", "18 juin", "14:30", "01/12/2024")]
+    public void ToSmartDisplay_speaks_the_culture_it_is_given_not_the_ambient_one(
+        string culture, string sameYear, string sameDay, string earlierYear)
     {
-        // The format must not leak the ambient culture: no localized/Hijri month names, no AM/PM, no
-        // non-Latin digits. Under any culture the output stays the invariant English/24-hour form.
+        // The words and order come from the interface's culture; the computer's own culture, set here
+        // to something unrelated, never leaks in.
         var original = CultureInfo.CurrentCulture;
         try
         {
-            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            CultureInfo.CurrentCulture = new CultureInfo("ar-SA");
+            var given = CultureInfo.GetCultureInfo(culture);
 
-            Assert.Equal(
-                "Jun 18",
-                DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 18, 9, 0, 0, TimeSpan.Zero), TimeZoneInfo.Utc, SmartNow));
-            Assert.Equal(
-                "14:30",
-                DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 21, 14, 30, 0, TimeSpan.Zero), TimeZoneInfo.Utc, SmartNow));
+            Assert.Equal(sameYear, DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 18, 9, 0, 0, TimeSpan.Zero), TimeZoneInfo.Utc, given, SmartNow));
+            Assert.Equal(sameDay, DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 21, 14, 30, 0, TimeSpan.Zero), TimeZoneInfo.Utc, given, SmartNow));
+            Assert.Equal(earlierYear, DayNoteTime.ToSmartDisplay(new DateTimeOffset(2024, 12, 1, 9, 0, 0, TimeSpan.Zero), TimeZoneInfo.Utc, given, SmartNow));
         }
         finally
         {

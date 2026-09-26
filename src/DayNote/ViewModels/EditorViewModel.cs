@@ -1,8 +1,8 @@
-using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
 using DayNote.Core.Text;
 using DayNote.Core.Time;
+using DayNote.I18n;
 
 namespace DayNote.ViewModels;
 
@@ -68,13 +68,13 @@ public sealed partial class EditorViewModel : ViewModelBase
     private string _expiredAtText = string.Empty;
 
     [ObservableProperty]
-    private string _wordsText = "0 words";
+    private string _wordsText = string.Empty;
 
     [ObservableProperty]
-    private string _charsText = "0 chars";
+    private string _charsText = string.Empty;
 
     [ObservableProperty]
-    private string _xCountText = "X 0/280";
+    private string _xCountText = string.Empty;
 
     [ObservableProperty]
     private bool _isWithinXLimit = true;
@@ -131,11 +131,25 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
 
         var now = DateTimeOffset.UtcNow;
-        CreatedText = "Created " + DayNoteTime.ToSmartDisplay(_note.Created, _displayZone, now);
-        ModifiedText = "Modified " + DayNoteTime.ToSmartDisplay(_note.Modified, _displayZone, now);
-        ReadyAtText = _note.ReadyAt is { } r ? "Ready " + DayNoteTime.ToSmartDisplay(r, _displayZone, now) : string.Empty;
-        PublishedAtText = _note.PublishedAt is { } p ? "Published " + DayNoteTime.ToSmartDisplay(p, _displayZone, now) : string.Empty;
-        ExpiredAtText = _note.ExpiredAt is { } x ? "Expired " + DayNoteTime.ToSmartDisplay(x, _displayZone, now) : string.Empty;
+        string At(string key, DateTimeOffset? time) => time is { } value
+            ? Localizer.T(key, ("time", DayNoteTime.ToSmartDisplay(value, _displayZone, Localizer.Current.Culture, now)))
+            : string.Empty;
+
+        CreatedText = At("meta.created", _note.Created);
+        ModifiedText = At("meta.modified", _note.Modified);
+        ReadyAtText = At("meta.ready", _note.ReadyAt);
+        PublishedAtText = At("meta.published", _note.PublishedAt);
+        ExpiredAtText = At("meta.expired", _note.ExpiredAt);
+    }
+
+    /// <summary>
+    /// Brings the metadata and counts into the current language. The main window's view model calls
+    /// it when the language changes.
+    /// </summary>
+    internal void Retranslate()
+    {
+        RefreshMetadata();
+        UpdateCounts();
     }
 
     partial void OnTitleChanged(string value)
@@ -178,10 +192,9 @@ public sealed partial class EditorViewModel : ViewModelBase
     private void UpdateCounts()
     {
         var counts = CharacterCount.Count(Body ?? string.Empty);
-        var ci = CultureInfo.InvariantCulture;
-        WordsText = $"{counts.Words.ToString("N0", ci)} {(counts.Words == 1 ? "word" : "words")}";
-        CharsText = $"{counts.Chars.ToString("N0", ci)} {(counts.Chars == 1 ? "char" : "chars")}";
-        XCountText = $"X {counts.XWeightedChars.ToString("N0", ci)}/{counts.XLimit.ToString("N0", ci)}";
+        WordsText = Localizer.T("counts.words", ("count", counts.Words));
+        CharsText = Localizer.T("counts.chars", ("count", counts.Chars));
+        XCountText = Localizer.T("counts.x", ("count", counts.XWeightedChars), ("limit", counts.XLimit));
         IsWithinXLimit = counts.XWithinLimit;
     }
 }

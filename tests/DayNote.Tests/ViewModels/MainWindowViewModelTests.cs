@@ -19,6 +19,7 @@ using DayNote.Core.Configuration;
 using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
+using DayNote.I18n;
 using DayNote.Logging;
 using DayNote.Services;
 using DayNote.ViewModels;
@@ -75,8 +76,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Contains(item.FileName, vm.SelectedNote!.Note.Attachments);
         Assert.True(File.Exists(item.FullPath));
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
-        Assert.Contains("remains attached", result.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("DAYNOTE-REMOVE-SENTINEL", result.Message, StringComparison.Ordinal);
+        Assert.Contains("remains attached", result.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("DAYNOTE-REMOVE-SENTINEL", result.Text, StringComparison.Ordinal);
         Assert.Empty(vm.Results);
         await vm.ShutdownAsync();
     }
@@ -130,10 +131,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         // Every row, not only the selected one, shows its time in the zone just saved (UTC+14).
         var kiritimati = TimeZoneInfo.FindSystemTimeZoneById("Pacific/Kiritimati");
         Assert.Equal(
-            created.Select(time => DayNote.Core.Time.DayNoteTime.ToDisplay(time, kiritimati)),
+            created.Select(time => DayNote.Core.Time.DayNoteTime.ToDisplay(time, kiritimati, Localizer.Current.Culture)),
             vm.Notes.Select(row => row.Subtitle));
         Assert.EndsWith(
-            DayNote.Core.Time.DayNoteTime.ToSmartDisplay(vm.SelectedNote!.Note.Created, kiritimati, DateTimeOffset.UtcNow),
+            DayNote.Core.Time.DayNoteTime.ToSmartDisplay(vm.SelectedNote!.Note.Created, kiritimati, Localizer.Current.Culture, DateTimeOffset.UtcNow),
             vm.Editor.CreatedText);
         await vm.ShutdownAsync();
     }
@@ -147,13 +148,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.NewBinderPickerError = hostile;
         await vm.NewBinderCommand.ExecuteAsync(null);
         var newBinder = Assert.Single(vm.Results);
-        Assert.Contains("new-binder picker", newBinder.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("EACCES", newBinder.Message, StringComparison.Ordinal);
+        Assert.Contains("new-binder picker", newBinder.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("EACCES", newBinder.Text, StringComparison.Ordinal);
 
         _dialogs.NewBinderPickerError = null;
         _dialogs.OpenBinderPickerError = hostile;
         await vm.OpenBinderCommand.ExecuteAsync(null);
-        Assert.Contains(vm.Results, result => result.Message.Contains("binder picker", StringComparison.Ordinal));
+        Assert.Contains(vm.Results, result => result.Text.Contains("binder picker", StringComparison.Ordinal));
 
         _dialogs.OpenBinderPickerError = null;
         _dialogs.BinderToCreate = BinderPath;
@@ -163,8 +164,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.AddAttachmentCommand.ExecuteAsync(null);
 
         Assert.NotNull(vm.AttachmentResult);
-        Assert.Contains("attachment picker", vm.AttachmentResult!.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("DAYNOTE-PICKER-SENTINEL", vm.AttachmentResult.Message, StringComparison.Ordinal);
+        Assert.Contains("attachment picker", vm.AttachmentResult!.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("DAYNOTE-PICKER-SENTINEL", vm.AttachmentResult.Text, StringComparison.Ordinal);
         await vm.ShutdownAsync();
     }
 
@@ -178,11 +179,11 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var result = Assert.Single(
             vm.Results,
-            item => item.Message.Contains("changed on disk", StringComparison.Ordinal));
+            item => item.Text.Contains("changed on disk", StringComparison.Ordinal));
         Assert.Equal(OperationResultKind.Error, result.Kind);
         Assert.DoesNotContain(
             vm.Results,
-            item => item.Message.Contains("Reloaded after", StringComparison.Ordinal));
+            item => item.Text.Contains("Reloaded after", StringComparison.Ordinal));
         await vm.ShutdownAsync();
     }
 
@@ -428,7 +429,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var firstResult = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Info, firstResult.Kind);
         Assert.True(firstResult.IsPersistent);
-        Assert.Contains("Already attached", firstResult.Message);
+        Assert.Contains("Already attached", firstResult.Text);
         Assert.Empty(vm.Results);
 
         // A later file whose content the note already holds is not copied again.
@@ -462,7 +463,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var error = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Error, error.Kind);
         Assert.True(error.IsPersistent);
-        Assert.Equal(error.Message, error.AccessibleMessage);
+        Assert.Equal(error.Text, error.AccessibleMessage);
         Assert.Equal(AutomationLiveSetting.Assertive, error.LiveSetting);
 
         File.Delete(assetsDirectory);
@@ -472,7 +473,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var information = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Info, information.Kind);
         Assert.True(information.IsPersistent);
-        Assert.Equal(information.Message, information.AccessibleMessage);
+        Assert.Equal(information.Text, information.AccessibleMessage);
         Assert.Equal(AutomationLiveSetting.Polite, information.LiveSetting);
         Assert.Empty(vm.Results);
 
@@ -510,7 +511,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.SaveNowCommand.ExecuteAsync(null);
         var firstFailure = Assert.Single(vm.Results, result => result.ResultKey is not null);
         Assert.Equal(OperationResultKind.Error, firstFailure.Kind);
-        Assert.StartsWith("Your changes are still in DayNote", firstFailure.Message);
+        Assert.StartsWith("Your changes are still in DayNote", firstFailure.Text);
 
         await vm.SaveNowCommand.ExecuteAsync(null);
         Assert.Single(vm.Results, result => result.ResultKey == firstFailure.ResultKey);
@@ -543,7 +544,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Null(exception);
         Assert.Empty(note.Attachments);
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
-        Assert.Contains("Could not prepare", result.Message);
+        Assert.Contains("Could not prepare", result.Text);
         Assert.Empty(vm.Results);
 
         await vm.ShutdownAsync();
@@ -561,7 +562,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
         Assert.True(result.IsPersistent);
-        Assert.Equal("2 items are not readable local files.", result.Message);
+        Assert.Equal("2 items are not readable local files.", result.Text);
         Assert.Empty(vm.Results);
 
         await vm.ShutdownAsync();
@@ -584,7 +585,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var failure = Assert.IsType<OperationResultViewModel>(item.Result);
         Assert.Equal(OperationResultKind.Error, failure.Kind);
         Assert.Equal(AutomationLiveSetting.Assertive, failure.LiveSetting);
-        Assert.Contains("Double-click to try again", failure.Message);
+        Assert.Contains("Double-click to try again", failure.Text);
         Assert.Null(vm.AttachmentResult);
         Assert.Empty(vm.Results);
 
@@ -622,7 +623,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var item = Assert.Single(vm.Attachments);
         var result = Assert.IsType<OperationResultViewModel>(item.Result);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
-        Assert.Contains("unavailable on disk", result.Message);
+        Assert.Contains("unavailable on disk", result.Text);
         Assert.Equal("Unavailable", item.DetailsText);
         Assert.Null(vm.AttachmentResult);
         Assert.Empty(vm.Results);
@@ -946,7 +947,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(vm.Notes);
         var warning = Assert.Single(vm.Results);
         Assert.Equal(OperationResultKind.Warning, warning.Kind);
-        Assert.Contains("attachment files", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("attachment files", warning.Text, StringComparison.Ordinal);
         Assert.True(Directory.Exists(BinderStore.NoteAssetsDirectory(BinderPath, note.Id)));
 
         await vm.ShutdownAsync();
@@ -1228,7 +1229,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await ShowEveryShellResultAsync(vm, window);
         var cards = ResultCards(window);
         var oneLine = cards.Single(card => card.DataContext == vm.Results.Single(r => r.Kind == OperationResultKind.Info));
-        var wrapped = cards.Single(card => card.DataContext is OperationResultViewModel { Message: var m }
+        var wrapped = cards.Single(card => card.DataContext is OperationResultViewModel { Text: var m }
             && m.StartsWith("Your changes are still in DayNote", StringComparison.Ordinal));
 
         foreach (var card in new[] { oneLine, wrapped })
@@ -1290,7 +1291,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await ReloadFromOutsideAsync(vm);
         var reloaded = Assert.Single(vm.Results);
         Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(host));
-        Assert.Equal(reloaded.Message, AutomationProperties.GetName(host));
+        Assert.Equal(reloaded.Text, AutomationProperties.GetName(host));
 
         File.Delete(BinderPath);
         Directory.CreateDirectory(BinderPath);
@@ -1298,7 +1299,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.SaveNowCommand.ExecuteAsync(null);
         var failure = vm.Results[0];
         Assert.Equal(AutomationLiveSetting.Assertive, AutomationProperties.GetLiveSetting(host));
-        Assert.Equal(failure.Message, AutomationProperties.GetName(host));
+        Assert.Equal(failure.Text, AutomationProperties.GetName(host));
 
         vm.DismissResult(failure);
         Assert.Null(AutomationProperties.GetName(host));
@@ -1526,8 +1527,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task<IReadOnlyList<string>> PickAttachmentsAsync() => AttachmentPickerError is null
             ? Task.FromResult(AttachmentPaths)
             : Task.FromException<IReadOnlyList<string>>(AttachmentPickerError);
-        public Task<bool> ConfirmAsync(string title, string message, string confirmLabel, bool destructive = false) => Task.FromResult(ConfirmResult);
-        public Task ShowErrorAsync(string title, string message) => Task.CompletedTask;
+        public Message? LastConfirmMessage { get; private set; }
+        public Task<bool> ConfirmAsync(Message title, Message message, string confirmLabelKey, bool destructive = false)
+        {
+            LastConfirmMessage = message;
+            return Task.FromResult(ConfirmResult);
+        }
+        public Task ShowErrorAsync(Message title, Message message) => Task.CompletedTask;
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
         public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)

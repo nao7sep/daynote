@@ -7,8 +7,9 @@ namespace DayNote.Core.Time;
 /// precision (the serialized form used for data values such as the backup store's written_at_utc).
 /// Filename timestamps use <c>yyyymmdd-hhmmss-fff-utc</c> at millisecond precision — currently the
 /// per-launch log filename — so two events within the same second still produce distinct names.
-/// User-facing timestamps are rendered in the display zone: the computer's own by default
-/// (<see cref="SystemZone"/>), or a zone the user chose from <see cref="ZoneIds"/>.
+/// User-facing timestamps are rendered in the reader's culture and in the display zone: the
+/// computer's own by default (<see cref="SystemZone"/>), or a zone the user chose from
+/// <see cref="ZoneIds"/>.
 /// </summary>
 public static class DayNoteTime
 {
@@ -108,38 +109,39 @@ public static class DayNoteTime
     }
 
     /// <summary>
-    /// Renders a UTC timestamp for display in <paramref name="zone"/>, in the ISO-like format
-    /// <c>yyyy-MM-dd HH:mm:ss</c>.
+    /// Renders a UTC timestamp for display in <paramref name="zone"/> as a date and time in
+    /// <paramref name="culture"/>'s short patterns (timestamp conventions: the platform's locale
+    /// formatting in the interface language).
     /// </summary>
-    public static string ToDisplay(DateTimeOffset value, TimeZoneInfo zone)
+    public static string ToDisplay(DateTimeOffset value, TimeZoneInfo zone, CultureInfo culture)
     {
         var local = TimeZoneInfo.ConvertTime(value.ToUniversalTime(), zone);
-        return local.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+        return local.ToString("g", culture);
     }
 
     /// <summary>
     /// Renders a UTC timestamp for the status bar, relative to <paramref name="now"/>, in
-    /// <paramref name="zone"/>: time only (<c>HH:mm</c>) when it falls on the same calendar day,
-    /// abbreviated month and day (<c>MMM d</c>) when within the same year, otherwise the full date
-    /// (<c>yyyy-MM-dd</c>). Both the same-day/same-year comparison and the formatting run in the zone
-    /// with the invariant culture, so the result is identical regardless of the host's system locale.
+    /// <paramref name="zone"/>: the time alone when it falls on the same calendar day, the month and day
+    /// when within the same year, otherwise the short date. The same-day and same-year comparison runs
+    /// in the zone, and the words and order are <paramref name="culture"/>'s, with the month abbreviated
+    /// where the culture writes it out.
     /// </summary>
-    public static string ToSmartDisplay(DateTimeOffset value, TimeZoneInfo zone, DateTimeOffset now)
+    public static string ToSmartDisplay(DateTimeOffset value, TimeZoneInfo zone, CultureInfo culture, DateTimeOffset now)
     {
         var local = TimeZoneInfo.ConvertTime(value.ToUniversalTime(), zone);
         var localNow = TimeZoneInfo.ConvertTime(now.ToUniversalTime(), zone);
 
         if (local.Date == localNow.Date)
         {
-            return local.ToString("HH:mm", CultureInfo.InvariantCulture);
+            return local.ToString("t", culture);
         }
 
         if (local.Year == localNow.Year)
         {
-            return local.ToString("MMM d", CultureInfo.InvariantCulture);
+            return local.ToString(culture.DateTimeFormat.MonthDayPattern.Replace("MMMM", "MMM", StringComparison.Ordinal), culture);
         }
 
-        return local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return local.ToString("d", culture);
     }
 
     /// <summary>

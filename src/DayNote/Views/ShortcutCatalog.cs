@@ -34,11 +34,12 @@ public enum ShortcutAction
 /// <summary>
 /// One row of the catalog. <see cref="Gesture"/>/<see cref="Action"/> are set only for command
 /// accelerators (which the window both binds and dispatches); display-only rows carry just a label.
-/// <see cref="ShowAsKeycap"/> is true for anything naming a key.
+/// <see cref="ShowAsKeycap"/> is true for anything naming a key. The description is a catalogue key;
+/// the label names keys, whose tokens stay English (keyboard-shortcut conventions).
 /// </summary>
 public sealed record ShortcutItem(
     ShortcutGroup Group,
-    string Description,
+    string DescriptionKey,
     string Label,
     KeyGesture? Gesture = null,
     ShortcutAction? Action = null,
@@ -62,14 +63,14 @@ public static class ShortcutCatalog
         ShortcutGroup.App,
     ];
 
-    public static string GroupHeader(ShortcutGroup group) => group switch
+    /// <summary>The catalogue key of a section's header.</summary>
+    public static string GroupHeaderKey(ShortcutGroup group) => group switch
     {
-        ShortcutGroup.Binders => "Binders",
-        ShortcutGroup.Notes => "Notes",
-        ShortcutGroup.Editor => "Editor",
-        ShortcutGroup.Navigation => "Navigation",
-        ShortcutGroup.App => "App",
-        _ => group.ToString(),
+        ShortcutGroup.Binders => "shortcuts.groupBinders",
+        ShortcutGroup.Notes => "shortcuts.groupNotes",
+        ShortcutGroup.Editor => "shortcuts.groupEditor",
+        ShortcutGroup.Navigation => "shortcuts.groupNavigation",
+        _ => "shortcuts.groupApp",
     };
 
     /// <summary>
@@ -96,33 +97,33 @@ public static class ShortcutCatalog
         return new List<ShortcutItem>
         {
             // Binders — file lifecycle: create, open, persist, close.
-            Command(ShortcutGroup.Binders, "New binder", cmd, cmdLabel, shift: false, Key.N, "N", ShortcutAction.NewBinder),
-            Command(ShortcutGroup.Binders, "Open binder", cmd, cmdLabel, shift: false, Key.O, "O", ShortcutAction.OpenBinder),
-            Command(ShortcutGroup.Binders, "Save now", cmd, cmdLabel, shift: false, Key.S, "S", ShortcutAction.SaveNow),
-            Command(ShortcutGroup.Binders, "Close binder", cmd, cmdLabel, shift: false, Key.W, "W", ShortcutAction.CloseBinder),
+            Command(ShortcutGroup.Binders, "shortcuts.newBinder", cmd, cmdLabel, shift: false, Key.N, "N", ShortcutAction.NewBinder),
+            Command(ShortcutGroup.Binders, "shortcuts.openBinder", cmd, cmdLabel, shift: false, Key.O, "O", ShortcutAction.OpenBinder),
+            Command(ShortcutGroup.Binders, "shortcuts.saveNow", cmd, cmdLabel, shift: false, Key.S, "S", ShortcutAction.SaveNow),
+            Command(ShortcutGroup.Binders, "shortcuts.closeBinder", cmd, cmdLabel, shift: false, Key.W, "W", ShortcutAction.CloseBinder),
 
             // Notes — create, delete, find. (Delete is list-scoped, handled by the notes list itself,
             // so it is documented here as a display row rather than a global accelerator.)
-            Command(ShortcutGroup.Notes, "New note", cmd, cmdLabel, shift: true, Key.N, "N", ShortcutAction.NewNote),
-            Display(ShortcutGroup.Notes, "Delete the selected note", "Delete"),
-            Command(ShortcutGroup.Notes, "Filter notes", cmd, cmdLabel, shift: false, Key.F, "F", ShortcutAction.FilterNotes),
+            Command(ShortcutGroup.Notes, "shortcuts.newNote", cmd, cmdLabel, shift: true, Key.N, "N", ShortcutAction.NewNote),
+            Display(ShortcutGroup.Notes, "shortcuts.deleteNote", "Delete"),
+            Command(ShortcutGroup.Notes, "shortcuts.filterNotes", cmd, cmdLabel, shift: false, Key.F, "F", ShortcutAction.FilterNotes),
 
             // Navigation — move within the binders and notes lists (selecting a row opens it).
-            Display(ShortcutGroup.Navigation, "Move the selection up or down a list", "Up / Down"),
+            Display(ShortcutGroup.Navigation, "shortcuts.moveSelection", "Up / Down"),
             Display(
                 ShortcutGroup.Navigation,
-                "Move the selected binder, attachment, or text style up or down",
+                "shortcuts.reorder",
                 ListReorder.KeyboardLabel(cmdLabel)),
 
             // Editor — the open note.
-            Command(ShortcutGroup.Editor, "Cycle text style", cmd, cmdLabel, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),
+            Command(ShortcutGroup.Editor, "shortcuts.cycleTextStyle", cmd, cmdLabel, shift: false, Key.J, "J", ShortcutAction.CycleTextStyle),
 
             // App — settings and this help.
-            Command(ShortcutGroup.App, "Settings", cmd, cmdLabel, shift: false, Key.OemComma, "Comma", ShortcutAction.OpenSettings),
+            Command(ShortcutGroup.App, "shortcuts.settings", cmd, cmdLabel, shift: false, Key.OemComma, "Comma", ShortcutAction.OpenSettings),
             // F1 is bound in the window as a universal help alias; the spaced " / "
             // joins independent chords (keyboard-shortcut-conventions), and the row
             // must show it — a bound chord the help surface omits is a catalogue gap.
-            Command(ShortcutGroup.App, "Keyboard shortcuts", cmd, cmdLabel, shift: false, Key.OemQuestion, "Slash", ShortcutAction.ShowShortcuts, labelSuffix: " / F1"),
+            Command(ShortcutGroup.App, "shortcuts.shortcuts", cmd, cmdLabel, shift: false, Key.OemQuestion, "Slash", ShortcutAction.ShowShortcuts, labelSuffix: " / F1"),
         };
     }
 
@@ -132,14 +133,14 @@ public static class ShortcutCatalog
     /// gesture's modifier is platform-resolved.
     /// </summary>
     private static ShortcutItem Command(
-        ShortcutGroup group, string description, KeyModifiers cmd, string cmdLabel, bool shift, Key key, string keyName, ShortcutAction action,
+        ShortcutGroup group, string descriptionKey, KeyModifiers cmd, string cmdLabel, bool shift, Key key, string keyName, ShortcutAction action,
         string? labelSuffix = null)
     {
         var label = cmdLabel + "+" + (shift ? "Shift+" : string.Empty) + keyName + (labelSuffix ?? string.Empty);
         var modifiers = cmd | (shift ? KeyModifiers.Shift : KeyModifiers.None);
-        return new ShortcutItem(group, description, label, new KeyGesture(key, modifiers), action);
+        return new ShortcutItem(group, descriptionKey, label, new KeyGesture(key, modifiers), action);
     }
 
-    private static ShortcutItem Display(ShortcutGroup group, string description, string label) =>
-        new(group, description, label);
+    private static ShortcutItem Display(ShortcutGroup group, string descriptionKey, string label) =>
+        new(group, descriptionKey, label);
 }

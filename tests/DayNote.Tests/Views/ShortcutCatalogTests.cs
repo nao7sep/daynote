@@ -74,7 +74,7 @@ public sealed class ShortcutCatalogTests : WindowTest
     public void List_reorder_is_listed_with_the_platform_command_word()
     {
         var (items, cmd) = BuildCatalog();
-        var item = Assert.Single(items, item => item.Description == "Move the selected binder, attachment, or text style up or down");
+        var item = Assert.Single(items, item => item.DescriptionKey == "shortcuts.reorder");
         var commandLabel = cmd == KeyModifiers.Meta ? "Cmd" : "Ctrl";
 
         Assert.Equal($"{commandLabel}+Shift+Up/Down", item.Label);

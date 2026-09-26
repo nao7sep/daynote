@@ -12,6 +12,7 @@ using Avalonia.Threading;
 using DayNote.Controls;
 using DayNote.Core.Configuration;
 using DayNote.Core.Time;
+using DayNote.I18n;
 
 namespace DayNote.Views;
 
@@ -23,11 +24,11 @@ namespace DayNote.Views;
 /// </summary>
 public sealed class SettingsDialog : DialogBase
 {
-    private static readonly (ThemePreference Value, string Label)[] ThemeChoices =
+    private static readonly (ThemePreference Value, string LabelKey)[] ThemeChoices =
     [
-        (ThemePreference.System, "System"),
-        (ThemePreference.Light, "Light"),
-        (ThemePreference.Dark, "Dark"),
+        (ThemePreference.System, "settings.themeSystem"),
+        (ThemePreference.Light, "settings.themeLight"),
+        (ThemePreference.Dark, "settings.themeDark"),
     ];
 
     private readonly AppConfig _config;
@@ -42,6 +43,7 @@ public sealed class SettingsDialog : DialogBase
     private readonly CheckBox _styleItalic;
     private readonly Button _setDefault;
     private readonly Button _removeStyle;
+    private readonly ComboBox _language;
     private readonly IReadOnlyList<RadioButton> _themeButtons;
     private readonly TextBox _uiFont;
     private readonly NumericUpDown _autosave;
@@ -64,7 +66,7 @@ public sealed class SettingsDialog : DialogBase
         _config = config;
         _trySave = trySave;
         _askBeforeRemoving = askBeforeRemoving ?? AskBeforeRemovingAsync;
-        Title = "Settings";
+        Localized.SetTitle(this, "settings.title");
         Width = 660;
 
         // The preset list. Add belongs to the list; the selected preset's own actions sit with its
@@ -78,32 +80,32 @@ public sealed class SettingsDialog : DialogBase
         _styleList.BorderThickness = new Thickness(1);
         _styleList.CornerRadius = new CornerRadius(6);
         _styleList.Themed(ListBox.BorderBrushProperty, "BorderBrush");
-        AutomationProperties.SetName(_styleList, "Text styles");
+        Localized.SetAutomationName(_styleList, "settings.textStyles");
         DragDrop.SetAllowDrop(_styleList, true);
         _styleList.SelectionChanged += (_, _) => LoadSelectedStyle();
         _ = new ListReorder<StyleRow>(_styleList, canReorder: null, MoveStyle, Revalidate, () => _styleRows.ToArray(), RestoreStyles);
 
-        var addStyle = Utility("Add", AddStyle, "AddTextStyleButton");
+        var addStyle = Utility("common.add", AddStyle, "AddTextStyleButton");
         addStyle.HorizontalAlignment = HorizontalAlignment.Right;
         var listHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
-        var listLabel = Label("Text styles");
+        var listLabel = Label("settings.textStyles");
         listLabel.VerticalAlignment = VerticalAlignment.Center;
         listHeader.Children.Add(listLabel);
         Grid.SetColumn(addStyle, 1);
         listHeader.Children.Add(addStyle);
 
-        _styleFontFamily = new ComposingTextBox
-        {
-            Name = "TextStyleFontFamily",
-            PlaceholderText = "Font family (e.g. Menlo)",
-        };
+        _styleFontFamily = new ComposingTextBox { Name = "TextStyleFontFamily" };
+        Localized.SetPlaceholderText(_styleFontFamily, "settings.fontFamilyPlaceholder");
         _styleFontSize = Numeric((decimal)SettingsValidator.MinFontSize, (decimal)SettingsValidator.MaxFontSize, 1);
         _styleLineSpacing = Numeric((decimal)SettingsValidator.MinLineSpacing, (decimal)SettingsValidator.MaxLineSpacing, 0.1m);
         _stylePadding = Numeric((decimal)SettingsValidator.MinPadding, (decimal)SettingsValidator.MaxPadding, 1);
-        _styleBold = new CheckBox { Content = "Bold" };
-        _styleItalic = new CheckBox { Content = "Italic" };
-        _setDefault = Utility("Set as default", MakeSelectedDefault, "SetDefaultTextStyleButton");
-        _removeStyle = new Button { Content = "Remove", Name = "RemoveTextStyleButton" };
+        _styleBold = new CheckBox();
+        Localized.SetContent(_styleBold, "settings.bold");
+        _styleItalic = new CheckBox();
+        Localized.SetContent(_styleItalic, "settings.italic");
+        _setDefault = Utility("settings.setDefault", MakeSelectedDefault, "SetDefaultTextStyleButton");
+        _removeStyle = new Button { Name = "RemoveTextStyleButton" };
+        Localized.SetContent(_removeStyle, "common.remove");
         _removeStyle.Classes.Add("danger");
         _removeStyle.Click += (_, _) => RemoveSelectedStyle();
 
@@ -117,17 +119,15 @@ public sealed class SettingsDialog : DialogBase
 
         // The preset's marks and the preset's own actions share one line: the checkboxes read left,
         // the actions sit at the trailing edge where every other action row in this app puts them.
-        var decorationRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 16 };
-        decorationRow.Children.Add(decorations);
-        Grid.SetColumn(styleActions, 1);
-        decorationRow.Children.Add(styleActions);
+        // Where a language's labels are too long for one line, the actions take a line of their own.
+        var decorationRow = new LeadingTrailingRow(decorations, styleActions) { Spacing = 16, LineSpacing = 10 };
 
         var editor = new StackPanel { Spacing = 10 };
-        editor.Children.Add(Field("Font family", _styleFontFamily));
+        editor.Children.Add(Field("settings.fontFamily", _styleFontFamily));
         editor.Children.Add(Row(
-            ("*", Field("Font size", _styleFontSize)),
-            ("*", Field("Line spacing", _styleLineSpacing)),
-            ("*", Field("Padding", _stylePadding))));
+            ("*", Field("settings.fontSize", _styleFontSize)),
+            ("*", Field("settings.lineSpacing", _styleLineSpacing)),
+            ("*", Field("settings.padding", _stylePadding))));
         editor.Children.Add(decorationRow);
 
         // The list's header and the editor's first field start on one line, so the right half has no
@@ -151,8 +151,27 @@ public sealed class SettingsDialog : DialogBase
         Grid.SetRowSpan(editor, 2);
         styleSurface.Children.Add(editor);
 
+        // System first, then each language by its own name, so a reader finds theirs whatever language
+        // is showing. Applied on Save like every other field here.
+        var languages = LanguageOption.All();
+        _language = new ComboBox
+        {
+            Name = "LanguageBox",
+            ItemsSource = languages,
+            SelectedItem = LanguageOption.For(config.Language, languages),
+            DisplayMemberBinding = new Binding(nameof(LanguageOption.Name)),
+            MinWidth = 200,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        Localized.SetAutomationName(_language, "settings.language");
+
         _themeButtons = ThemeChoices
-            .Select(choice => new RadioButton { Content = choice.Label, IsChecked = choice.Value == config.Theme })
+            .Select(choice =>
+            {
+                var button = new RadioButton { IsChecked = choice.Value == config.Theme };
+                Localized.SetContent(button, choice.LabelKey);
+                return button;
+            })
             .ToList();
         var themeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 20 };
         foreach (var button in _themeButtons)
@@ -160,9 +179,8 @@ public sealed class SettingsDialog : DialogBase
             themeRow.Children.Add(button);
         }
 
-        AutomationProperties.SetName(themeRow, "Theme");
-        var themeHint = new TextBlock { Text = "System follows the OS appearance.", FontSize = 12 }
-            .Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        Localized.SetAutomationName(themeRow, "settings.theme");
+        var themeHint = Hint("settings.themeHint");
 
         _uiFont = new ComposingTextBox { Text = config.UiFontFamily, PlaceholderText = AppConfig.DefaultUiFontFamily };
         _autosave = Numeric((decimal)SettingsValidator.MinAutosaveSeconds, (decimal)SettingsValidator.MaxAutosaveSeconds, 0.25m);
@@ -182,18 +200,21 @@ public sealed class SettingsDialog : DialogBase
             MinWidth = 280,
             HorizontalAlignment = HorizontalAlignment.Left,
         };
-        AutomationProperties.SetName(_timeZone, "Time zone");
+        Localized.SetAutomationName(_timeZone, "settings.timeZone");
 
         var panel = new StackPanel { Spacing = 8, Width = 600 };
+        panel.Children.Add(Label("settings.language"));
+        panel.Children.Add(_language);
         panel.Children.Add(styleSurface);
-        panel.Children.Add(Label("Theme"));
+        panel.Children.Add(Label("settings.theme"));
         panel.Children.Add(themeRow);
         panel.Children.Add(themeHint);
-        panel.Children.Add(Label("UI font (comma-separated; first installed is used; blank = Inter)"));
+        panel.Children.Add(Label("settings.uiFont"));
         panel.Children.Add(_uiFont);
-        panel.Children.Add(Label("Autosave delay (seconds)"));
+        panel.Children.Add(Hint("settings.uiFontHint"));
+        panel.Children.Add(Label("settings.autosave"));
         panel.Children.Add(_autosave);
-        panel.Children.Add(Label("Time zone"));
+        panel.Children.Add(Label("settings.timeZone"));
         panel.Children.Add(_timeZone);
         _saveError = new TextBlock
         {
@@ -205,7 +226,7 @@ public sealed class SettingsDialog : DialogBase
         panel.Children.Add(_saveError);
 
         SetContent(panel);
-        var buttons = SetButtons([new DialogButton("Cancel", "cancel"), new DialogButton("Save", "ok", DialogButtonKind.Primary)]);
+        var buttons = SetButtons([new DialogButton("common.cancel", "cancel"), new DialogButton("common.save", "ok", DialogButtonKind.Primary)]);
         _saveButton = buttons["ok"];
 
         BuildStyleList();
@@ -217,6 +238,15 @@ public sealed class SettingsDialog : DialogBase
             if (_autosave.Value is { } value)
             {
                 _config.AutosaveDelaySeconds = (double)value;
+            }
+
+            Revalidate();
+        };
+        _language.SelectionChanged += (_, _) =>
+        {
+            if (_language.SelectedItem is LanguageOption language)
+            {
+                _config.Language = language.Value;
             }
 
             Revalidate();
@@ -269,7 +299,7 @@ public sealed class SettingsDialog : DialogBase
             return true;
         }
 
-        _saveError.Text = "Settings could not be saved. Your changes are still here; try again.";
+        _saveError.Text = Localizer.T("failure.settingsSave");
         _saveError.IsVisible = true;
         return false;
     }
@@ -448,11 +478,11 @@ public sealed class SettingsDialog : DialogBase
     private async Task<bool> AskBeforeRemovingAsync(string label)
     {
         var dialog = new MessageDialog(
-            "Remove text style",
-            $"Remove \u201C{label}\u201D? The notes that used it fall back to the default.",
+            Message.Of("settings.removeStyleTitle"),
+            Message.Of("settings.removeStyleMessage", ("style", label)),
             [
-                new DialogButton("Cancel", "cancel"),
-                new DialogButton("Remove", "confirm", DialogButtonKind.Destructive),
+                new DialogButton("common.cancel", "cancel"),
+                new DialogButton("common.remove", "confirm", DialogButtonKind.Destructive),
             ]);
         await dialog.ShowBoundedAsync(this);
         return dialog.ResultTag == "confirm";
@@ -460,7 +490,7 @@ public sealed class SettingsDialog : DialogBase
 
     private void RefreshStyleRows()
     {
-        var labels = TextStyleLabels.For(_config.TextStyles);
+        var labels = TextStyleLabels.For(_config.TextStyles, Localizer.T("settings.noFontFamily"), Localizer.Current.Culture);
         for (var index = 0; index < _styleRows.Count; index++)
         {
             _styleRows[index].Refresh(labels[index]);
@@ -497,11 +527,10 @@ public sealed class SettingsDialog : DialogBase
     {
         var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         label.Bind(TextBlock.TextProperty, new Binding(nameof(StyleRow.Label)));
-        var badge = new Border
-        {
-            Child = new TextBlock { Text = "Default", FontSize = 11, FontWeight = FontWeight.SemiBold }
-                .Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"),
-        };
+        var badgeText = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold }
+            .Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        Localized.SetText(badgeText, "settings.defaultBadge");
+        var badge = new Border { Child = badgeText };
         badge.Classes.Add("badge");
         badge.Bind(IsVisibleProperty, new Binding(nameof(StyleRow.IsDefault)));
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
@@ -560,18 +589,22 @@ public sealed class SettingsDialog : DialogBase
         }
     }
 
-    private static Button Utility(string text, Action onClick, string? name = null)
+    private static Button Utility(string labelKey, Action onClick, string? name = null)
     {
-        var button = new Button { Content = text, Name = name };
+        var button = new Button { Name = name };
+        Localized.SetContent(button, labelKey);
         button.Classes.Add("utility");
         button.Click += (_, _) => onClick();
         return button;
     }
 
-    private static StackPanel Field(string label, Control control)
+    // A field's label wraps rather than running past its third of the editor in a longer language.
+    private static StackPanel Field(string labelKey, Control control)
     {
         var field = new StackPanel { Spacing = 4 };
-        field.Children.Add(new TextBlock { Text = label, FontWeight = FontWeight.SemiBold, FontSize = 12 });
+        var label = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        Localized.SetText(label, labelKey);
+        field.Children.Add(label);
         field.Children.Add(control);
         return field;
     }
@@ -592,7 +625,21 @@ public sealed class SettingsDialog : DialogBase
         return grid;
     }
 
-    private static TextBlock Label(string text) => new() { Text = text, FontWeight = FontWeight.SemiBold };
+    // Section labels and hints wrap inside the dialog's fixed width in every language.
+    private static TextBlock Label(string key)
+    {
+        var label = new TextBlock { FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
+        Localized.SetText(label, key);
+        return label;
+    }
+
+    private static TextBlock Hint(string key)
+    {
+        var hint = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap }
+            .Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+        Localized.SetText(hint, key);
+        return hint;
+    }
 
     private sealed class StyleRow(EditorTextStyle style) : INotifyPropertyChanged
     {
@@ -613,14 +660,15 @@ public sealed class SettingsDialog : DialogBase
 
 /// <summary>
 /// A line in the Settings time-zone list: the value that is saved, and the words shown for it. System
-/// names the zone it follows now, so the reader sees which zone that is on this computer.
+/// names the zone it follows now, so the reader sees which zone that is on this computer; the zones
+/// themselves go by their IANA ids, which read the same in every language.
 /// </summary>
 public sealed record TimeZoneOption(string Value, string Name)
 {
     /// <summary>System first, then each zone by its IANA id.</summary>
     internal static IReadOnlyList<TimeZoneOption> All(string? saved) =>
     [
-        new(DayNoteTime.SystemZone, $"System ({DayNoteTime.SystemZoneId()})"),
+        new(DayNoteTime.SystemZone, Localizer.T("settings.timeZoneSystem", ("zone", DayNoteTime.SystemZoneId()))),
         .. DayNoteTime.ZoneIds(saved).Select(id => new TimeZoneOption(id, id)),
     ];
 

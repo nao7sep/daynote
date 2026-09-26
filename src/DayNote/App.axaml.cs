@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using DayNote.I18n;
 using DayNote.Services;
 using DayNote.ViewModels;
 using DayNote.Views;
@@ -11,7 +12,13 @@ namespace DayNote;
 
 public partial class App : Application
 {
-    internal static string? StartupFailureMessage { get; set; }
+    internal static Message? StartupFailureMessage { get; set; }
+
+    /// <summary>
+    /// The computer's own languages, in order, as <c>LanguageBootstrap</c> read them before the app was
+    /// built. Handed to the view model so a language saved in Settings resolves System the same way.
+    /// </summary>
+    internal static IReadOnlyList<string> ComputerLanguages { get; set; } = [];
 
     // The main window and its view model, which the app menu's About and Settings items open through.
     // Null while a startup failure is shown instead, when those items are disabled.
@@ -39,7 +46,7 @@ public partial class App : Application
             if (StartupFailureMessage is { } startupFailure)
             {
                 desktop.MainWindow = MessageDialog.CreateStartupFailure(
-                    "DayNote could not start",
+                    Message.Of("startup.failedTitle"),
                     startupFailure);
                 base.OnFrameworkInitializationCompleted();
                 return;
@@ -48,7 +55,10 @@ public partial class App : Application
             // The view model owns its stores and gates all startup I/O (directory creation, reading
             // config/state) so a failure becomes an in-app error rather than a pre-UI crash.
             var dialogs = new DialogService(Program.Log);
-            var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log);
+            var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log)
+            {
+                ComputerLanguages = ComputerLanguages,
+            };
             _viewModel = viewModel;
             // Before the main window exists, so its first frame and title bar take the saved theme.
             // A startup failure above never reads settings, so its dialog follows the OS.
@@ -75,7 +85,7 @@ public partial class App : Application
                     var lostBinderList = quarantined.Any(
                         path => System.IO.Path.GetFileName(path).StartsWith("state-", StringComparison.Ordinal));
                     await dialogs.ShowErrorAsync(
-                        lostBinderList ? "The binder list was reset" : "A settings file was reset",
+                        Message.Of(lostBinderList ? "quarantine.binderListTitle" : "quarantine.settingsTitle"),
                         FailurePresentation.RecoveredData(lostBinderList));
                 }
             };

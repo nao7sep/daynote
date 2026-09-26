@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
 using DayNote.Core.Text;
 using DayNote.Core.Time;
+using DayNote.I18n;
 
 namespace DayNote.ViewModels;
 
@@ -40,29 +41,22 @@ public sealed partial class NoteListItemViewModel : ObservableObject
     private bool _isStatusExpired;
 
     /// <summary>
-    /// Re-reads the title, status, and creation time from the underlying note. The owner passes the zone
-    /// it displays times in now, rather than the row keeping the one it was built with, so a zone saved
-    /// in Settings reaches every row.
+    /// Re-reads the title, status, and creation time from the underlying note, in the current language.
+    /// The owner passes the zone it displays times in now, rather than the row keeping the one it was
+    /// built with, so a zone saved in Settings reaches every row; it calls this again when the language
+    /// changes.
     /// </summary>
     public void Refresh(TimeZoneInfo displayZone)
     {
         Title = DisplayLabel();
         // Show the creation time consistently (not modified) so the list order (newest-created first)
         // and the displayed date agree, and a row does not jump its label as it is edited.
-        Subtitle = DayNoteTime.ToDisplay(Note.Created, displayZone);
-        StatusLabel = StatusText(Note.Status);
+        Subtitle = DayNoteTime.ToDisplay(Note.Created, displayZone, Localizer.Current.Culture);
+        StatusLabel = Localizer.T(NoteStatusText.KeyOf(Note.Status));
         IsStatusReady = Note.Status == NoteStatus.Ready;
         IsStatusPublished = Note.Status == NoteStatus.Published;
         IsStatusExpired = Note.Status == NoteStatus.Expired;
     }
-
-    private static string StatusText(NoteStatus status) => status switch
-    {
-        NoteStatus.Ready => "Ready",
-        NoteStatus.Published => "Published",
-        NoteStatus.Expired => "Expired",
-        _ => "Draft",
-    };
 
     /// <summary>
     /// The note's title, or — until one is set — a single-line preview of the body, so an untitled
@@ -76,6 +70,6 @@ public sealed partial class NoteListItemViewModel : ObservableObject
         }
 
         var preview = TextCleanup.Truncate(Note.Body, LabelLength).Text;
-        return string.IsNullOrEmpty(preview) ? "(untitled)" : preview;
+        return string.IsNullOrEmpty(preview) ? Localizer.T("note.untitled") : preview;
     }
 }

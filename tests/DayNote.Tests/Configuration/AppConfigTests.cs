@@ -89,8 +89,29 @@ public sealed class AppConfigTests
         };
 
         Assert.Equal(
-            new[] { "Menlo 14", "Menlo 18.5", "Inter", TextStyleLabels.NoFontFamily, "\u904a\u660e\u671d\u4f53" },
-            TextStyleLabels.For(styles));
+            new[] { "Menlo 14", "Menlo 18.5", "Inter", "No font family", "\u904a\u660e\u671d\u4f53" },
+            TextStyleLabels.For(styles, "No font family", System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void A_size_in_a_label_is_written_in_the_readers_culture()
+    {
+        var styles = new[]
+        {
+            new EditorTextStyle { FontFamily = "Menlo", FontSize = 14 },
+            new EditorTextStyle { FontFamily = "Menlo", FontSize = 18.5 },
+        };
+
+        Assert.Equal(
+            new[] { "Menlo 14", "Menlo 18,5" },
+            TextStyleLabels.For(styles, "-", System.Globalization.CultureInfo.GetCultureInfo("de")));
+    }
+
+    [Fact]
+    public void The_language_defaults_to_system_and_is_copied()
+    {
+        Assert.Equal("system", new AppConfig().Language);
+        Assert.Equal("ja", new AppConfig { Language = "ja" }.Copy().Language);
     }
 
     [Fact]

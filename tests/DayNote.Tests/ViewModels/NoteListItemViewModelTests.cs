@@ -1,5 +1,7 @@
 using System;
 using DayNote.Core.Models;
+using DayNote.Core.Time;
+using DayNote.I18n;
 using DayNote.ViewModels;
 using Xunit;
 
@@ -62,7 +64,9 @@ public sealed class NoteListItemViewModelTests
     {
         var item = new NoteListItemViewModel(Note(), TimeZoneInfo.Utc);
 
-        Assert.Equal("2026-06-11 09:00:00", item.Subtitle);
+        Assert.Equal(
+            DayNoteTime.ToDisplay(item.Note.Created, TimeZoneInfo.Utc, Localizer.Current.Culture),
+            item.Subtitle);
     }
 
     [Fact]
@@ -72,7 +76,10 @@ public sealed class NoteListItemViewModelTests
 
         item.Refresh(TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata"));
 
-        Assert.Equal("2026-06-11 14:30:00", item.Subtitle);
+
+        var kolkata = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata");
+        Assert.Equal(DayNoteTime.ToDisplay(item.Note.Created, kolkata, Localizer.Current.Culture), item.Subtitle);
+        Assert.NotEqual(DayNoteTime.ToDisplay(item.Note.Created, TimeZoneInfo.Utc, Localizer.Current.Culture), item.Subtitle);
     }
 
     [Fact]

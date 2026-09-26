@@ -1,23 +1,28 @@
 using Avalonia.Controls;
 using Avalonia.Media;
+using DayNote.I18n;
 
 namespace DayNote.Views;
 
-/// <summary>A simple text dialog with a configurable button row, used for confirmations, errors, and choices.</summary>
+/// <summary>
+/// A simple text dialog with a configurable button row, used for confirmations, errors, and choices.
+/// Its title and message are rendered once, as it is built: it is modal, so the language cannot change
+/// while it is up.
+/// </summary>
 public sealed class MessageDialog : DialogBase
 {
     public MessageDialog(
-        string title,
-        string message,
+        Message title,
+        Message message,
         IReadOnlyList<DialogButton> buttons,
         double width = 440)
     {
-        Title = title;
+        Title = Localizer.Of(title);
         Width = width;
 
         SetContent(new TextBlock
         {
-            Text = message,
+            Text = Localizer.Of(message),
             TextWrapping = TextWrapping.Wrap,
             FontSize = 14,
             MaxWidth = width - 48,
@@ -41,12 +46,12 @@ public sealed class MessageDialog : DialogBase
     /// A startup failure notice used as the main window. It has no owner to be bounded by, so the
     /// screen bounds it, and the lifetime shows it once it is returned.
     /// </summary>
-    public static Window CreateStartupFailure(string title, string message)
+    public static Window CreateStartupFailure(Message title, Message message)
     {
         var dialog = new MessageDialog(
             title,
             message,
-            [new DialogButton("Close", "close", DialogButtonKind.Primary)]);
+            [new DialogButton("common.close", "close", DialogButtonKind.Primary)]);
         dialog.BoundHeightToScreen();
         ShowAsOnlyWindow(dialog);
         return dialog;

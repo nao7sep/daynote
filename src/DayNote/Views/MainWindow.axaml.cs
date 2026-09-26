@@ -10,6 +10,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using DayNote.Controls;
+using DayNote.I18n;
 using DayNote.ViewModels;
 
 namespace DayNote.Views;
@@ -268,6 +269,9 @@ public partial class MainWindow : Window
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
+        // While the window is open it answers a language change for its view model's words, which
+        // markup cannot hold a key for. Only while it is open, so a closed window is never written to.
+        Localizer.Changed += OnLanguageChanged;
         RememberNormalGeometry();
         if (DataContext is MainWindowViewModel vm)
         {
@@ -392,9 +396,12 @@ public partial class MainWindow : Window
     private void RememberNormalGeometryAfterNativeEvents() =>
         Dispatcher.UIThread.Post(RememberNormalGeometry);
 
-    // Symmetric with the OnOpened subscription, so the handler never outlives the window.
+    private void OnLanguageChanged() => (DataContext as MainWindowViewModel)?.Retranslate();
+
+    // Symmetric with the OnOpened subscriptions, so no handler outlives the window.
     protected override void OnClosed(EventArgs e)
     {
+        Localizer.Changed -= OnLanguageChanged;
         if (DataContext is MainWindowViewModel vm)
         {
             vm.NoteCreated -= OnNoteCreated;

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
+using DayNote.I18n;
 using DayNote.Logging;
 
 namespace DayNote.ViewModels;
@@ -9,15 +10,16 @@ namespace DayNote.ViewModels;
 /// <summary>
 /// A row in the attachments pane. Images are decoded to a bounded thumbnail; other files and failed
 /// previews use the view's generic document placeholder. A details line shows the image dimensions
-/// (for images) and the file size.
+/// (for images) and the file size, in the current language (<see cref="Retranslate"/>).
 /// </summary>
 public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposable
 {
     private const int ThumbnailWidth = 240;
-    private const string UnavailableMessage = "This attachment is unavailable on disk.";
+    private const string UnavailableKey = "attachment.unavailableMessage";
 
     private readonly IAppLogger _log;
-    private string _sizeText;
+    private long _size;
+    private PixelSize? _dimensions;
     private bool _disposed;
 
     public AttachmentItemViewModel(Attachment attachment, IAppLogger log)
@@ -28,16 +30,14 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         FullPath = attachment.FullPath;
         IsImage = attachment.IsImage;
         Exists = File.Exists(attachment.FullPath);
-        _sizeText = FormatSize(FileSize(attachment.FullPath));
-        // Until/unless image dimensions load, the details line is just the file size.
-        DetailsText = Exists ? _sizeText : "Unavailable";
+        _size = FileSize(attachment.FullPath);
 
         if (!Exists)
         {
             _log.Warn("Attachment is unavailable", new { path = FullPath });
             Result = new OperationResultViewModel(
                 OperationResultKind.Warning,
-                UnavailableMessage,
+                Message.Of(UnavailableKey),
                 isPersistent: true);
         }
 
@@ -56,11 +56,18 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     public bool IsImage { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DetailsText))]
     private bool _exists;
 
-    /// <summary>Secondary line: "<c>W×H · size</c>" for an image, just the size otherwise.</summary>
-    [ObservableProperty]
-    private string _detailsText = string.Empty;
+    /// <summary>
+    /// Secondary line: "<c>W×H · size</c>" for an image whose dimensions have loaded, just the size
+    /// otherwise, and a word saying so when the file is gone.
+    /// </summary>
+    public string DetailsText => !Exists
+        ? Localizer.T("attachment.unavailable")
+        : _dimensions is { } size
+            ? $"{size.Width}×{size.Height} · {FormatSize(_size)}"
+            : FormatSize(_size);
 
     [ObservableProperty]
     private Bitmap? _thumbnail;
@@ -86,31 +93,38 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     public void ShowOpenFailure() =>
         Result = new OperationResultViewModel(
             OperationResultKind.Error,
-            "Could not open this attachment. Double-click to try again.",
+            Message.Of("attachment.openFailed"),
             isPersistent: true);
+
+    /// <summary>Called by the main window's view model when the language changes.</summary>
+    internal void Retranslate()
+    {
+        OnPropertyChanged(nameof(DetailsText));
+        Result?.Retranslate();
+    }
 
     public void ShowUnavailable()
     {
         Exists = false;
         Thumbnail?.Dispose();
         Thumbnail = null;
-        DetailsText = "Unavailable";
-        if (Result is { Kind: OperationResultKind.Warning, Message: UnavailableMessage })
+        _dimensions = null;
+        if (Result is { Kind: OperationResultKind.Warning, Message.Key: UnavailableKey })
         {
             return;
         }
 
         Result = new OperationResultViewModel(
             OperationResultKind.Warning,
-            UnavailableMessage,
+            Message.Of(UnavailableKey),
             isPersistent: true);
     }
 
     public void ClearOpenResult()
     {
+        _size = FileSize(FullPath);
         Exists = true;
-        _sizeText = FormatSize(FileSize(FullPath));
-        DetailsText = _sizeText;
+        OnPropertyChanged(nameof(DetailsText));
         if (Result?.Kind is OperationResultKind.Warning or OperationResultKind.Error)
         {
             Result = null;
@@ -148,7 +162,8 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             }
 
             Thumbnail = bitmap;
-            DetailsText = $"{size.Width}×{size.Height} · {_sizeText}";
+            _dimensions = size;
+            OnPropertyChanged(nameof(DetailsText));
         }
         catch (Exception ex)
         {
@@ -171,14 +186,17 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         }
     }
 
+    // The unit is catalogue text, since some languages abbreviate it their own way (French writes
+    // "Ko"), and the number is written with the reader's decimal mark.
     private static string FormatSize(long bytes)
     {
+        var culture = Localizer.Current.Culture;
         if (bytes < 1024)
         {
-            return $"{bytes} B";
+            return Localizer.T("size.bytes", ("size", bytes.ToString("N0", culture)));
         }
 
-        string[] units = { "KB", "MB", "GB", "TB" };
+        string[] units = ["size.kilobytes", "size.megabytes", "size.gigabytes", "size.terabytes"];
         double value = bytes;
         var unit = -1;
         do
@@ -188,7 +206,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         }
         while (value >= 1024 && unit < units.Length - 1);
 
-        return value >= 100 ? $"{value:0} {units[unit]}" : $"{value:0.0} {units[unit]}";
+        return Localizer.T(units[unit], ("size", value.ToString(value >= 100 ? "0" : "0.0", culture)));
     }
 
     public void Dispose()

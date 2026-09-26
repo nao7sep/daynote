@@ -1,0 +1,6 @@
+/* The permission prompts macOS shows when DayNote first reaches a protected folder, in Korean.
+   The keys are Info.plist's own; en.lproj/InfoPlist.strings holds the English they translate. */
+
+"NSDesktopFolderUsageDescription" = "DayNote가 데스크탑에서 바인더와 첨부 파일을 열고 저장하려면 접근 권한이 필요합니다.";
+"NSDocumentsFolderUsageDescription" = "DayNote가 문서 폴더에서 바인더와 첨부 파일을 열고 저장하려면 접근 권한이 필요합니다.";
+"NSDownloadsFolderUsageDescription" = "DayNote가 다운로드 폴더에서 바인더와 첨부 파일을 열고 저장하려면 접근 권한이 필요합니다.";

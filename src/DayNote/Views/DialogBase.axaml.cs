@@ -41,11 +41,11 @@ public partial class DialogBase : Window
         {
             var button = new Button
             {
-                Content = spec.Label,
                 Tag = spec.Tag,
                 MinWidth = 88,
                 HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
             };
+            I18n.Localized.SetContent(button, spec.LabelKey);
 
             button.Classes.Add(spec.Kind switch
             {
@@ -148,5 +148,8 @@ public enum DialogButtonKind
     Destructive,
 }
 
-/// <summary>A dialog footer button: its label, the <see cref="DialogBase.ResultTag"/> it yields, and its kind.</summary>
-public sealed record DialogButton(string Label, string Tag, DialogButtonKind Kind = DialogButtonKind.Secondary);
+/// <summary>
+/// A dialog footer button: the catalogue key of its label, the <see cref="DialogBase.ResultTag"/> it
+/// yields, and its kind.
+/// </summary>
+public sealed record DialogButton(string LabelKey, string Tag, DialogButtonKind Kind = DialogButtonKind.Secondary);

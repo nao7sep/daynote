@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using DayNote.Core.Backup;
 using DayNote.Core.Storage;
+using DayNote.I18n;
 using DayNote.Logging;
 using DayNote.Services;
 using DayNote.ViewModels;
@@ -23,18 +24,31 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        AppPaths paths;
+        AppPaths? resolved = null;
+        Exception? unresolved = null;
         try
         {
-            paths = new AppPaths();
+            resolved = new AppPaths();
         }
         catch (Exception ex)
         {
+            unresolved = ex;
+        }
+
+        // The interface language, before anything can draw and before Avalonia creates the macOS
+        // application object, which settles the language of the menu items AppKit contributes itself.
+        // It reads the saved preference straight from config.json and falls back to the computer's own
+        // languages, so it holds on the startup-failure paths below, where there is no usable storage.
+        App.ComputerLanguages = LanguageBootstrap.Start(resolved?.ConfigFile);
+
+        if (resolved is not { } paths)
+        {
             // An unusable DAYNOTE_HOME (or an unknown home) is a startup error we report and STOP on.
             // The logger isn't up yet — its directory derives from these very paths — so stderr is the
-            // channel; exit non-zero before any UI loads.
+            // channel, and it stays English with the exception's own message: this is the diagnostic
+            // channel, not an interface surface. What the reader sees is the notice window.
             Console.Error.WriteLine(
-                "DayNote cannot start: its storage location could not be resolved. " + ex.Message);
+                "DayNote cannot start: its storage location could not be resolved. " + unresolved!.Message);
             App.StartupFailureMessage = FailurePresentation.StartupStorage();
             _ = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
             return 1;
@@ -77,6 +91,7 @@ internal static class Program
         {
             version = AppInfo.Version,
             runtime = RuntimeInformation.FrameworkDescription,
+            language = Localizer.Language,
         });
 
         var forced = false;

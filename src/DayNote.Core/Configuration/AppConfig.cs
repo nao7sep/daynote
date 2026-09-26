@@ -6,8 +6,8 @@ namespace DayNote.Core.Configuration;
 
 /// <summary>
 /// Durable user preferences, persisted to <c>~/.daynote/config.json</c>. Properties are declared
-/// in a deliberate, grouped order so the serialized file is canonical: app appearance, then editor
-/// appearance, then editing behavior, then display.
+/// in a deliberate, grouped order so the serialized file is canonical: the interface language, then app
+/// appearance, then editor appearance, then editing behavior, then display.
 /// </summary>
 public sealed class AppConfig : IJsonOnDeserialized
 {
@@ -24,6 +24,17 @@ public sealed class AppConfig : IJsonOnDeserialized
         new EditorTextStyle { IsDefault = true, FontFamily = EditorTextStyle.DefaultFixedWidthFamilies, FontSize = 14, LineSpacing = 1.4, Padding = 12 },
         new EditorTextStyle { FontFamily = "Inter", FontSize = 15, LineSpacing = 1.5, Padding = 14 },
     };
+
+    /// <summary>The saved language that means "follow the computer's own languages".</summary>
+    public const string SystemLanguage = "system";
+
+    /// <summary>
+    /// The interface language: a BCP 47 tag from the set, or <see cref="SystemLanguage"/> to follow the
+    /// computer's own languages at each launch. The app reads it straight out of the file before it is
+    /// built (<c>I18n/LanguageBootstrap.cs</c>), so the first frame is already in it; a missing or
+    /// unknown value means System.
+    /// </summary>
+    public string Language { get; set; } = SystemLanguage;
 
     // App appearance — the UI (chrome) font family. Family only; an empty value falls back to the
     // bundled default (Inter). Applied app-wide; the editor body uses its own text-style preset, so
@@ -111,6 +122,7 @@ public sealed class AppConfig : IJsonOnDeserialized
     /// <summary>Returns a deep copy, used to give the settings dialog an editable working copy.</summary>
     public AppConfig Copy() => new()
     {
+        Language = Language,
         UiFontFamily = UiFontFamily,
         Theme = Theme,
         TextStyles = TextStyles.Select(style => style.Copy()).ToList(),

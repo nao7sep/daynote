@@ -1,0 +1,6 @@
+/* The permission prompts macOS shows when DayNote first reaches a protected folder, in English.
+   The English here is Info.plist's own; a test holds the two to the same words. */
+
+"NSDesktopFolderUsageDescription" = "DayNote needs access to open and save binders and their attachments on your Desktop.";
+"NSDocumentsFolderUsageDescription" = "DayNote needs access to open and save binders and their attachments in your Documents folder.";
+"NSDownloadsFolderUsageDescription" = "DayNote needs access to open and save binders and their attachments in your Downloads folder.";

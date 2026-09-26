@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using DayNote.I18n;
 
 namespace DayNote.Views;
 
@@ -16,7 +17,7 @@ public sealed class ShortcutsDialog : DialogBase
     public ShortcutsDialog(IReadOnlyList<ShortcutItem> shortcuts)
     {
         Width = 820;
-        Title = "Keyboard Shortcuts";
+        Localized.SetTitle(this, "shortcuts.title");
 
         var groups = ShortcutCatalog.GroupOrder
             .Select(group => (Group: group, Rows: shortcuts.Where(s => s.Group == group).ToList()))
@@ -31,13 +32,14 @@ public sealed class ShortcutsDialog : DialogBase
             foreach (var (group, rows) in column == 0 ? groups.Take(split) : groups.Skip(split))
             {
                 var section = new StackPanel();
-                section.Children.Add(new TextBlock
+                var header = new TextBlock
                 {
-                    Text = ShortcutCatalog.GroupHeader(group),
                     FontWeight = FontWeight.SemiBold,
                     FontSize = 13,
                     Margin = new Thickness(2, 0, 0, 6),
-                }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"));
+                }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+                Localized.SetText(header, ShortcutCatalog.GroupHeaderKey(group));
+                section.Children.Add(header);
                 section.Children.Add(BuildCard(rows));
                 stack.Children.Add(section);
             }
@@ -47,7 +49,7 @@ public sealed class ShortcutsDialog : DialogBase
         }
 
         SetContent(columns);
-        var buttons = SetButtons([new DialogButton("Close", "ok", DialogButtonKind.Primary)]);
+        var buttons = SetButtons([new DialogButton("common.close", "ok", DialogButtonKind.Primary)]);
         SetInitialFocus(buttons["ok"]);
     }
 
@@ -115,10 +117,10 @@ public sealed class ShortcutsDialog : DialogBase
 
         var description = new TextBlock
         {
-            Text = item.Description,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center,
         }.Themed(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        Localized.SetText(description, item.DescriptionKey);
         Grid.SetColumn(description, 0);
         grid.Children.Add(description);
 

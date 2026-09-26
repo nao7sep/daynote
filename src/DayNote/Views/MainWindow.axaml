@@ -1,7 +1,9 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:DayNote.ViewModels"
+        xmlns:core="using:DayNote.Core.Models"
         xmlns:ctl="using:DayNote.Controls"
+        xmlns:i18n="using:DayNote.I18n"
         x:Class="DayNote.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="DayNote"
@@ -118,7 +120,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
                     <!-- Settings / Shortcuts / About live in a hamburger menu, matching the fleet. -->
-                    <Button Classes="utility" Padding="8,6" ToolTip.Tip="Menu" AutomationProperties.Name="Menu">
+                    <Button Classes="utility" Padding="8,6" i18n:Localized.ToolTip="menu.button" i18n:Localized.AutomationName="menu.button">
                         <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across
                              fonts. Bars 16 long and 2 thick with 5 between them: closer together they read as
                              one block rather than a menu, and the round caps stay inside the 18x16 box. -->
@@ -127,9 +129,9 @@
                               UseLayoutRounding="True" Data="M1,1 H17 M1,8 H17 M1,15 H17"/>
                         <Button.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                <MenuItem Header="Settings" Click="Settings_Click"/>
-                                <MenuItem Header="Shortcuts" Click="Shortcuts_Click"/>
-                                <MenuItem Header="About" Click="About_Click"/>
+                                <MenuItem x:Name="SettingsMenuItem" i18n:Localized.Header="menu.settings" Click="Settings_Click"/>
+                                <MenuItem x:Name="ShortcutsMenuItem" i18n:Localized.Header="menu.shortcuts" Click="Shortcuts_Click"/>
+                                <MenuItem x:Name="AboutMenuItem" i18n:Localized.Header="menu.about" Click="About_Click"/>
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
@@ -225,15 +227,15 @@
                 <DockPanel MinHeight="200">
                     <Border DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="Binders" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock i18n:Localized.Text="binders.pane" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                                <Button Content="New" Classes="accent" Command="{Binding NewBinderCommand}"/>
-                                <Button Content="Open" Classes="utility" Command="{Binding OpenBinderCommand}"/>
+                                <Button i18n:Localized.Content="binders.new" Classes="accent" Command="{Binding NewBinderCommand}"/>
+                                <Button i18n:Localized.Content="binders.open" Classes="utility" Command="{Binding OpenBinderCommand}"/>
                             </StackPanel>
                         </Grid>
                     </Border>
                     <DockPanel Margin="10">
-                        <ctl:ComposingTextBox DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
+                        <ctl:ComposingTextBox DockPanel.Dock="Top" i18n:Localized.PlaceholderText="common.filter" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
                         <Panel>
                             <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
                             <ListBox x:Name="BindersList" ItemsSource="{Binding Binders}" DragDrop.AllowDrop="True"
@@ -261,14 +263,15 @@
                                              binders each say it once. -->
                                         <Border Grid.Column="1" Classes="badge" VerticalAlignment="Center"
                                                 Margin="8,0,0,0" IsVisible="{Binding IsMissing}">
-                                            <TextBlock Text="Missing" FontSize="11" FontWeight="SemiBold"
+                                            <TextBlock i18n:Localized.Text="binder.missing" FontSize="11" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource DangerTextBrush}"/>
                                         </Border>
                                         <!-- Remove from the list (revealed on hover/selection). If it's the open
                                              binder, this closes it (flushing edits) first; closing == forgetting. -->
                                         <Button Grid.Column="2" Classes="rowAction" Click="RemoveBinderRow_Click"
                                                 Classes.revealed="{Binding IsMissing}"
-                                                ToolTip.Tip="Remove from list">
+                                                i18n:Localized.ToolTip="binder.remove"
+                                                i18n:Localized.AutomationName="binder.remove">
                                             <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M1,1 L9,9 M9,1 L1,9"/>
                                         </Button>
@@ -293,13 +296,13 @@
                 <DockPanel MinHeight="200">
                     <Border DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="Notes" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            <Button Grid.Column="1" Content="New" Classes="accent"
+                            <TextBlock i18n:Localized.Text="notes.pane" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <Button Grid.Column="1" i18n:Localized.Content="notes.new" Classes="accent"
                                     Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasBinder}"/>
                         </Grid>
                     </Border>
                     <DockPanel Margin="10">
-                        <ctl:ComposingTextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" PlaceholderText="Filter…" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
+                        <ctl:ComposingTextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" i18n:Localized.PlaceholderText="common.filter" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
                         <Panel>
                             <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
                                      KeyDown="NotesList_KeyDown">
@@ -328,7 +331,8 @@
                                             </Grid>
                                         </StackPanel>
                                         <!-- Per-row delete, revealed on hover/selection (replaces the Delete button). -->
-                                        <Button Grid.Column="2" Classes="rowAction" Click="DeleteNoteRow_Click" ToolTip.Tip="Delete note">
+                                        <Button Grid.Column="2" Classes="rowAction" Click="DeleteNoteRow_Click"
+                                                i18n:Localized.ToolTip="note.delete" i18n:Localized.AutomationName="note.delete">
                                             <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M1,1 L9,9 M9,1 L1,9"/>
                                         </Button>
@@ -354,7 +358,7 @@
                      the metadata wrap) plus a usable body. Its 300 is the content minimum that
                      WindowMetrics folds into the window's minimum height (the tallest pane wins). -->
                 <Panel MinHeight="300">
-                    <TextBlock Text="Select a note, or create one." HorizontalAlignment="Center" VerticalAlignment="Center"
+                    <TextBlock i18n:Localized.Text="editor.empty" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding !Editor.HasNote}"/>
                     <DockPanel IsVisible="{Binding Editor.HasNote}">
                         <!-- Header: title + lifecycle status in one row, then the body directly below (no
@@ -362,25 +366,34 @@
                              Published and expired notes are read-only until moved to draft or ready. -->
                         <Grid x:Name="EditorHeader" DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="10,10,10,6">
                             <ctl:ComposingTextBox x:Name="TitleBox"
-                                                  Text="{Binding Editor.Title}" PlaceholderText="Title…"
+                                                  Text="{Binding Editor.Title}" i18n:Localized.PlaceholderText="editor.titlePlaceholder"
                                                   FontSize="18" FontWeight="SemiBold" AcceptsReturn="False" SubmitOnEnter="True"
                                                   IsReadOnly="{Binding !Editor.IsEditable}"
                                                   Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
                             <!-- Shown when the note is locked (published or expired). -->
                             <Border Grid.Column="1" Classes="badge" Margin="8,0,0,0" IsVisible="{Binding !Editor.IsEditable}"
-                                    ToolTip.Tip="This note is read-only — set its status to Draft or Ready to edit.">
+                                    i18n:Localized.ToolTip="editor.readOnlyHint">
                                 <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                                     <Path Width="11" Height="12" Stretch="Uniform" Fill="Transparent"
                                           Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.3"
                                           Data="M2,6 h8 v6 h-8 z M3.5,6 V4 a2.5,2.5 0 0 1 5,0 V6"/>
-                                    <TextBlock Text="Read-only" FontSize="11" FontWeight="SemiBold"
+                                    <TextBlock i18n:Localized.Text="editor.readOnly" FontSize="11" FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextSecondaryBrush}"/>
                                 </StackPanel>
                             </Border>
-                            <ComboBox Grid.Column="2" Margin="8,0,0,0" MinWidth="130" VerticalAlignment="Center"
+                            <!-- Each status shows as catalogue text, never the enum's own name, and keeps
+                                 its workflow order in every language. -->
+                            <ComboBox x:Name="StatusBox" Grid.Column="2" Margin="8,0,0,0" MinWidth="130" VerticalAlignment="Center"
                                       ItemsSource="{Binding Editor.StatusOptions}"
                                       SelectedItem="{Binding Editor.Status}"
-                                      ToolTip.Tip="Lifecycle status"/>
+                                      i18n:Localized.ToolTip="editor.status"
+                                      i18n:Localized.AutomationName="editor.status">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="core:NoteStatus">
+                                        <TextBlock i18n:Localized.Text="{Binding Converter={x:Static vm:NoteStatusText.Key}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                         </Grid>
                         <ctl:ComposingTextBox x:Name="BodyBox" Margin="10,0,10,10"
                                  Text="{Binding Editor.Body}"
@@ -402,8 +415,8 @@
                 <DockPanel MinHeight="200">
                     <Border x:Name="AttachmentsHeader" DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="Attachments" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            <Button Grid.Column="1" Content="Add" Classes="utility"
+                            <TextBlock i18n:Localized.Text="attachments.pane" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <Button Grid.Column="1" i18n:Localized.Content="common.add" Classes="utility"
                                     Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding CanEditNote}"/>
                         </Grid>
                     </Border>
@@ -416,11 +429,11 @@
                             AutomationProperties.Name="{Binding AttachmentResult.AccessibleMessage}"
                             AutomationProperties.LiveSetting="{Binding AttachmentResult.LiveSetting}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBlock Text="{Binding AttachmentResult.Message}" TextWrapping="Wrap"
+                            <TextBlock Text="{Binding AttachmentResult.Text}" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
                             <Button Grid.Column="1" Classes="resultClose" VerticalAlignment="Top"
-                                    Click="DismissAttachmentResult_Click" ToolTip.Tip="Close"
-                                    AutomationProperties.Name="Close attachment result">
+                                    Click="DismissAttachmentResult_Click" i18n:Localized.ToolTip="common.close"
+                                    i18n:Localized.AutomationName="attachments.closeResult">
                                 <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
                                       StrokeThickness="1.6" StrokeLineCap="Round"
                                       Data="M1,1 L9,9 M9,1 L1,9"/>
@@ -454,7 +467,8 @@
                                              expired note keeps its attachments, as it keeps its text. -->
                                         <Button Grid.Column="2" Classes="rowAction" Click="RemoveAttachment_Click"
                                                 IsVisible="{Binding $parent[ListBox].DataContext.CanEditNote}"
-                                                ToolTip.Tip="Remove attachment">
+                                                i18n:Localized.ToolTip="attachments.remove"
+                                                i18n:Localized.AutomationName="attachments.remove">
                                             <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M1,1 L9,9 M9,1 L1,9"/>
                                         </Button>
@@ -467,7 +481,7 @@
                                             IsVisible="{Binding HasResult}"
                                             AutomationProperties.Name="{Binding Result.AccessibleMessage}"
                                             AutomationProperties.LiveSetting="{Binding Result.LiveSetting}">
-                                        <TextBlock Text="{Binding Result.Message}" TextWrapping="Wrap"
+                                        <TextBlock Text="{Binding Result.Text}" TextWrapping="Wrap"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     </Border>
                                     </StackPanel>
@@ -483,7 +497,7 @@
                         <Border IsVisible="{Binding IsAttachmentDropActive}" IsHitTestVisible="False"
                                 Background="{DynamicResource SurfaceBrush}" Opacity="0.92"
                                 BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" CornerRadius="6">
-                            <TextBlock Text="Drop files to attach" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            <TextBlock i18n:Localized.Text="attachments.drop" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                         </Border>
                     </Panel>
@@ -526,11 +540,11 @@
                                      equal room above and below its text. The larger hit area spills
                                      into the card's padding. -->
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" LineHeight="18"
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" LineHeight="18"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
                                     <Button Grid.Column="1" Classes="resultClose" Margin="0,-2"
                                             VerticalAlignment="Top" Click="DismissResult_Click"
-                                            ToolTip.Tip="Close" AutomationProperties.Name="Close notification">
+                                            i18n:Localized.ToolTip="common.close" i18n:Localized.AutomationName="results.close">
                                         <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
                                               StrokeThickness="1.6" StrokeLineCap="Round"
                                               Data="M1,1 L9,9 M9,1 L1,9"/>

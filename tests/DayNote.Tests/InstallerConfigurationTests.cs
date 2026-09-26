@@ -38,6 +38,51 @@ public sealed class InstallerConfigurationTests
     }
 
     [Fact]
+    public void Installer_Speaks_Inno_Setups_Own_Languages_With_English_First()
+    {
+        // Inno ships wizard text for eight of the ten interface languages; Korean and Simplified Chinese
+        // readers get the English fallback, since no third-party translation is vendored. English
+        // leads, so it is also what a computer in any other language sees.
+        var (installer, _) = InstallerScript();
+        var languages = Section(installer, "Languages")
+            .Select(line => System.Text.RegularExpressions.Regex.Match(line, @"MessagesFile:\s*""([^""]+)""").Groups[1].Value)
+            .ToArray();
+
+        Assert.Equal(
+            new[]
+            {
+                "compiler:Default.isl",
+                "compiler:Languages\\German.isl",
+                "compiler:Languages\\Spanish.isl",
+                "compiler:Languages\\French.isl",
+                "compiler:Languages\\Italian.isl",
+                "compiler:Languages\\BrazilianPortuguese.isl",
+                "compiler:Languages\\Russian.isl",
+                "compiler:Languages\\Japanese.isl",
+            },
+            languages);
+    }
+
+    [Fact]
+    public void Installer_Words_Come_From_Innos_Translated_Messages()
+    {
+        // A literal Description would read in English under every wizard language; Inno's own custom
+        // messages are translated in each of its language files.
+        var (installer, _) = InstallerScript();
+        foreach (var name in new[] { "Tasks", "Run" })
+        {
+            foreach (var line in Section(installer, name))
+            {
+                foreach (System.Text.RegularExpressions.Match value in System.Text.RegularExpressions.Regex.Matches(
+                    line, @"(Description|GroupDescription):\s*""([^""]*)"""))
+                {
+                    Assert.StartsWith("{cm:", value.Groups[2].Value);
+                }
+            }
+        }
+    }
+
+    [Fact]
     public void Mac_Bundle_Excludes_Debug_Symbols_Before_Signing()
     {
         var targets = BuildTargets();
@@ -100,5 +145,24 @@ public sealed class InstallerConfigurationTests
             }
         }
         return result;
+    }
+
+    private static IEnumerable<string> Section(string text, string name)
+    {
+        var inSection = false;
+        foreach (var rawLine in text.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.StartsWith('['))
+            {
+                inSection = line == $"[{name}]";
+                continue;
+            }
+
+            if (inSection && line.Length > 0 && !line.StartsWith(';'))
+            {
+                yield return line;
+            }
+        }
     }
 }

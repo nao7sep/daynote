@@ -213,9 +213,9 @@ public sealed class ThemeResourcesTests
     [Fact]
     public void ResultsExposeSeverityNotBrushes()
     {
-        Assert.True(new OperationResultViewModel(OperationResultKind.Warning, "w").IsWarning);
-        Assert.True(new OperationResultViewModel(OperationResultKind.Error, "e").IsError);
-        var info = new OperationResultViewModel(OperationResultKind.Info, "i");
+        Assert.True(new OperationResultViewModel(OperationResultKind.Warning, DayNote.I18n.Message.Of("w")).IsWarning);
+        Assert.True(new OperationResultViewModel(OperationResultKind.Error, DayNote.I18n.Message.Of("e")).IsError);
+        var info = new OperationResultViewModel(OperationResultKind.Info, DayNote.I18n.Message.Of("i"));
         Assert.False(info.IsWarning || info.IsError);
     }
 

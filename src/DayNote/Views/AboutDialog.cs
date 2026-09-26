@@ -6,6 +6,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using DayNote.I18n;
 using DayNote.Logging;
 using DayNote.ViewModels;
 
@@ -14,7 +15,8 @@ namespace DayNote.Views;
 /// <summary>
 /// The About dialog: app name and version, a one-line description, links to the project on GitHub,
 /// and the license line. The window Title ("About DayNote") becomes the dialog's header via
-/// <see cref="DialogBase"/>; the content carries the version, description, links, and copyright.
+/// <see cref="DialogBase"/>; the content carries the version, description, links, and copyright. It is
+/// modal, so its words are rendered once, as it is built.
 /// </summary>
 public sealed class AboutDialog : DialogBase
 {
@@ -30,7 +32,7 @@ public sealed class AboutDialog : DialogBase
         _log = log;
         _openUri = openUri ?? (uri => Launcher.LaunchUriAsync(uri));
         Width = 420;
-        Title = "About DayNote";
+        Localized.SetTitle(this, "about.title");
 
         _linkResultText = new TextBlock
         {
@@ -44,8 +46,8 @@ public sealed class AboutDialog : DialogBase
             VerticalAlignment = VerticalAlignment.Top,
         };
         closeResult.Classes.Add("resultClose");
-        ToolTip.SetTip(closeResult, "Close");
-        AutomationProperties.SetName(closeResult, "Close link result");
+        Localized.SetToolTip(closeResult, "common.close");
+        Localized.SetAutomationName(closeResult, "about.closeLinkResult");
         var resultGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
@@ -83,7 +85,7 @@ public sealed class AboutDialog : DialogBase
                 }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"),
                 new TextBlock
                 {
-                    Text = "A plain-text notes desktop application: binders containing notes. Successor to quickdeck.",
+                    Text = Localizer.T("about.description"),
                     TextWrapping = TextWrapping.Wrap,
                     FontSize = 13,
                     Margin = new Thickness(0, 0, 0, 16),
@@ -93,28 +95,32 @@ public sealed class AboutDialog : DialogBase
                     Orientation = Orientation.Horizontal,
                     Spacing = 12,
                     Margin = new Thickness(0, 0, 0, 16),
-                    Children = { LinkButton("GitHub", GitHubUrl), LinkButton("Report Issue", GitHubUrl + "/issues") },
+                    Children =
+                    {
+                        LinkButton("GitHubLinkButton", "about.github", GitHubUrl),
+                        LinkButton("ReportIssueLinkButton", "about.reportIssue", GitHubUrl + "/issues"),
+                    },
                 },
                 _linkResult,
                 new TextBlock
                 {
-                    Text = "© 2026 Yoshinao Inoguchi · GNU GPL v3 or later",
+                    Text = Localizer.T("about.licence"),
                     FontSize = 12,
                 }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"),
             },
         };
 
         SetContent(panel);
-        var buttons = SetButtons([new DialogButton("Close", "ok", DialogButtonKind.Primary)]);
+        var buttons = SetButtons([new DialogButton("common.close", "ok", DialogButtonKind.Primary)]);
         SetInitialFocus(buttons["ok"]);
     }
 
-    private Button LinkButton(string label, string url)
+    private Button LinkButton(string name, string labelKey, string url)
     {
         var button = new Button
         {
-            Name = label.Replace(" ", string.Empty) + "LinkButton",
-            Content = ExternalLinkLabel(label),
+            Name = name,
+            Content = ExternalLinkLabel(Localizer.T(labelKey)),
         };
         button.Classes.Add("utility");
         button.Click += async (_, _) =>
@@ -127,7 +133,7 @@ public sealed class AboutDialog : DialogBase
             catch (Exception ex)
             {
                 _log.Warn("Failed to open external link", new { url }, ex);
-                var message = FailurePresentation.OpenExternalLink(ex);
+                var message = Localizer.Of(FailurePresentation.OpenExternalLink(ex));
                 _linkResultText.Text = message;
                 AutomationProperties.SetName(_linkResult, message);
                 _linkResult.IsVisible = true;

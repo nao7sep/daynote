@@ -1,4 +1,5 @@
 using DayNote.Core.Configuration;
+using DayNote.I18n;
 
 namespace DayNote.Services;
 
@@ -18,13 +19,14 @@ public interface IDialogService
     Task<IReadOnlyList<string>> PickAttachmentsAsync();
 
     /// <summary>
-    /// A custom confirmation with a specific confirm label (e.g. "Delete"), danger-styled when
-    /// <paramref name="destructive"/>. Returns true if confirmed. A destructive prompt focuses Cancel.
+    /// A custom confirmation with a specific confirm label, given by its catalogue key (e.g.
+    /// <c>common.delete</c>), danger-styled when <paramref name="destructive"/>. Returns true if
+    /// confirmed. A destructive prompt focuses Cancel.
     /// </summary>
-    Task<bool> ConfirmAsync(string title, string message, string confirmLabel, bool destructive = false);
+    Task<bool> ConfirmAsync(Message title, Message message, string confirmLabelKey, bool destructive = false);
 
     /// <summary>A custom error dialog.</summary>
-    Task ShowErrorAsync(string title, string message);
+    Task ShowErrorAsync(Message title, Message message);
 
     /// <summary>The custom About dialog.</summary>
     Task ShowAboutAsync();

@@ -1,0 +1,6 @@
+/* The permission prompts macOS shows when DayNote first reaches a protected folder, in Brazilian Portuguese.
+   The keys are Info.plist's own; en.lproj/InfoPlist.strings holds the English they translate. */
+
+"NSDesktopFolderUsageDescription" = "O DayNote precisa de acesso para abrir e salvar fichários e os anexos deles na sua Mesa.";
+"NSDocumentsFolderUsageDescription" = "O DayNote precisa de acesso para abrir e salvar fichários e os anexos deles na sua pasta Documentos.";
+"NSDownloadsFolderUsageDescription" = "O DayNote precisa de acesso para abrir e salvar fichários e os anexos deles na sua pasta Downloads.";

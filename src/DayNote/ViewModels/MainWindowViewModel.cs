@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Globalization;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -12,6 +11,7 @@ using DayNote.Core.Models;
 using DayNote.Core.Storage;
 using DayNote.Core.Text;
 using DayNote.Core.Time;
+using DayNote.I18n;
 using DayNote.Logging;
 using DayNote.Services;
 using DayNote.State;
@@ -142,7 +142,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _textStyleStatusTimer.Tick += (_, _) =>
         {
             _textStyleStatusTimer.Stop();
-            TextStyleStatusText = string.Empty;
+            _textStyleStatus = null;
+            OnPropertyChanged(nameof(TextStyleStatusText));
         };
 
         _autosaveTimer = new DispatcherTimer();
@@ -178,6 +179,41 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     public EditorViewModel Editor { get; }
 
+    /// <summary>
+    /// The computer's own languages, in order, as <c>LanguageBootstrap</c> read them at launch. A
+    /// language saved in Settings resolves System against these, never against a fresh reading, so
+    /// System cannot mean two languages in one session.
+    /// </summary>
+    internal IReadOnlyList<string> ComputerLanguages { get; init; } = [];
+
+    /// <summary>
+    /// Brings every word this view model has on screen into the current language. The window calls it
+    /// when the language changes while it is open: an empty name tells every binding on this view model
+    /// to re-read, and the rows, the editor and the results, which hold their own words, re-announce
+    /// theirs.
+    /// </summary>
+    internal void Retranslate()
+    {
+        OnPropertyChanged(string.Empty);
+        Editor.Retranslate();
+        foreach (var note in _allNotes)
+        {
+            note.Refresh(_displayZone);
+        }
+
+        foreach (var attachment in Attachments)
+        {
+            attachment.Retranslate();
+        }
+
+        foreach (var result in Results)
+        {
+            result.Retranslate();
+        }
+
+        AttachmentResult?.Retranslate();
+    }
+
     public ObservableCollection<NoteListItemViewModel> Notes { get; } = new();
     public ObservableCollection<BinderListItemViewModel> Binders { get; } = new();
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
@@ -207,8 +243,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// standing state of the editor, so app-chrome-conventions put this feedback in the always-present
     /// strip rather than in a card the reader has to look away for.
     /// </summary>
-    [ObservableProperty]
-    private string _textStyleStatusText = string.Empty;
+    public string TextStyleStatusText => _textStyleStatus is null ? string.Empty : Localizer.Of(_textStyleStatus);
+
+    private Message? _textStyleStatus;
 
     /// <summary>
     /// The saved theme. The view applies it app-wide (AppTheme) at startup and whenever Settings
@@ -229,8 +266,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isReady;
 
-    [ObservableProperty]
-    private string _saveStateText = "Saved";
+    public string SaveStateText => Localizer.T(_saveState switch
+    {
+        SaveState.Saving => "save.saving",
+        SaveState.Unsaved => "save.unsaved",
+        SaveState.Error => "save.failed",
+        _ => "save.saved",
+    });
 
     // The save state the status-bar dot shows; the view maps it to theme brushes (saved is the
     // absence of the other three).
@@ -244,20 +286,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private bool _isSaveStateError;
 
     /// <summary>Status-bar text when a binder is open but no note is selected: the binder's note count.</summary>
-    [ObservableProperty]
-    private string _binderStatusText = string.Empty;
+    public string BinderStatusText => _binderStatus is null ? string.Empty : Localizer.Of(_binderStatus);
+
+    private Message? _binderStatus;
 
     [ObservableProperty]
     private bool _hasBinder;
 
     public string BindersEmptyStateText =>
-        MainWindowEmptyStates.Binders(_allBinders.Count, Binders.Count, BindersFilter);
+        Words(MainWindowEmptyStates.Binders(_allBinders.Count, Binders.Count, BindersFilter));
 
     public string NotesEmptyStateText =>
-        MainWindowEmptyStates.Notes(HasBinder, _allNotes.Count, Notes.Count, NotesFilter);
+        Words(MainWindowEmptyStates.Notes(HasBinder, _allNotes.Count, Notes.Count, NotesFilter));
 
     public string AttachmentsEmptyStateText =>
-        MainWindowEmptyStates.Attachments(SelectedNote is not null, Attachments.Count);
+        Words(MainWindowEmptyStates.Attachments(SelectedNote is not null, Attachments.Count));
+
+    private static string Words(string? key) => key is null ? string.Empty : Localizer.T(key);
 
     /// <summary>True while files are being dragged over the attachments pane (drives the drop highlight).</summary>
     [ObservableProperty]
@@ -327,7 +372,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         if (_loadError is not null)
         {
             await _dialogs.ShowErrorAsync(
-                "Load failed",
+                Message.Of("failure.startupDataTitle"),
                 FailurePresentation.StartupData());
             return;
         }
@@ -532,18 +577,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var note = target.Note;
-        var label = string.IsNullOrWhiteSpace(note.Title) ? "untitled" : note.Title;
+        var question = string.IsNullOrWhiteSpace(note.Title)
+            ? Message.Of("note.deleteUntitled")
+            : Message.Of("note.deleteNamed", ("title", note.Title));
         var attachmentCount = note.Attachments.Count;
-        var attachmentWarning = attachmentCount switch
-        {
-            0 => string.Empty,
-            1 => " Its attachment is deleted with it.",
-            _ => $" Its {attachmentCount} attachments are deleted with it.",
-        };
+        var message = attachmentCount == 0
+            ? question
+            : Message.Join("note.deleteJoin",
+            [
+                question,
+                // One attachment is its own sentence, not the one-form of a count: the plural's one form
+                // also covers 21, 31 and more in some languages.
+                attachmentCount == 1
+                    ? Message.Of("note.deleteAttachment")
+                    : Message.Of("note.deleteAttachments", ("count", attachmentCount)),
+            ]);
         if (!await _dialogs.ConfirmAsync(
-                "Delete note",
-                $"Delete “{label}”?{attachmentWarning}",
-                "Delete",
+                Message.Of("note.deleteTitle"),
+                message,
+                "common.delete",
                 destructive: true))
         {
             return;
@@ -600,7 +652,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _log.Error("Failed to delete a note's attachments", new { noteId = note.Id, path = directory }, ex);
             ShowResult(
                 OperationResultKind.Warning,
-                "The note is gone, but its attachment files could not be deleted. They are still in the binder's assets folder.",
+                Message.Of("note.attachmentsLeft"),
                 AttachmentCleanupResultKey);
         }
     }
@@ -723,8 +775,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                 AttachmentResult = new OperationResultViewModel(
                     OperationResultKind.Warning,
                     unavailable == 1
-                        ? "That item is not a readable local file."
-                        : $"{unavailable} items are not readable local files.",
+                        ? Message.Of("attachments.unreadableThat")
+                        : Message.Of("attachments.unreadable", ("count", unavailable)),
                     isPersistent: true);
             }
             return;
@@ -753,7 +805,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _log.Error("Failed to prepare attachment directory", new { noteId, path = directory }, ex);
             AttachmentResult = new OperationResultViewModel(
                 OperationResultKind.Error,
-                "Could not prepare the attachment folder. Check that the binder location is writable, then try again.",
+                Message.Of("attachments.folderFailed"),
                 isPersistent: true);
             return;
         }
@@ -790,39 +842,37 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _log.Warn("Attachment admission contained unreadable items", new { noteId, unavailable });
         }
 
-        var addedText = added > 0
-            ? $"Added {added} attachment{(added == 1 ? ". " : "s. ")}"
-            : string.Empty;
-        var duplicateText = duplicateNames.Count > 0
-            ? $"Already attached: {SummarizeFileNames(duplicateNames)}. "
-            : string.Empty;
-        var unavailableText = unavailable > 0
-            ? unavailable == 1
-                ? "One item is not a readable local file. "
-                : $"{unavailable} items are not readable local files. "
-            : string.Empty;
+        // Each part is a whole sentence with its own count, and the parts join through one catalogue
+        // entry, so every language keeps its own plural forms and its own sentence spacing.
+        var parts = new List<Message>();
+        if (added > 0)
+        {
+            parts.Add(Message.Of("attachments.added", ("count", added)));
+        }
+
+        if (duplicateNames.Count > 0)
+        {
+            parts.Add(Message.Of("attachments.duplicates", ("names", SummarizeFileNames(duplicateNames))));
+        }
+
+        if (unavailable > 0)
+        {
+            parts.Add(Message.Of("attachments.unreadable", ("count", unavailable)));
+        }
 
         if (failures.Count > 0)
         {
-            var failedNames = SummarizeFileNames(failures);
+            parts.Add(Message.Of("attachments.failed", ("names", SummarizeFileNames(failures))));
             AttachmentResult = new OperationResultViewModel(
                 OperationResultKind.Error,
-                $"{addedText}{duplicateText}{unavailableText}Could not add: {failedNames}. " +
-                "Check that the files and binder folder are available, then try again.",
+                Message.Join("attachments.join", parts),
                 isPersistent: true);
         }
-        else if (unavailable > 0)
+        else if (unavailable > 0 || duplicateNames.Count > 0)
         {
             AttachmentResult = new OperationResultViewModel(
-                OperationResultKind.Warning,
-                (addedText + duplicateText + unavailableText).TrimEnd(),
-                isPersistent: true);
-        }
-        else if (duplicateNames.Count > 0)
-        {
-            AttachmentResult = new OperationResultViewModel(
-                OperationResultKind.Info,
-                (addedText + duplicateText).TrimEnd(),
+                unavailable > 0 ? OperationResultKind.Warning : OperationResultKind.Info,
+                Message.Join("attachments.join", parts),
                 isPersistent: true);
         }
         else
@@ -908,20 +958,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return new AttachmentImportOutcome(addedNames, duplicateNames, failures);
     }
 
-    private static string SummarizeFileNames(IEnumerable<string> fileNames)
+    // The first few names, joined through the catalogue's list entry, and a count of the rest. The
+    // answer is a value for a placeholder: a file name as it is, or a message holding several.
+    private static object SummarizeFileNames(IEnumerable<string> fileNames)
     {
         const int visibleLimit = 3;
         var names = fileNames.Where(name => !string.IsNullOrWhiteSpace(name)).ToArray();
         if (names.Length == 0)
         {
-            return "the selected files";
+            return Message.Of("files.selected");
         }
 
-        var visible = string.Join(", ", names.Take(visibleLimit));
+        var visible = JoinNames(names.Take(visibleLimit).ToArray());
         return names.Length > visibleLimit
-            ? $"{visible}, and {names.Length - visibleLimit} more"
+            ? Message.Of("files.andMore", ("names", visible), ("count", names.Length - visibleLimit))
             : visible;
     }
+
+    private static object JoinNames(IReadOnlyList<string> names) => names.Count == 1
+        ? names[0]
+        : Message.Of("files.join", ("first", names[0]), ("rest", JoinNames(names.Skip(1).ToArray())));
 
     [RelayCommand]
     private async Task RemoveAttachment(AttachmentItemViewModel item)
@@ -932,7 +988,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var note = SelectedNote.Note;
-        if (!await _dialogs.ConfirmAsync("Remove attachment", $"Remove “{item.FileName}”? The file will be deleted.", "Remove", destructive: true))
+        if (!await _dialogs.ConfirmAsync(
+                Message.Of("attachments.removeTitle"),
+                Message.Of("attachments.removeMessage", ("name", item.FileName)),
+                "common.remove",
+                destructive: true))
         {
             return;
         }
@@ -957,7 +1017,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _log.Error("Failed to delete attachment", new { noteId = note.Id, path = item.FullPath }, ex);
             AttachmentResult = new OperationResultViewModel(
                 OperationResultKind.Error,
-                "The attachment could not be removed. It remains attached and its file is unchanged; try again.",
+                Message.Of("attachments.removeFailed"),
                 isPersistent: true,
                 resultKey: $"remove-attachment:{note.Id}:{item.FileName}");
             return;
@@ -1030,6 +1090,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         {
             note.Refresh(_displayZone);
         }
+
+        // Last, once disk agrees: a language change redraws everything already on screen.
+        Localizer.Use(_config.Language, ComputerLanguages);
     }
 
     [RelayCommand]
@@ -1065,14 +1128,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         ApplyTextStyle();
-        var label = TextStyleLabels.For(_config.TextStyles)[nextIndex];
+        var label = TextStyleLabels.For(_config.TextStyles, Localizer.T("settings.noFontFamily"), Localizer.Current.Culture)[nextIndex];
         _log.Info("Cycled text style", new { style = label });
         if (IsReady)
         {
             TrySaveConfig();
         }
 
-        TextStyleStatusText = "Text style: " + label;
+        _textStyleStatus = Message.Of("textStyle.applied", ("style", label));
+        OnPropertyChanged(nameof(TextStyleStatusText));
         _textStyleStatusTimer.Stop();
         _textStyleStatusTimer.Start();
     }
@@ -1145,7 +1209,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             {
                 // Only report the failure if the user is still waiting on this open; a later open
                 // already superseded it, so this error is no longer about anything they're looking at.
-                await _dialogs.ShowErrorAsync("Could not open binder", FailurePresentation.OpenBinder(ex));
+                await _dialogs.ShowErrorAsync(Message.Of("binder.openFailedTitle"), FailurePresentation.OpenBinder(ex));
             }
 
             return;
@@ -1367,7 +1431,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     _log.Warn("Binder file was deleted on disk", new { path });
                     ShowResult(
                         OperationResultKind.Warning,
-                        "The binder file was deleted. Your edits remain; saving will recreate it.",
+                        Message.Of("binder.deleted"),
                         resultKey: BinderFileResultKey);
                     return;
 
@@ -1377,7 +1441,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
                     {
                         ShowResult(
                             OperationResultKind.Info,
-                            "Reloaded after an external change.",
+                            Message.Of("binder.reloaded"),
                             resultKey: BinderFileResultKey);
                     }
                     return;
@@ -1837,11 +1901,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// it clears itself; a warning or error stays until the user dismisses it or its owner resolves
     /// it, and a result for another subject never removes it.
     /// </summary>
-    private void ShowResult(OperationResultKind kind, string message, string resultKey)
+    private void ShowResult(OperationResultKind kind, Message message, string resultKey)
     {
         var isPersistent = kind != OperationResultKind.Info;
         var existing = Results.FirstOrDefault(result => result.ResultKey == resultKey);
-        if (isPersistent && existing is not null && existing.Kind == kind && existing.Message == message)
+        if (isPersistent && existing is not null && existing.Kind == kind && existing.Text == Localizer.Of(message))
         {
             // The same unresolved problem again: it is already on screen and already announced.
             return;
@@ -2069,14 +2133,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private void UpdateSaveStateText()
     {
-        SaveStateText = _saveState switch
-        {
-            SaveState.Saved => "Saved",
-            SaveState.Saving => "Saving…",
-            SaveState.Unsaved => "Unsaved changes",
-            SaveState.Error => "Save failed",
-            _ => string.Empty,
-        };
+        OnPropertyChanged(nameof(SaveStateText));
 
         // The dot tracks the state by color: green saved, accent saving, amber unsaved, red failed.
         IsSaveStateSaving = _saveState == SaveState.Saving;
@@ -2090,19 +2147,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     /// </summary>
     private void UpdateBinderStatus()
     {
-        if (_current is null || SelectedNote is not null)
-        {
-            BinderStatusText = string.Empty;
-            return;
-        }
-
-        var count = _current.Binder.Notes.Count;
-        BinderStatusText = count switch
-        {
-            0 => "No notes",
-            1 => "1 note",
-            _ => $"{count.ToString("N0", CultureInfo.InvariantCulture)} notes",
-        };
+        var count = _current?.Binder.Notes.Count ?? 0;
+        _binderStatus = _current is null || SelectedNote is not null ? null
+            : count == 0 ? Message.Of("binder.noNotes")
+            : Message.Of("binder.noteCount", ("count", count));
+        OnPropertyChanged(nameof(BinderStatusText));
     }
 
     // ----- Helpers -------------------------------------------------------------------------------
@@ -2116,6 +2165,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         textStyleCount = config.TextStyles.Count,
         autosaveDelaySeconds = config.AutosaveDelaySeconds,
         timeZone = config.TimeZone,
+        language = config.Language,
     };
 
     private static string EnsureDaynoteExtension(string path) =>

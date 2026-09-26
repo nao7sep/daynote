@@ -1,62 +1,44 @@
 using DayNote.Core.Toml;
+using DayNote.I18n;
 
 namespace DayNote.ViewModels;
 
-/// <summary>Maps diagnostic exceptions to deliberately authored, user-safe DayNote copy.</summary>
+/// <summary>
+/// Maps diagnostic exceptions to deliberately authored, user-safe DayNote copy. Each answer is a held
+/// message, rendered where it is shown, so it follows a language change and never carries the
+/// exception's own text.
+/// </summary>
 public static class FailurePresentation
 {
-    public static string StartupStorage() =>
-        "DayNote could not open its storage location. Check that the location exists and is writable, then restart DayNote.";
+    public static Message StartupStorage() => Message.Of("failure.startupStorage");
 
-    public static string StartupData() =>
-        "DayNote could not read its configuration or state files, so saving is disabled to avoid " +
-        "overwriting good data. Check the session log, repair or remove the affected data file, and restart.";
+    public static Message StartupData() => Message.Of("failure.startupData");
 
-    public static string RecoveredData(bool binderListWasReset) => binderListWasReset
-        ? "A data file was unreadable, so DayNote preserved it rather than overwriting it. DayNote " +
-          "started with an empty binder list; your binder files are untouched, but the list of open " +
-          "binders and their custom titles is only in the preserved copy. Check the session log for " +
-          "its location, then re-open your binders or recover the list before quitting."
-        : "A settings file was unreadable, so DayNote preserved it and started with defaults in its " +
-          "place. Your binders and notes are untouched. Check the session log for the preserved copy's location.";
+    public static Message RecoveredData(bool binderListWasReset) =>
+        Message.Of(binderListWasReset ? "quarantine.binderListBody" : "quarantine.settingsBody");
 
-    public static string OpenBinder(Exception error) => error switch
+    public static Message OpenBinder(Exception error) => Message.Of(error switch
     {
-        BinderFormatException =>
-            "This binder could not be opened because its contents are not valid DayNote data. " +
-            "Repair the binder or restore a known-good copy, then try again.",
-        UnauthorizedAccessException =>
-            "This binder could not be opened. Check that you have permission to read it, then try again.",
-        FileNotFoundException or DirectoryNotFoundException =>
-            "This binder is no longer available at the selected location.",
-        _ => "This binder could not be opened. Check that it is available, then try again.",
-    };
+        BinderFormatException => "failure.openBinderFormat",
+        UnauthorizedAccessException => "failure.openBinderPermission",
+        FileNotFoundException or DirectoryNotFoundException => "failure.openBinderGone",
+        _ => "failure.openBinder",
+    });
 
-    public static string SaveBinder(Exception error) => error switch
+    public static Message SaveBinder(Exception error) => Message.Of(error switch
     {
-        UnauthorizedAccessException =>
-            "Your changes are still in DayNote, but the binder could not be saved. " +
-            "Check that the binder location is writable, then try again.",
-        DirectoryNotFoundException =>
-            "Your changes are still in DayNote, but the binder location is no longer available. " +
-            "Restore the location, then try again.",
-        _ =>
-            "Your changes are still in DayNote, but the binder could not be saved. " +
-            "Check that its location is available and has enough free space, then try again.",
-    };
+        UnauthorizedAccessException => "failure.saveBinderPermission",
+        DirectoryNotFoundException => "failure.saveBinderGone",
+        _ => "failure.saveBinder",
+    });
 
-    public static string NewBinderPicker(Exception error) =>
-        "The new-binder picker could not be opened. Try creating the binder again.";
+    public static Message NewBinderPicker(Exception error) => Message.Of("failure.newBinderPicker");
 
-    public static string OpenBinderPicker(Exception error) =>
-        "The binder picker could not be opened. Try opening the binder again.";
+    public static Message OpenBinderPicker(Exception error) => Message.Of("failure.openBinderPicker");
 
-    public static string AttachmentPicker(Exception error) =>
-        "The attachment picker could not be opened. Your note is unchanged; try adding attachments again.";
+    public static Message AttachmentPicker(Exception error) => Message.Of("failure.attachmentPicker");
 
-    public static string ReloadBinder(Exception error) =>
-        "The binder changed on disk but could not be reloaded. Your version remains open; check the log and try again.";
+    public static Message ReloadBinder(Exception error) => Message.Of("failure.reloadBinder");
 
-    public static string OpenExternalLink(Exception error) =>
-        "The link could not be opened in your browser. Try again.";
+    public static Message OpenExternalLink(Exception error) => Message.Of("failure.openExternalLink");
 }

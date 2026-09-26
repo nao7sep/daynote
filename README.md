@@ -24,6 +24,8 @@ Prebuilt builds for **macOS (Apple Silicon)** and **Windows (x64)** are on the [
 - **Character counting** — live word/character counts plus an X/Twitter-weighted count against the 280 limit.
 - **Autosave** — debounced save as you type; flushes on close and quit.
 - **Light and dark themes** — a plum "Twilight" dark and a lavender light; follow the OS or pick one in Settings. Keyboard-driven throughout.
+- **Ten interface languages** — English, German, Spanish, French, Italian, Brazilian Portuguese, Russian, Japanese, Korean and Simplified Chinese — following the system language by default; pick another in Settings.
+- **Times in your time zone** — the computer's zone by default, or any zone chosen from the list in Settings; dates and times read the way your language writes them.
 
 ## Files and recovery
 

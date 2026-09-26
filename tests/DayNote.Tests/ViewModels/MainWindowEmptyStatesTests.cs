@@ -1,3 +1,4 @@
+using DayNote.Tests.I18n;
 using DayNote.ViewModels;
 using Xunit;
 
@@ -15,7 +16,7 @@ public sealed class MainWindowEmptyStatesTests
         string filter,
         string expected)
     {
-        Assert.Equal(expected, MainWindowEmptyStates.Binders(totalCount, visibleCount, filter));
+        Assert.Equal(expected, Words(MainWindowEmptyStates.Binders(totalCount, visibleCount, filter)));
     }
 
     [Theory]
@@ -30,7 +31,7 @@ public sealed class MainWindowEmptyStatesTests
         string filter,
         string expected)
     {
-        Assert.Equal(expected, MainWindowEmptyStates.Notes(hasBinder, totalCount, visibleCount, filter));
+        Assert.Equal(expected, Words(MainWindowEmptyStates.Notes(hasBinder, totalCount, visibleCount, filter)));
     }
 
     [Theory]
@@ -42,6 +43,8 @@ public sealed class MainWindowEmptyStatesTests
         int visibleCount,
         string expected)
     {
-        Assert.Equal(expected, MainWindowEmptyStates.Attachments(hasSelectedNote, visibleCount));
+        Assert.Equal(expected, Words(MainWindowEmptyStates.Attachments(hasSelectedNote, visibleCount)));
     }
+
+    private static string Words(string? key) => key is null ? string.Empty : English.Of(key);
 }

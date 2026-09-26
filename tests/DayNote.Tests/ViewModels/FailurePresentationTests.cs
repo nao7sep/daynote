@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using DayNote.Tests.I18n;
 using DayNote.ViewModels;
 using Xunit;
 
@@ -14,16 +15,16 @@ public sealed class FailurePresentationTests
     {
         var error = new IOException(Hostile, new InvalidOperationException("root cause"));
 
-        var open = FailurePresentation.OpenBinder(error);
-        var save = FailurePresentation.SaveBinder(error);
-        var newBinderPicker = FailurePresentation.NewBinderPicker(error);
-        var openBinderPicker = FailurePresentation.OpenBinderPicker(error);
-        var attachmentPicker = FailurePresentation.AttachmentPicker(error);
-        var reload = FailurePresentation.ReloadBinder(error);
-        var link = FailurePresentation.OpenExternalLink(error);
-        var startup = FailurePresentation.StartupData();
-        var startupStorage = FailurePresentation.StartupStorage();
-        var recovery = FailurePresentation.RecoveredData(binderListWasReset: true);
+        var open = English.Of(FailurePresentation.OpenBinder(error));
+        var save = English.Of(FailurePresentation.SaveBinder(error));
+        var newBinderPicker = English.Of(FailurePresentation.NewBinderPicker(error));
+        var openBinderPicker = English.Of(FailurePresentation.OpenBinderPicker(error));
+        var attachmentPicker = English.Of(FailurePresentation.AttachmentPicker(error));
+        var reload = English.Of(FailurePresentation.ReloadBinder(error));
+        var link = English.Of(FailurePresentation.OpenExternalLink(error));
+        var startup = English.Of(FailurePresentation.StartupData());
+        var startupStorage = English.Of(FailurePresentation.StartupStorage());
+        var recovery = English.Of(FailurePresentation.RecoveredData(binderListWasReset: true));
 
         Assert.DoesNotContain(Hostile, startup, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, startupStorage, StringComparison.Ordinal);
@@ -43,8 +44,8 @@ public sealed class FailurePresentationTests
     [Fact]
     public void KnownStructuredFailuresSelectUsefulRecovery()
     {
-        Assert.Contains("permission", FailurePresentation.OpenBinder(new UnauthorizedAccessException(Hostile)), StringComparison.Ordinal);
-        Assert.Contains("no longer available", FailurePresentation.OpenBinder(new FileNotFoundException(Hostile)), StringComparison.Ordinal);
-        Assert.Contains("writable", FailurePresentation.SaveBinder(new UnauthorizedAccessException(Hostile)), StringComparison.Ordinal);
+        Assert.Contains("permission", English.Of(FailurePresentation.OpenBinder(new UnauthorizedAccessException(Hostile))), StringComparison.Ordinal);
+        Assert.Contains("no longer available", English.Of(FailurePresentation.OpenBinder(new FileNotFoundException(Hostile))), StringComparison.Ordinal);
+        Assert.Contains("writable", English.Of(FailurePresentation.SaveBinder(new UnauthorizedAccessException(Hostile))), StringComparison.Ordinal);
     }
 }

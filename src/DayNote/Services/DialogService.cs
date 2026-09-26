@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using DayNote.Core.Configuration;
+using DayNote.I18n;
 using DayNote.Logging;
 using DayNote.Views;
 
@@ -12,7 +13,8 @@ namespace DayNote.Services;
 /// </summary>
 public sealed class DialogService : IDialogService
 {
-    private static readonly FilePickerFileType BinderType = new("DayNote binder")
+    // Built per picker, so its name is in the language showing when the picker opens.
+    private static FilePickerFileType BinderType() => new(Localizer.T("picker.binderType"))
     {
         Patterns = new[] { "*.daynote" },
     };
@@ -28,9 +30,9 @@ public sealed class DialogService : IDialogService
         var owner = RequireOwner();
         var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Open binder",
+            Title = Localizer.T("picker.openBinder"),
             AllowMultiple = false,
-            FileTypeFilter = new[] { BinderType },
+            FileTypeFilter = new[] { BinderType() },
         });
 
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
@@ -41,11 +43,12 @@ public sealed class DialogService : IDialogService
         var owner = RequireOwner();
         var file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "New binder",
+            Title = Localizer.T("picker.newBinder"),
             DefaultExtension = "daynote",
-            // Lowercase default filename (the human-friendly capitalized name lives in the binder title).
-            SuggestedFileName = "binder",
-            FileTypeChoices = new[] { BinderType },
+            // A lowercase default filename, the name the app gives a new binder, so it is in the
+            // reader's language (the human-friendly capitalized name lives in the binder title).
+            SuggestedFileName = Localizer.T("picker.binderFileName"),
+            FileTypeChoices = new[] { BinderType() },
         });
 
         return file?.TryGetLocalPath();
@@ -56,7 +59,7 @@ public sealed class DialogService : IDialogService
         var owner = RequireOwner();
         var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Add attachments",
+            Title = Localizer.T("picker.addAttachments"),
             AllowMultiple = true,
         });
 
@@ -67,20 +70,20 @@ public sealed class DialogService : IDialogService
             .ToList();
     }
 
-    public async Task<bool> ConfirmAsync(string title, string message, string confirmLabel, bool destructive = false)
+    public async Task<bool> ConfirmAsync(Message title, Message message, string confirmLabelKey, bool destructive = false)
     {
         var dialog = new MessageDialog(title, message, new[]
         {
-            new DialogButton("Cancel", "cancel"),
-            new DialogButton(confirmLabel, "confirm", destructive ? DialogButtonKind.Destructive : DialogButtonKind.Primary),
+            new DialogButton("common.cancel", "cancel"),
+            new DialogButton(confirmLabelKey, "confirm", destructive ? DialogButtonKind.Destructive : DialogButtonKind.Primary),
         });
         await dialog.ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag == "confirm";
     }
 
-    public async Task ShowErrorAsync(string title, string message)
+    public async Task ShowErrorAsync(Message title, Message message)
     {
-        var dialog = new MessageDialog(title, message, new[] { new DialogButton("OK", "ok", DialogButtonKind.Primary) });
+        var dialog = new MessageDialog(title, message, new[] { new DialogButton("common.ok", "ok", DialogButtonKind.Primary) });
         await dialog.ShowBoundedAsync(RequireOwner());
     }
 
@@ -107,16 +110,15 @@ public sealed class DialogService : IDialogService
     public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
     {
         var dialog = new MessageDialog(
-            "Binder changed on disk",
-            $"“{binderName}” was modified outside DayNote while you have unsaved edits. " +
-            "Reload from disk and lose your edits, or keep your version (the next save overwrites the file)?",
+            Message.Of("binder.changedTitle"),
+            Message.Of("binder.changedMessage", ("name", binderName)),
             new[]
             {
-                new DialogButton("Keep my version", "keep"),
+                new DialogButton("binder.keepMine", "keep"),
                 // Reloading discards the user's unsaved local edits, so it is the destructive choice:
                 // mark it Destructive both for its styling and so initial focus lands on the safe
                 // "Keep my version" instead of the edit-losing button.
-                new DialogButton("Reload from disk", "reload", DialogButtonKind.Destructive),
+                new DialogButton("binder.reloadFromDisk", "reload", DialogButtonKind.Destructive),
             });
         await dialog.ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag == "reload" ? ExternalChangeChoice.ReloadFromDisk : ExternalChangeChoice.KeepMine;

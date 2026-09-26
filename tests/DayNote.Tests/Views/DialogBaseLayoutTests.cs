@@ -78,9 +78,9 @@ public sealed class DialogBaseLayoutTests : IDisposable
     public void Only_the_body_sits_in_the_vertical_scroll_region()
     {
         var dialog = new MessageDialog(
-            "Long message",
-            string.Join("\n", Enumerable.Range(0, 400).Select(i => $"line {i}")),
-            [new DialogButton("OK", "ok", DialogButtonKind.Primary)]);
+            DayNote.I18n.Message.Of("failure.startupDataTitle"),
+            DayNote.I18n.Message.Of("binder.changedMessage", ("name", string.Join("\n", Enumerable.Range(0, 400).Select(i => $"line {i}")))),
+            [new DialogButton("common.ok", "ok", DialogButtonKind.Primary)]);
 
         var content = dialog.GetLogicalDescendants()
             .OfType<ContentPresenter>()
@@ -221,8 +221,8 @@ public sealed class DialogBaseLayoutTests : IDisposable
         {
             new SettingsDialog(new AppConfig(), _ => true),
             new ShortcutsDialog(ShortcutCatalog.Build(owner)),
-            new MessageDialog("Delete note?", "This cannot be undone.",
-                [new DialogButton("Cancel", "cancel", DialogButtonKind.Secondary)]),
+            new MessageDialog(DayNote.I18n.Message.Of("note.deleteTitle"), DayNote.I18n.Message.Of("note.deleteUntitled"),
+                [new DialogButton("common.cancel", "cancel", DialogButtonKind.Secondary)]),
         })
         {
             _open.Add(dialog);
@@ -243,7 +243,7 @@ public sealed class DialogBaseLayoutTests : IDisposable
     [AvaloniaFact]
     public void The_startup_failure_notice_is_bounded_by_the_screen()
     {
-        var notice = MessageDialog.CreateStartupFailure("DayNote could not start", "Something went wrong.");
+        var notice = MessageDialog.CreateStartupFailure(DayNote.I18n.Message.Of("startup.failedTitle"), DayNote.I18n.Message.Of("failure.startupStorage"));
         _open.Add(notice);
 
         var screen = notice.Screens.Primary!;
@@ -261,7 +261,7 @@ public sealed class DialogBaseLayoutTests : IDisposable
     [AvaloniaFact]
     public void The_startup_failure_notice_takes_the_chrome_of_a_lone_window()
     {
-        var notice = MessageDialog.CreateStartupFailure("DayNote could not start", "Something went wrong.");
+        var notice = MessageDialog.CreateStartupFailure(DayNote.I18n.Message.Of("startup.failedTitle"), DayNote.I18n.Message.Of("failure.startupStorage"));
         _open.Add(notice);
         var owned = new DialogBase();
         _open.Add(owned);
