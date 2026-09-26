@@ -7,7 +7,7 @@ using Xunit;
 
 namespace DayNote.Tests.Views;
 
-public sealed class ShortcutsDialogTests
+public sealed class ShortcutsDialogTests : WindowTest
 {
     [Theory]
     [InlineData(new[] { 4, 3, 2, 1, 3 }, 2)] // 7 | 6
@@ -21,15 +21,11 @@ public sealed class ShortcutsDialogTests
     [AvaloniaFact]
     public void The_dialog_fits_within_the_main_windows_default_height()
     {
-        var owner = new Window();
-        owner.Show();
-        var dialog = new ShortcutsDialog(ShortcutCatalog.Build(owner));
-        dialog.Show();
-        Dispatcher.UIThread.RunJobs();
+        var owner = Show(new Window());
+        var dialog = Show(new ShortcutsDialog(ShortcutCatalog.Build(owner)));
         dialog.UpdateLayout();
 
         // The main window opens at 1200×800; its shortcuts should be readable without scrolling there.
         Assert.True(dialog.DesiredSize.Height < 800, $"The dialog wants {dialog.DesiredSize.Height:0} px.");
-        dialog.Close();
     }
 }

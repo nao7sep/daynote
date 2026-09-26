@@ -18,14 +18,12 @@ namespace DayNote.Tests.Controls;
 /// its cursor rectangle. Composition is simulated through the public text-input client/presenter APIs
 /// so no real input method is needed.
 /// </summary>
-public sealed class ComposingTextBoxTests
+public sealed class ComposingTextBoxTests : WindowTest
 {
     // Showing the control realizes its template, which is what populates the box's presenter reference.
-    private static T Host<T>(T content) where T : Control
+    private T Host<T>(T content) where T : Control
     {
-        var window = new Window { Content = content, Width = 400, Height = 300 };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
+        Show(new Window { Content = content, Width = 400, Height = 300 });
         return content;
     }
 
@@ -115,9 +113,7 @@ public sealed class ComposingTextBoxTests
     {
         var a = new ComposingTextBox();
         var b = new ComposingTextBox();
-        var window = new Window { Content = new StackPanel { Children = { a, b } }, Width = 400, Height = 300 };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
+        var window = Show(new Window { Content = new StackPanel { Children = { a, b } }, Width = 400, Height = 300 });
 
         a.Focus();
         Dispatcher.UIThread.RunJobs();

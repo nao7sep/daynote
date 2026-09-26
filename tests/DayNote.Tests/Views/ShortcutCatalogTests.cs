@@ -15,13 +15,12 @@ namespace DayNote.Tests.Views;
 /// action travel together, every action appears exactly once, no chord is bound twice, and each label's
 /// modifiers match its gesture.
 /// </summary>
-public sealed class ShortcutCatalogTests
+public sealed class ShortcutCatalogTests : WindowTest
 {
-    private static (IReadOnlyList<ShortcutItem> items, KeyModifiers cmd) BuildCatalog()
+    private (IReadOnlyList<ShortcutItem> items, KeyModifiers cmd) BuildCatalog()
     {
         // A real TopLevel resolves the platform command modifier the same way the window does.
-        var window = new Window();
-        window.Show();
+        var window = Show(new Window());
         return (ShortcutCatalog.Build(window), ShortcutCatalog.CommandModifier(window));
     }
 
