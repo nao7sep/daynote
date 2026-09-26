@@ -179,7 +179,7 @@
   "shortcuts.groupEditor": "编辑器",
   "shortcuts.groupNavigation": "导航",
   "shortcuts.groupNotes": "笔记",
-  "shortcuts.moveSelection": "在列表中上下移动所选项",
+  "shortcuts.moveSelection": "在列表中向上或向下切换选择",
   "shortcuts.newBinder": "新建笔记本",
   "shortcuts.newNote": "新建笔记",
   "shortcuts.openBinder": "打开笔记本",

@@ -154,7 +154,7 @@
   "settings.language": "언어",
   "settings.languageSystem": "시스템",
   "settings.lineSpacing": "줄 간격",
-  "settings.noFontFamily": "글꼴 없음",
+  "settings.noFontFamily": "글꼴 미지정",
   "settings.padding": "여백",
   "settings.removeStyleMessage": "텍스트 스타일 “{style}”을(를) 삭제하시겠습니까?",
   "settings.removeStyleTitle": "텍스트 스타일 삭제",

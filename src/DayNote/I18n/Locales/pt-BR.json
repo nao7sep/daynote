@@ -79,7 +79,7 @@
   "failure.attachmentPicker": "Não foi possível abrir o seletor de anexos. Sua nota não foi alterada; tente adicionar os anexos novamente.",
   "failure.newBinderPicker": "Não foi possível abrir a janela para criar um fichário. Tente criar o fichário novamente.",
   "failure.openBinder": "Não foi possível abrir este fichário. Verifique se ele está disponível e tente novamente.",
-  "failure.openBinderFormat": "Não foi possível abrir este fichário porque o conteúdo dele não é um dado válido do DayNote. Repare o fichário ou restaure uma cópia íntegra e tente novamente.",
+  "failure.openBinderFormat": "Não foi possível abrir este fichário porque o conteúdo dele não contém dados válidos do DayNote. Repare o fichário ou restaure uma cópia íntegra e tente novamente.",
   "failure.openBinderGone": "Este fichário não está mais disponível no local selecionado.",
   "failure.openBinderPermission": "Não foi possível abrir este fichário. Verifique se você tem permissão para lê-lo e tente novamente.",
   "failure.openBinderPicker": "Não foi possível abrir o seletor de fichários. Tente abrir o fichário novamente.",

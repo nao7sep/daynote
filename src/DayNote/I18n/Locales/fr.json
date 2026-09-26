@@ -115,7 +115,7 @@
   "nativeMenu.edit": "Édition",
   "nativeMenu.hide": "Masquer {app}",
   "nativeMenu.hideOthers": "Masquer les autres",
-  "nativeMenu.minimize": "Placer dans le Dock",
+  "nativeMenu.minimize": "Minimiser",
   "nativeMenu.paste": "Coller",
   "nativeMenu.quit": "Quitter {app}",
   "nativeMenu.redo": "Rétablir",
