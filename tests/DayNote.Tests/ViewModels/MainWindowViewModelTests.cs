@@ -1010,6 +1010,45 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_later_open_wins_a_race_with_an_earlier_one_still_reading_its_file()
+    {
+        // B (one note) starts a background read that shares the save lock; opening C (no notes) right
+        // behind it — before B's read returns — has to wait out that lock rather than read C's file at
+        // the same time. Once B's read finishes, its own generation is already stale, since C's open
+        // started after it: B's result must be discarded rather than briefly flashing its note into the
+        // pane before C's (empty) content replaces it, and the binder that ends up open must be C, the
+        // one the user opened last.
+        var vm = NewViewModel();
+        var pathB = Path.Combine(_home, "b.daynote");
+        var pathC = Path.Combine(_home, "c.daynote");
+
+        _dialogs.BinderToCreate = pathB;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        _dialogs.BinderToCreate = pathC;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+
+        var itemB = Assert.Single(vm.Binders, b => PathKey.Equal(b.Path, pathB));
+        var itemC = Assert.Single(vm.Binders, b => PathKey.Equal(b.Path, pathC));
+
+        var observedNoteCounts = new List<int>();
+        vm.Notes.CollectionChanged += (_, _) => observedNoteCounts.Add(vm.Notes.Count);
+
+        var openB = vm.OpenKnownBinderCommand.ExecuteAsync(itemB);
+        var openC = vm.OpenKnownBinderCommand.ExecuteAsync(itemC);
+        await Task.WhenAll(openB, openC);
+
+        Assert.DoesNotContain(1, observedNoteCounts);
+        Assert.Empty(vm.Notes);
+        Assert.True(itemC.IsCurrent);
+        Assert.False(itemB.IsCurrent);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task A_missing_binder_is_reported_on_its_own_row()
     {
         var vm = NewViewModel();

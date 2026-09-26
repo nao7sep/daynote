@@ -80,6 +80,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     // discard that newer edit (it would never be written, and never be flagged as unsaved again).
     private long _dirtyGeneration;
 
+    // Bumped by every OpenBinderPathAsync call right before its background read/write starts. If it
+    // changes before that call returns, a later open has already started — the user moved on to
+    // another binder while this one's file was still being read — and this call's result is discarded
+    // instead of adopting a binder the user is no longer looking at.
+    private long _openGeneration;
+
     public MainWindowViewModel(
         AppPaths paths,
         IDialogService dialogs,
@@ -1091,29 +1097,61 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        // Marks this open as the one in flight. Checked again after the background read/write returns:
+        // if another OpenBinderPathAsync call started in the meantime, that later open wins and this
+        // call's result is discarded rather than yanking the user back to a binder they moved on from.
+        var generation = ++_openGeneration;
+
         LoadedBinder loaded;
         try
         {
-            if (isNew)
+            // The binder's own read (JSON parse) or write (new-binder create) is genuine file I/O, so it
+            // runs off the UI thread; only building the empty Binder for a new file — trivial, in-memory —
+            // stays here. The work shares the save lock with SaveCurrentAsync/CheckExternalChangeAsync/
+            // ReloadFromDiskAsync so it can never touch this file while one of those still has its write
+            // or read of it in flight.
+            await _binderFileLock.WaitAsync();
+            try
             {
-                var binder = new Binder
+                if (isNew)
                 {
-                    Id = IdGenerator.New(),
-                    Created = DateTimeOffset.UtcNow,
-                    Modified = DateTimeOffset.UtcNow,
-                };
-                var saved = _binderStore.Save(path, binder);
-                loaded = new LoadedBinder(binder, saved.Path, saved.ContentHash);
+                    var binder = new Binder
+                    {
+                        Id = IdGenerator.New(),
+                        Created = DateTimeOffset.UtcNow,
+                        Modified = DateTimeOffset.UtcNow,
+                    };
+                    var saved = await Task.Run(() => _binderStore.Save(path, binder));
+                    loaded = new LoadedBinder(binder, saved.Path, saved.ContentHash);
+                }
+                else
+                {
+                    loaded = await Task.Run(() => _binderStore.Load(path));
+                }
             }
-            else
+            finally
             {
-                loaded = _binderStore.Load(path);
+                _binderFileLock.Release();
             }
         }
         catch (Exception ex)
         {
             _log.Error("Failed to open binder", new { path }, ex);
-            await _dialogs.ShowErrorAsync("Could not open binder", FailurePresentation.OpenBinder(ex));
+            if (generation == _openGeneration)
+            {
+                // Only report the failure if the user is still waiting on this open; a later open
+                // already superseded it, so this error is no longer about anything they're looking at.
+                await _dialogs.ShowErrorAsync("Could not open binder", FailurePresentation.OpenBinder(ex));
+            }
+
+            return;
+        }
+
+        if (generation != _openGeneration)
+        {
+            // A later open has already started (or finished) while this one's file was being read;
+            // that binder is what the user is looking at now, so this stale result is dropped.
+            _log.Info("Discarding binder open: superseded by a later open", new { path });
             return;
         }
 
