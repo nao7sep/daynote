@@ -24,7 +24,7 @@ public sealed class NoteListItemViewModelTests
     [Fact]
     public void Title_uses_the_note_title_when_set()
     {
-        var item = new NoteListItemViewModel(Note(title: "My note"), "UTC");
+        var item = new NoteListItemViewModel(Note(title: "My note"), TimeZoneInfo.Utc);
 
         Assert.Equal("My note", item.Title);
     }
@@ -32,7 +32,7 @@ public sealed class NoteListItemViewModelTests
     [Fact]
     public void Untitled_note_previews_the_body_on_a_single_line()
     {
-        var item = new NoteListItemViewModel(Note(body: "  first line\nsecond line  "), "UTC");
+        var item = new NoteListItemViewModel(Note(body: "  first line\nsecond line  "), TimeZoneInfo.Utc);
 
         Assert.Equal("first line second line", item.Title);
     }
@@ -40,7 +40,7 @@ public sealed class NoteListItemViewModelTests
     [Fact]
     public void Untitled_empty_note_falls_back_to_a_placeholder()
     {
-        var item = new NoteListItemViewModel(Note(), "UTC");
+        var item = new NoteListItemViewModel(Note(), TimeZoneInfo.Utc);
 
         Assert.Equal("(untitled)", item.Title);
     }
@@ -52,7 +52,7 @@ public sealed class NoteListItemViewModelTests
     [InlineData(NoteStatus.Expired, "Expired")]
     public void StatusLabel_matches_the_lifecycle_state(NoteStatus status, string label)
     {
-        var item = new NoteListItemViewModel(Note(status: status), "UTC");
+        var item = new NoteListItemViewModel(Note(status: status), TimeZoneInfo.Utc);
 
         Assert.Equal(label, item.StatusLabel);
     }
@@ -60,19 +60,29 @@ public sealed class NoteListItemViewModelTests
     [Fact]
     public void Subtitle_shows_the_creation_time_in_the_display_zone()
     {
-        var item = new NoteListItemViewModel(Note(), "UTC");
+        var item = new NoteListItemViewModel(Note(), TimeZoneInfo.Utc);
 
         Assert.Equal("2026-06-11 09:00:00", item.Subtitle);
+    }
+
+    [Fact]
+    public void Refresh_shows_the_creation_time_in_the_zone_it_is_given()
+    {
+        var item = new NoteListItemViewModel(Note(), TimeZoneInfo.Utc);
+
+        item.Refresh(TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata"));
+
+        Assert.Equal("2026-06-11 14:30:00", item.Subtitle);
     }
 
     [Fact]
     public void Refresh_picks_up_a_changed_title()
     {
         var note = Note(title: "Old");
-        var item = new NoteListItemViewModel(note, "UTC");
+        var item = new NoteListItemViewModel(note, TimeZoneInfo.Utc);
 
         note.Title = "New";
-        item.Refresh();
+        item.Refresh(TimeZoneInfo.Utc);
 
         Assert.Equal("New", item.Title);
     }

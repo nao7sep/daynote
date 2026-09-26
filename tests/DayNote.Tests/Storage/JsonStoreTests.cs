@@ -55,13 +55,13 @@ public sealed class JsonStoreTests : IDisposable
                 new EditorTextStyle { FontFamily = "Menlo", FontSize = 14 },
                 new EditorTextStyle { IsDefault = true, FontFamily = "Cascadia Code", FontSize = 17, LineSpacing = 1.6, Padding = 10, Bold = true },
             },
-            DisplayTimeZone = "Europe/London",
+            TimeZone = "Europe/London",
         });
 
         var loaded = _store.Load();
 
         Assert.NotNull(loaded);
-        Assert.Equal("Europe/London", loaded!.DisplayTimeZone);
+        Assert.Equal("Europe/London", loaded!.TimeZone);
         Assert.Equal(2, loaded.TextStyles.Count);
         var style = loaded.ResolveDefaultStyle()!;
         Assert.Same(loaded.TextStyles[1], style);

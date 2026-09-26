@@ -47,6 +47,43 @@ public sealed class SettingsDialogTests
     }
 
     [AvaloniaFact]
+    public void The_time_zone_is_chosen_from_a_list_that_starts_with_system()
+    {
+        var config = new AppConfig();
+        var dialog = new SettingsDialog(config, _ => true);
+        var zones = Named<ComboBox>(dialog, "TimeZoneBox");
+        var options = zones.Items.OfType<TimeZoneOption>().ToList();
+        var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
+
+        Assert.Equal("system", options[0].Value);
+        Assert.Contains(DayNote.Core.Time.DayNoteTime.SystemZoneId(), options[0].Name);
+        Assert.Same(options[0], zones.SelectedItem);
+        Assert.Contains(options, option => option.Value == "Asia/Tokyo");
+        Assert.DoesNotContain(dialog.GetLogicalDescendants().OfType<TextBox>(), box => box.Text == "system");
+        Assert.False(save.IsEnabled);
+
+        zones.SelectedItem = options.Single(option => option.Value == "Europe/Berlin");
+
+        Assert.Equal("Europe/Berlin", config.TimeZone);
+        Assert.True(save.IsEnabled);
+    }
+
+    [AvaloniaFact]
+    public void A_saved_zone_no_platform_knows_shows_as_system_without_holding_save_disabled()
+    {
+        var config = new AppConfig { TimeZone = "Mars/Phobos" };
+        var dialog = new SettingsDialog(config, _ => true);
+        var zones = Named<ComboBox>(dialog, "TimeZoneBox");
+        var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
+
+        Assert.Equal("system", ((TimeZoneOption)zones.SelectedItem!).Value);
+        dialog.GetLogicalDescendants().OfType<TextBox>()
+            .Single(box => box.PlaceholderText == AppConfig.DefaultUiFontFamily).Text = "Menlo";
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(save.IsEnabled);
+    }
+
+    [AvaloniaFact]
     public void SuccessfulSaveCommitsExactlyOnce()
     {
         var attempts = 0;

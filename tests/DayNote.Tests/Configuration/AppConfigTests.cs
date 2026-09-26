@@ -92,4 +92,46 @@ public sealed class AppConfigTests
             new[] { "Menlo 14", "Menlo 18.5", "Inter", TextStyleLabels.NoFontFamily, "\u904a\u660e\u671d\u4f53" },
             TextStyleLabels.For(styles));
     }
+
+    [Fact]
+    public void The_time_zone_defaults_to_system()
+    {
+        Assert.Equal(DayNote.Core.Time.DayNoteTime.SystemZone, new AppConfig().TimeZone);
+        Assert.Equal("system", DayNote.Core.Time.DayNoteTime.SystemZone);
+    }
+
+    [Theory]
+    // The zone every older config was seeded with carries no choice, so it follows the computer.
+    [InlineData("Asia/Tokyo", "system")]
+    // A zone the user typed stays chosen.
+    [InlineData("Europe/London", "Europe/London")]
+    [InlineData(" America/New_York ", "America/New_York")]
+    // A blank or an id no zone answers to already displayed as UTC by accident; it follows the computer.
+    [InlineData("", "system")]
+    [InlineData("Mars/Phobos", "system")]
+    public void An_older_typed_zone_migrates_to_the_list(string legacy, string expected)
+    {
+        var json = $$"""{ "displayTimeZone": "{{legacy}}" }""";
+
+        var config = JsonSerializer.Deserialize<AppConfig>(json, DayNoteJson.Options)!;
+
+        Assert.Equal(expected, config.TimeZone);
+        var saved = JsonSerializer.Serialize(config, DayNoteJson.Options);
+        Assert.DoesNotContain("displayTimeZone", saved);
+        Assert.Contains($"\"timeZone\": \"{expected}\"", saved);
+    }
+
+    [Fact]
+    public void A_zone_chosen_from_the_list_is_kept_over_a_leftover_typed_one()
+    {
+        const string json = """{ "timeZone": "Europe/Paris", "displayTimeZone": "Asia/Tokyo" }""";
+
+        Assert.Equal("Europe/Paris", JsonSerializer.Deserialize<AppConfig>(json, DayNoteJson.Options)!.TimeZone);
+    }
+
+    [Fact]
+    public void Copy_preserves_the_time_zone()
+    {
+        Assert.Equal("Europe/Paris", new AppConfig { TimeZone = "Europe/Paris" }.Copy().TimeZone);
+    }
 }

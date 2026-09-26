@@ -11,6 +11,7 @@ using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
 using DayNote.Core.Text;
+using DayNote.Core.Time;
 using DayNote.Logging;
 using DayNote.Services;
 using DayNote.State;
@@ -56,6 +57,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private string? _attachmentNoteId;
 
     private AppConfig _config = new();
+
+    // The zone times are shown in, resolved from the configuration whenever it is applied. Rows and the
+    // editor are handed it on every refresh rather than keeping their own copy.
+    private TimeZoneInfo _displayZone = TimeZoneInfo.Local;
     private AppState _state = new();
     private Exception? _loadError;
 
@@ -105,8 +110,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         // becomes _loadError, which disables saving and surfaces an error dialog once the window is
         // shown, rather than crashing before any UI exists.
         LoadConfigAndState();
+        _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
 
-        Editor = new EditorViewModel(_config.DisplayTimeZone);
+        Editor = new EditorViewModel(_displayZone);
         Editor.Edited += OnEditorEdited;
         Editor.PropertyChanged += (_, e) =>
         {
@@ -506,7 +512,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         _current.Binder.Notes.Add(note);
         // A brand-new note is the newest, so it goes to the top of the newest-first list.
-        _allNotes.Insert(0, new NoteListItemViewModel(note, _config.DisplayTimeZone));
+        _allNotes.Insert(0, new NoteListItemViewModel(note, _displayZone));
         NotesFilter = string.Empty;
         RebuildNotes();
         SelectedNote = Notes.FirstOrDefault(n => n.Note.Id == note.Id);
@@ -1022,10 +1028,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         foreach (var note in _allNotes)
         {
-            note.Refresh();
+            note.Refresh(_displayZone);
         }
-
-        Editor.RefreshMetadata();
     }
 
     [RelayCommand]
@@ -1480,7 +1484,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         // while editing; the stored file order is left untouched.
         foreach (var note in binder.Notes.OrderByDescending(n => n.Created))
         {
-            _allNotes.Add(new NoteListItemViewModel(note, _config.DisplayTimeZone));
+            _allNotes.Add(new NoteListItemViewModel(note, _displayZone));
         }
 
         NotesFilter = string.Empty;
@@ -1820,7 +1824,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _autosaveTimer.Start();
     }
 
-    private void RefreshSelectedListItem() => SelectedNote?.Refresh();
+    private void RefreshSelectedListItem() => SelectedNote?.Refresh(_displayZone);
 
     private static readonly TimeSpan TransientResultLifetime = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TextStyleStatusLifetime = TimeSpan.FromSeconds(5);
@@ -1993,7 +1997,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         ApplyUiFont();
         ApplyTextStyle();
-        Editor.SetTimeZone(_config.DisplayTimeZone);
+        _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
+        Editor.SetTimeZone(_displayZone);
         _autosaveTimer.Interval = TimeSpan.FromSeconds(Math.Max(0.25, _config.AutosaveDelaySeconds));
     }
 
@@ -2110,7 +2115,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         defaultTextStyle = config.TextStyles.FindIndex(style => style.IsDefault),
         textStyleCount = config.TextStyles.Count,
         autosaveDelaySeconds = config.AutosaveDelaySeconds,
-        displayTimeZone = config.DisplayTimeZone,
+        timeZone = config.TimeZone,
     };
 
     private static string EnsureDaynoteExtension(string path) =>

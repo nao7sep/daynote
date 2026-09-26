@@ -33,7 +33,7 @@ public static class SettingsValidator
     {
         ArgumentNullException.ThrowIfNull(draft);
 
-        if (!DayNoteTime.TryResolveTimeZone(draft.TimeZone.Trim(), out _)
+        if (!IsTimeZoneSetting(draft.TimeZone)
             || !InRange(draft.AutosaveSeconds, MinAutosaveSeconds, MaxAutosaveSeconds))
         {
             return false;
@@ -57,6 +57,10 @@ public static class SettingsValidator
 
         return true;
     }
+
+    /// <summary>Whether a time-zone setting is System or a zone the platform knows.</summary>
+    public static bool IsTimeZoneSetting(string setting) =>
+        DayNoteTime.IsSystem(setting) || DayNoteTime.TryResolveTimeZone(setting.Trim(), out _);
 
     /// <summary>True when the working config differs from the saved original, by canonical JSON.</summary>
     public static bool IsDirty(AppConfig current, AppConfig original) =>

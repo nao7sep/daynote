@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 
+using DayNote.Core.Time;
+
 namespace DayNote.Core.Configuration;
 
 /// <summary>
@@ -46,8 +48,22 @@ public sealed class AppConfig : IJsonOnDeserialized
     // Editing behavior.
     public double AutosaveDelaySeconds { get; set; } = 2;
 
-    // Display.
-    public string DisplayTimeZone { get; set; } = "Asia/Tokyo";
+    // Display — the zone times are shown in: an IANA id chosen from the list, or System
+    // (DayNoteTime.SystemZone), which follows the computer's zone at every launch.
+    public string TimeZone { get; set; } = DayNoteTime.SystemZone;
+
+    /// <summary>
+    /// The zone an older config typed as an IANA id, before the zone was chosen from a list and before
+    /// System existed. Read only for that migration, and never written.
+    /// </summary>
+    [JsonInclude, JsonPropertyName("displayTimeZone"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    internal string? LegacyDisplayTimeZone { get; set; }
+
+    /// <summary>
+    /// The zone every older config was seeded with, whether or not its user ever chose it. It carries
+    /// no choice, so it migrates to System, which on a computer in that zone shows the same times.
+    /// </summary>
+    internal const string LegacyDefaultTimeZone = "Asia/Tokyo";
 
     /// <summary>The preset the editor uses: the flagged default, or the first when none is flagged.</summary>
     public EditorTextStyle? ResolveDefaultStyle() =>
@@ -70,6 +86,26 @@ public sealed class AppConfig : IJsonOnDeserialized
         }
 
         LegacySelectedTextStyle = null;
+
+        if (LegacyDisplayTimeZone is { } legacyZone && DayNoteTime.IsSystem(TimeZone))
+        {
+            TimeZone = MigrateLegacyTimeZone(legacyZone);
+        }
+
+        LegacyDisplayTimeZone = null;
+    }
+
+    /// <summary>
+    /// The setting an older config's typed zone becomes: the seeded default, a blank, or an id no zone
+    /// answers to follows the computer; any other zone the user typed stays chosen.
+    /// </summary>
+    internal static string MigrateLegacyTimeZone(string legacyZone)
+    {
+        var trimmed = legacyZone.Trim();
+        return string.Equals(trimmed, LegacyDefaultTimeZone, StringComparison.Ordinal)
+            || !DayNoteTime.TryResolveTimeZone(trimmed, out _)
+            ? DayNoteTime.SystemZone
+            : trimmed;
     }
 
     /// <summary>Returns a deep copy, used to give the settings dialog an editable working copy.</summary>
@@ -79,6 +115,6 @@ public sealed class AppConfig : IJsonOnDeserialized
         Theme = Theme,
         TextStyles = TextStyles.Select(style => style.Copy()).ToList(),
         AutosaveDelaySeconds = AutosaveDelaySeconds,
-        DisplayTimeZone = DisplayTimeZone,
+        TimeZone = TimeZone,
     };
 }

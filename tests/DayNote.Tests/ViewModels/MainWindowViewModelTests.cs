@@ -116,6 +116,29 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_zone_saved_in_settings_reaches_every_note_row_and_the_editor()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.NewNoteCommand.Execute(null);
+        var created = vm.Notes.Select(row => row.Note.Created).ToArray();
+
+        _dialogs.SettingsApplied = true;
+        _dialogs.SettingsEdit = config => config.TimeZone = "Pacific/Kiritimati";
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+
+        // Every row, not only the selected one, shows its time in the zone just saved (UTC+14).
+        var kiritimati = TimeZoneInfo.FindSystemTimeZoneById("Pacific/Kiritimati");
+        Assert.Equal(
+            created.Select(time => DayNote.Core.Time.DayNoteTime.ToDisplay(time, kiritimati)),
+            vm.Notes.Select(row => row.Subtitle));
+        Assert.EndsWith(
+            DayNote.Core.Time.DayNoteTime.ToSmartDisplay(vm.SelectedNote!.Note.Created, kiritimati, DateTimeOffset.UtcNow),
+            vm.Editor.CreatedText);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Native_picker_failures_remain_owned_by_the_initiating_surface()
     {
         var hostile = new IOException("EACCES IPC /private/tmp/DAYNOTE-PICKER-SENTINEL");
@@ -1487,6 +1510,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         public bool ConfirmResult { get; set; } = true;
         public ExternalChangeChoice ExternalChoice { get; set; } = ExternalChangeChoice.KeepMine;
         public bool SettingsApplied { get; set; }
+        public Action<AppConfig>? SettingsEdit { get; set; }
         public Exception? OpenPathError { get; set; }
         public Exception? NewBinderPickerError { get; set; }
         public Exception? OpenBinderPickerError { get; set; }
@@ -1506,8 +1530,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task ShowErrorAsync(string title, string message) => Task.CompletedTask;
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
-        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave) =>
-            Task.FromResult(SettingsApplied && trySave(config));
+        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
+        {
+            SettingsEdit?.Invoke(config);
+            return Task.FromResult(SettingsApplied && trySave(config));
+        }
         public int ExternalChangeQuestions { get; private set; }
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
         {

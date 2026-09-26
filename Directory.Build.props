@@ -14,8 +14,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <!-- Globalization is left enabled (ICU) so TimeZoneInfo can resolve IANA
-         ids such as "Asia/Tokyo" on every platform, including Windows. -->
+    <!-- Globalization is left enabled (ICU) so TimeZoneInfo resolves and lists
+         IANA zone ids on every platform, including Windows. -->
 
     <Authors>Yoshinao Inoguchi</Authors>
     <Company>Yoshinao Inoguchi</Company>

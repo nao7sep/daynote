@@ -12,7 +12,7 @@ namespace DayNote.Tests.ViewModels;
 /// </summary>
 public sealed class EditorViewModelTests
 {
-    private static EditorViewModel NewEditor() => new("UTC");
+    private static EditorViewModel NewEditor() => new(TimeZoneInfo.Utc);
 
     private static Note NewNote(string title = "", string body = "", NoteStatus status = NoteStatus.Draft) => new()
     {

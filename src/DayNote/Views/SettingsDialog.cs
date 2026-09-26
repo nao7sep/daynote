@@ -11,6 +11,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using DayNote.Controls;
 using DayNote.Core.Configuration;
+using DayNote.Core.Time;
 
 namespace DayNote.Views;
 
@@ -44,7 +45,7 @@ public sealed class SettingsDialog : DialogBase
     private readonly IReadOnlyList<RadioButton> _themeButtons;
     private readonly TextBox _uiFont;
     private readonly NumericUpDown _autosave;
-    private readonly TextBox _timeZone;
+    private readonly ComboBox _timeZone;
     private readonly Button _saveButton;
     private readonly TextBlock _saveError;
     private readonly Func<AppConfig, bool> _trySave;
@@ -166,7 +167,22 @@ public sealed class SettingsDialog : DialogBase
         _uiFont = new ComposingTextBox { Text = config.UiFontFamily, PlaceholderText = AppConfig.DefaultUiFontFamily };
         _autosave = Numeric((decimal)SettingsValidator.MinAutosaveSeconds, (decimal)SettingsValidator.MaxAutosaveSeconds, 0.25m);
         _autosave.Value = (decimal)config.AutosaveDelaySeconds;
-        _timeZone = new ComposingTextBox { Text = config.DisplayTimeZone };
+        // System first, then every zone the platform knows by its IANA id: chosen, never typed.
+        var zones = TimeZoneOption.All(config.TimeZone);
+        var zone = TimeZoneOption.For(config.TimeZone, zones);
+        // A hand-edited id no zone answers to already displays as System; the draft says so too, so
+        // it is not an invalid value holding Save disabled behind a list that shows System.
+        config.TimeZone = zone.Value;
+        _timeZone = new ComboBox
+        {
+            Name = "TimeZoneBox",
+            ItemsSource = zones,
+            SelectedItem = zone,
+            DisplayMemberBinding = new Binding(nameof(TimeZoneOption.Name)),
+            MinWidth = 280,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        AutomationProperties.SetName(_timeZone, "Time zone");
 
         var panel = new StackPanel { Spacing = 8, Width = 600 };
         panel.Children.Add(styleSurface);
@@ -177,7 +193,7 @@ public sealed class SettingsDialog : DialogBase
         panel.Children.Add(_uiFont);
         panel.Children.Add(Label("Autosave delay (seconds)"));
         panel.Children.Add(_autosave);
-        panel.Children.Add(Label("Display time zone (IANA id, e.g. Asia/Tokyo)"));
+        panel.Children.Add(Label("Time zone"));
         panel.Children.Add(_timeZone);
         _saveError = new TextBlock
         {
@@ -205,9 +221,13 @@ public sealed class SettingsDialog : DialogBase
 
             Revalidate();
         };
-        _timeZone.TextChanged += (_, _) =>
+        _timeZone.SelectionChanged += (_, _) =>
         {
-            _config.DisplayTimeZone = (_timeZone.Text ?? string.Empty).Trim();
+            if (_timeZone.SelectedItem is TimeZoneOption zone)
+            {
+                _config.TimeZone = zone.Value;
+            }
+
             Revalidate();
         };
         foreach (var (button, choice) in _themeButtons.Zip(ThemeChoices))
@@ -464,7 +484,7 @@ public sealed class SettingsDialog : DialogBase
             style.LineSpacing,
             style.Padding)).ToList();
         var draft = new SettingsDraft(
-            _timeZone.Text ?? string.Empty,
+            _config.TimeZone,
             (double)(_autosave.Value ?? 0),
             styles,
             _config.TextStyles.Count(style => style.IsDefault) == 1);
@@ -589,4 +609,24 @@ public sealed class SettingsDialog : DialogBase
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDefault)));
         }
     }
+}
+
+/// <summary>
+/// A line in the Settings time-zone list: the value that is saved, and the words shown for it. System
+/// names the zone it follows now, so the reader sees which zone that is on this computer.
+/// </summary>
+public sealed record TimeZoneOption(string Value, string Name)
+{
+    /// <summary>System first, then each zone by its IANA id.</summary>
+    internal static IReadOnlyList<TimeZoneOption> All(string? saved) =>
+    [
+        new(DayNoteTime.SystemZone, $"System ({DayNoteTime.SystemZoneId()})"),
+        .. DayNoteTime.ZoneIds(saved).Select(id => new TimeZoneOption(id, id)),
+    ];
+
+    /// <summary>The line for a saved setting, falling back to System for one no zone answers to.</summary>
+    internal static TimeZoneOption For(string? saved, IReadOnlyList<TimeZoneOption> options) =>
+        DayNoteTime.IsSystem(saved)
+            ? options[0]
+            : options.Skip(1).FirstOrDefault(option => option.Value == saved!.Trim()) ?? options[0];
 }

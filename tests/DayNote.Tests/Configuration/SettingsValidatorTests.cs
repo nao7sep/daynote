@@ -23,6 +23,9 @@ public sealed class SettingsValidatorTests
     public void Valid_draft_passes() => Assert.True(SettingsValidator.IsValid(Draft()));
 
     [Fact]
+    public void System_timezone_passes() => Assert.True(SettingsValidator.IsValid(Draft(tz: "system")));
+
+    [Fact]
     public void Unresolvable_timezone_fails() => Assert.False(SettingsValidator.IsValid(Draft(tz: "Not/AZone")));
 
     [Theory]

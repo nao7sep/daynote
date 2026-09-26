@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using DayNote.Core.Time;
 using Xunit;
 
@@ -34,16 +35,43 @@ public sealed class DayNoteTimeTests
         Assert.Equal(TimeZoneInfo.Utc, zone);
     }
 
+    [Theory]
+    [InlineData("system")]
+    [InlineData("SYSTEM")]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Totally/Bogus")]
+    public void DisplayZone_follows_the_computer_for_system_and_for_anything_no_zone_answers_to(string? setting) =>
+        Assert.Equal(TimeZoneInfo.Local, DayNoteTime.DisplayZone(setting));
+
     [Fact]
-    public void ToDisplay_renders_an_unknown_zone_in_utc()
+    public void DisplayZone_resolves_a_chosen_zone() =>
+        Assert.Equal(TimeZoneInfo.FindSystemTimeZoneById("Europe/London"), DayNoteTime.DisplayZone("Europe/London"));
+
+    [Fact]
+    public void ZoneIds_lists_iana_zones_sorted_with_utc_and_never_a_windows_id()
     {
-        // The display formatter shares its resolution path with TryResolveTimeZone, so an unresolvable
-        // zone must format identically to an explicit UTC request rather than throwing.
+        var ids = DayNoteTime.ZoneIds();
+
+        Assert.Contains("UTC", ids);
+        Assert.Contains("Asia/Tokyo", ids);
+        Assert.Contains("America/New_York", ids);
+        Assert.Equal(ids.OrderBy(id => id, StringComparer.Ordinal), ids);
+        Assert.Equal(ids.Distinct(), ids);
+        Assert.DoesNotContain("Tokyo Standard Time", ids);
+        Assert.All(ids, id => Assert.True(DayNoteTime.TryResolveTimeZone(id, out _), id));
+    }
+
+    [Fact]
+    public void ZoneIds_keeps_a_saved_zone_selectable() =>
+        Assert.Contains("Etc/GMT+5", DayNoteTime.ZoneIds("Etc/GMT+5"));
+
+    [Fact]
+    public void ToDisplay_renders_in_the_given_zone()
+    {
         var instant = new DateTimeOffset(2026, 6, 11, 14, 23, 5, TimeSpan.Zero);
 
-        Assert.Equal(
-            DayNoteTime.ToDisplay(instant, "UTC"),
-            DayNoteTime.ToDisplay(instant, "Totally/Bogus"));
+        Assert.Equal("2026-06-11 23:23:05", DayNoteTime.ToDisplay(instant, TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo")));
     }
 
     private static readonly DateTimeOffset SmartNow = new(2026, 6, 21, 10, 0, 0, TimeSpan.Zero);
@@ -53,7 +81,7 @@ public sealed class DayNoteTimeTests
     {
         var value = new DateTimeOffset(2026, 6, 21, 14, 30, 0, TimeSpan.Zero);
 
-        Assert.Equal("14:30", DayNoteTime.ToSmartDisplay(value, "UTC", SmartNow));
+        Assert.Equal("14:30", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, SmartNow));
     }
 
     [Fact]
@@ -61,7 +89,7 @@ public sealed class DayNoteTimeTests
     {
         var value = new DateTimeOffset(2026, 6, 18, 9, 0, 0, TimeSpan.Zero);
 
-        Assert.Equal("Jun 18", DayNoteTime.ToSmartDisplay(value, "UTC", SmartNow));
+        Assert.Equal("Jun 18", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, SmartNow));
     }
 
     [Fact]
@@ -69,7 +97,7 @@ public sealed class DayNoteTimeTests
     {
         var value = new DateTimeOffset(2024, 12, 1, 9, 0, 0, TimeSpan.Zero);
 
-        Assert.Equal("2024-12-01", DayNoteTime.ToSmartDisplay(value, "UTC", SmartNow));
+        Assert.Equal("2024-12-01", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.Utc, SmartNow));
     }
 
     [Fact]
@@ -80,7 +108,7 @@ public sealed class DayNoteTimeTests
         var now = new DateTimeOffset(2026, 6, 21, 17, 0, 0, TimeSpan.Zero);
         var value = new DateTimeOffset(2026, 6, 21, 16, 0, 0, TimeSpan.Zero);
 
-        Assert.Equal("01:00", DayNoteTime.ToSmartDisplay(value, "Asia/Tokyo", now));
+        Assert.Equal("01:00", DayNoteTime.ToSmartDisplay(value, TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo"), now));
     }
 
     [Theory]
@@ -99,10 +127,10 @@ public sealed class DayNoteTimeTests
 
             Assert.Equal(
                 "Jun 18",
-                DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 18, 9, 0, 0, TimeSpan.Zero), "UTC", SmartNow));
+                DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 18, 9, 0, 0, TimeSpan.Zero), TimeZoneInfo.Utc, SmartNow));
             Assert.Equal(
                 "14:30",
-                DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 21, 14, 30, 0, TimeSpan.Zero), "UTC", SmartNow));
+                DayNoteTime.ToSmartDisplay(new DateTimeOffset(2026, 6, 21, 14, 30, 0, TimeSpan.Zero), TimeZoneInfo.Utc, SmartNow));
         }
         finally
         {
@@ -120,15 +148,6 @@ public sealed class DayNoteTimeTests
 
         Assert.False(DayNoteTime.TryResolveTimeZone("   ", out var fromBlank));
         Assert.Equal(TimeZoneInfo.Utc, fromBlank);
-    }
-
-    [Fact]
-    public void ToSmartDisplay_does_not_throw_on_a_null_time_zone()
-    {
-        // A null zone falls back to UTC rather than crashing the display path (and, in the real app,
-        // the constructor) — so a corrupt config can't prevent startup.
-        var value = new DateTimeOffset(2024, 12, 1, 9, 30, 0, TimeSpan.Zero);
-        Assert.Equal("2024-12-01", DayNoteTime.ToSmartDisplay(value, null!, SmartNow));
     }
 
     [Fact]

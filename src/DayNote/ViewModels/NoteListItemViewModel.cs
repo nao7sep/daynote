@@ -11,13 +11,10 @@ public sealed partial class NoteListItemViewModel : ObservableObject
     // A label cap well above any pane width; CharacterEllipsis does the visual fit (per text-cleanup-conventions).
     private const int LabelLength = 80;
 
-    private readonly string _displayTimeZone;
-
-    public NoteListItemViewModel(Note note, string displayTimeZone)
+    public NoteListItemViewModel(Note note, TimeZoneInfo displayZone)
     {
         Note = note;
-        _displayTimeZone = displayTimeZone;
-        Refresh();
+        Refresh(displayZone);
     }
 
     public Note Note { get; }
@@ -42,13 +39,17 @@ public sealed partial class NoteListItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isStatusExpired;
 
-    /// <summary>Re-reads the title, status, and creation time from the underlying note.</summary>
-    public void Refresh()
+    /// <summary>
+    /// Re-reads the title, status, and creation time from the underlying note. The owner passes the zone
+    /// it displays times in now, rather than the row keeping the one it was built with, so a zone saved
+    /// in Settings reaches every row.
+    /// </summary>
+    public void Refresh(TimeZoneInfo displayZone)
     {
         Title = DisplayLabel();
         // Show the creation time consistently (not modified) so the list order (newest-created first)
         // and the displayed date agree, and a row does not jump its label as it is edited.
-        Subtitle = DayNoteTime.ToDisplay(Note.Created, _displayTimeZone);
+        Subtitle = DayNoteTime.ToDisplay(Note.Created, displayZone);
         StatusLabel = StatusText(Note.Status);
         IsStatusReady = Note.Status == NoteStatus.Ready;
         IsStatusPublished = Note.Status == NoteStatus.Published;

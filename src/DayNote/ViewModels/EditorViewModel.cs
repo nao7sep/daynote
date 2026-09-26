@@ -14,13 +14,13 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class EditorViewModel : ViewModelBase
 {
-    private string _displayTimeZone;
+    private TimeZoneInfo _displayZone;
     private Note? _note;
     private bool _suppress;
 
-    public EditorViewModel(string displayTimeZone)
+    public EditorViewModel(TimeZoneInfo displayZone)
     {
-        _displayTimeZone = displayTimeZone;
+        _displayZone = displayZone;
         UpdateCounts();
     }
 
@@ -79,9 +79,9 @@ public sealed partial class EditorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isWithinXLimit = true;
 
-    public void SetTimeZone(string timeZone)
+    public void SetTimeZone(TimeZoneInfo zone)
     {
-        _displayTimeZone = timeZone;
+        _displayZone = zone;
         RefreshMetadata();
     }
 
@@ -131,11 +131,11 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
 
         var now = DateTimeOffset.UtcNow;
-        CreatedText = "Created " + DayNoteTime.ToSmartDisplay(_note.Created, _displayTimeZone, now);
-        ModifiedText = "Modified " + DayNoteTime.ToSmartDisplay(_note.Modified, _displayTimeZone, now);
-        ReadyAtText = _note.ReadyAt is { } r ? "Ready " + DayNoteTime.ToSmartDisplay(r, _displayTimeZone, now) : string.Empty;
-        PublishedAtText = _note.PublishedAt is { } p ? "Published " + DayNoteTime.ToSmartDisplay(p, _displayTimeZone, now) : string.Empty;
-        ExpiredAtText = _note.ExpiredAt is { } x ? "Expired " + DayNoteTime.ToSmartDisplay(x, _displayTimeZone, now) : string.Empty;
+        CreatedText = "Created " + DayNoteTime.ToSmartDisplay(_note.Created, _displayZone, now);
+        ModifiedText = "Modified " + DayNoteTime.ToSmartDisplay(_note.Modified, _displayZone, now);
+        ReadyAtText = _note.ReadyAt is { } r ? "Ready " + DayNoteTime.ToSmartDisplay(r, _displayZone, now) : string.Empty;
+        PublishedAtText = _note.PublishedAt is { } p ? "Published " + DayNoteTime.ToSmartDisplay(p, _displayZone, now) : string.Empty;
+        ExpiredAtText = _note.ExpiredAt is { } x ? "Expired " + DayNoteTime.ToSmartDisplay(x, _displayZone, now) : string.Empty;
     }
 
     partial void OnTitleChanged(string value)

@@ -7,8 +7,8 @@ namespace DayNote.Core.Time;
 /// precision (the serialized form used for data values such as the backup store's written_at_utc).
 /// Filename timestamps use <c>yyyymmdd-hhmmss-fff-utc</c> at millisecond precision — currently the
 /// per-launch log filename — so two events within the same second still produce distinct names.
-/// User-facing timestamps are rendered in a configurable time zone (default Asia/Tokyo) in an
-/// ISO-like format.
+/// User-facing timestamps are rendered in the display zone: the computer's own by default
+/// (<see cref="SystemZone"/>), or a zone the user chose from <see cref="ZoneIds"/>.
 /// </summary>
 public static class DayNoteTime
 {
@@ -51,28 +51,81 @@ public static class DayNoteTime
     public static string FileStamp(DateTimeOffset value) =>
         value.ToUniversalTime().ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + "-utc";
 
+    /// <summary>The saved time-zone setting that means "follow the computer".</summary>
+    public const string SystemZone = "system";
+
     /// <summary>
-    /// Renders a UTC timestamp for display in the given IANA time zone (e.g. <c>Asia/Tokyo</c>),
-    /// in the ISO-like format <c>yyyy-MM-dd HH:mm:ss</c>. Falls back to UTC if the zone is unknown.
+    /// The zone a saved setting displays times in: the computer's own for <see cref="SystemZone"/>,
+    /// read afresh so a computer taken to another zone shows local times at its next launch, and for a
+    /// missing or unknown id, so a hand-edited file never leaves the app without a zone. The computer's
+    /// zone is UTC when the platform cannot say.
     /// </summary>
-    public static string ToDisplay(DateTimeOffset value, string timeZoneId)
+    public static TimeZoneInfo DisplayZone(string? setting) =>
+        !IsSystem(setting) && TryResolveTimeZone(setting!.Trim(), out var zone) ? zone : TimeZoneInfo.Local;
+
+    /// <summary>Whether a saved setting follows the computer's zone rather than naming one.</summary>
+    public static bool IsSystem(string? setting) =>
+        string.IsNullOrWhiteSpace(setting) || string.Equals(setting.Trim(), SystemZone, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The IANA id of the computer's zone, as the list names it: macOS reports IANA ids already, and a
+    /// Windows zone id is converted to its IANA equivalent.
+    /// </summary>
+    public static string SystemZoneId() => IanaIdOf(TimeZoneInfo.Local) ?? TimeZoneInfo.Local.Id;
+
+    /// <summary>
+    /// The zones a user chooses from after System: every zone the platform knows, by IANA id, plus UTC
+    /// and <paramref name="saved"/> when the platform's list lacks them, so a stored choice always stays
+    /// selectable. Sorted by id.
+    /// </summary>
+    public static IReadOnlyList<string> ZoneIds(string? saved = null)
     {
-        var zone = ResolveTimeZone(timeZoneId);
+        var ids = new SortedSet<string>(StringComparer.Ordinal) { "UTC" };
+        foreach (var zone in TimeZoneInfo.GetSystemTimeZones())
+        {
+            if (IanaIdOf(zone) is { } id)
+            {
+                ids.Add(id);
+            }
+        }
+
+        if (!IsSystem(saved) && TryResolveTimeZone(saved!.Trim(), out _))
+        {
+            ids.Add(saved.Trim());
+        }
+
+        return ids.ToList();
+    }
+
+    private static string? IanaIdOf(TimeZoneInfo zone)
+    {
+        if (zone.HasIanaId)
+        {
+            return zone.Id;
+        }
+
+        return TimeZoneInfo.TryConvertWindowsIdToIanaId(zone.Id, out var iana) ? iana : null;
+    }
+
+    /// <summary>
+    /// Renders a UTC timestamp for display in <paramref name="zone"/>, in the ISO-like format
+    /// <c>yyyy-MM-dd HH:mm:ss</c>.
+    /// </summary>
+    public static string ToDisplay(DateTimeOffset value, TimeZoneInfo zone)
+    {
         var local = TimeZoneInfo.ConvertTime(value.ToUniversalTime(), zone);
         return local.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
     /// <summary>
-    /// Renders a UTC timestamp for the status bar, relative to <paramref name="now"/>, in the given
-    /// time zone: time only (<c>HH:mm</c>) when it falls on the same calendar day, abbreviated month
-    /// and day (<c>MMM d</c>) when within the same year, otherwise the full date (<c>yyyy-MM-dd</c>).
-    /// Both the same-day/same-year comparison and the formatting run in the resolved zone with the
-    /// invariant culture, so the result is identical regardless of the host's system locale (no locale
-    /// month names, AM/PM, or digit grouping leak in). Falls back to UTC if the zone is unknown.
+    /// Renders a UTC timestamp for the status bar, relative to <paramref name="now"/>, in
+    /// <paramref name="zone"/>: time only (<c>HH:mm</c>) when it falls on the same calendar day,
+    /// abbreviated month and day (<c>MMM d</c>) when within the same year, otherwise the full date
+    /// (<c>yyyy-MM-dd</c>). Both the same-day/same-year comparison and the formatting run in the zone
+    /// with the invariant culture, so the result is identical regardless of the host's system locale.
     /// </summary>
-    public static string ToSmartDisplay(DateTimeOffset value, string timeZoneId, DateTimeOffset now)
+    public static string ToSmartDisplay(DateTimeOffset value, TimeZoneInfo zone, DateTimeOffset now)
     {
-        var zone = ResolveTimeZone(timeZoneId);
         var local = TimeZoneInfo.ConvertTime(value.ToUniversalTime(), zone);
         var localNow = TimeZoneInfo.ConvertTime(now.ToUniversalTime(), zone);
 
@@ -96,7 +149,7 @@ public static class DayNoteTime
     /// </summary>
     public static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo zone)
     {
-        // A null/blank id (e.g. a hand-edited "displayTimeZone": null in config.json) is not a valid
+        // A null/blank id (e.g. a hand-edited "timeZone": null in config.json) is not a valid
         // zone and must never reach FindSystemTimeZoneById, which throws ArgumentNullException on null —
         // treat it the same as an unknown id and fall back to UTC.
         if (string.IsNullOrWhiteSpace(timeZoneId))
@@ -120,11 +173,5 @@ public static class DayNoteTime
             zone = TimeZoneInfo.Utc;
             return false;
         }
-    }
-
-    private static TimeZoneInfo ResolveTimeZone(string? timeZoneId)
-    {
-        TryResolveTimeZone(timeZoneId, out var zone);
-        return zone;
     }
 }
