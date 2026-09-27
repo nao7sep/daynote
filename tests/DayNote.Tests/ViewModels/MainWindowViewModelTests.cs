@@ -1073,6 +1073,31 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task An_open_still_reading_its_file_at_shutdown_is_discarded()
+    {
+        // Shutdown supersedes an open whose background read has not returned yet: when that read
+        // finishes, the binder is not adopted and nothing is written after the app shut down.
+        var vm = NewViewModel();
+        var pathB = Path.Combine(_home, "b.daynote");
+        var pathC = Path.Combine(_home, "c.daynote");
+
+        _dialogs.BinderToCreate = pathB;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        _dialogs.BinderToCreate = pathC;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var itemB = Assert.Single(vm.Binders, b => PathKey.Equal(b.Path, pathB));
+
+        var open = vm.OpenKnownBinderCommand.ExecuteAsync(itemB);
+        await vm.ShutdownAsync();
+        await open;
+
+        Assert.False(itemB.IsCurrent);
+        Assert.Empty(vm.Notes);
+    }
+
+    [AvaloniaFact]
     public async Task A_missing_binder_is_reported_on_its_own_row()
     {
         var vm = NewViewModel();

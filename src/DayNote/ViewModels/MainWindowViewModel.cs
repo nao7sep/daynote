@@ -395,6 +395,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         _log.Info("Application shutting down", new { path = _current?.Path });
 
+        // An open still reading its file is superseded, as a later open would supersede it: its
+        // result must not adopt a binder or write state after the app has shut down.
+        _openGeneration++;
+
         // Persist state (including the current note id) while the binder is still open;
         // CloseCurrentAsync clears the selection, which would otherwise null out CurrentNoteId.
         PersistState();
