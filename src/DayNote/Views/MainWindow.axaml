@@ -4,6 +4,7 @@
         xmlns:core="using:DayNote.Core.Models"
         xmlns:ctl="using:DayNote.Controls"
         xmlns:i18n="using:DayNote.I18n"
+        xmlns:views="using:DayNote.Views"
         x:Class="DayNote.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="DayNote"
@@ -243,7 +244,7 @@
                                     <Grid ColumnDefinitions="*,Auto,Auto" Background="Transparent" DoubleTapped="BinderRow_DoubleTapped">
                                         <StackPanel Spacing="2">
                                             <Panel>
-                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                <TextBlock x:Name="BinderTitle" Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                                            IsVisible="{Binding !IsEditing}"/>
                                                 <ctl:ComposingTextBox Text="{Binding EditText}" IsVisible="{Binding IsEditing}" SubmitOnEnter="True"
                                                          FontWeight="SemiBold" Padding="2,0" MinHeight="0"
@@ -265,6 +266,7 @@
                                         <!-- Remove from the list (revealed on hover/selection). If it's the open
                                              binder, this closes it (flushing edits) first; closing == forgetting. -->
                                         <Button Grid.Column="2" Classes="rowAction" Click="RemoveBinderRow_Click"
+                                                views:FirstLine.Text="{Binding #BinderTitle}"
                                                 Classes.revealed="{Binding IsMissing}"
                                                 i18n:Localized.ToolTip="binder.remove"
                                                 i18n:Localized.AutomationName="binder.remove">
@@ -312,7 +314,7 @@
                                                 Classes.published="{Binding IsStatusPublished}"
                                                 Classes.expired="{Binding IsStatusExpired}"/>
                                         <StackPanel Grid.Column="1" Spacing="2">
-                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="NoteTitle" Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                             <!-- The status keeps its word; the creation time trims when the pane is
                                                  narrower than both, as the title above it does. -->
                                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
@@ -328,6 +330,7 @@
                                         </StackPanel>
                                         <!-- Per-row delete, revealed on hover/selection (replaces the Delete button). -->
                                         <Button Grid.Column="2" Classes="rowAction" Click="DeleteNoteRow_Click"
+                                                views:FirstLine.Text="{Binding #NoteTitle}"
                                                 i18n:Localized.ToolTip="note.delete" i18n:Localized.AutomationName="note.delete">
                                             <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
                                                   StrokeThickness="1.6" StrokeLineCap="Round" Data="M1,1 L9,9 M9,1 L1,9"/>
@@ -425,9 +428,10 @@
                             AutomationProperties.Name="{Binding AttachmentResult.AccessibleMessage}"
                             AutomationProperties.LiveSetting="{Binding AttachmentResult.LiveSetting}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBlock Text="{Binding AttachmentResult.Text}" TextWrapping="Wrap"
+                            <TextBlock x:Name="AttachmentResultText" Text="{Binding AttachmentResult.Text}" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextPrimaryBrush}"/>
                             <Button Grid.Column="1" Classes="resultClose" VerticalAlignment="Top"
+                                    views:FirstLine.Text="{Binding #AttachmentResultText}"
                                     Click="DismissAttachmentResult_Click" i18n:Localized.ToolTip="common.close"
                                     i18n:Localized.AutomationName="attachments.closeResult">
                                 <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
@@ -456,12 +460,13 @@
                                             </Panel>
                                         </Border>
                                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="AttachmentFileName" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"/>
                                             <TextBlock Text="{Binding DetailsText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
                                         <!-- Same hover-✕ remove affordance as the other lists; a published or
                                              expired note keeps its attachments, as it keeps its text. -->
                                         <Button Grid.Column="2" Classes="rowAction" Click="RemoveAttachment_Click"
+                                                views:FirstLine.Text="{Binding #AttachmentFileName}"
                                                 IsVisible="{Binding $parent[ListBox].DataContext.CanEditNote}"
                                                 i18n:Localized.ToolTip="attachments.remove"
                                                 i18n:Localized.AutomationName="attachments.remove">

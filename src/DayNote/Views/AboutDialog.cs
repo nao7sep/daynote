@@ -46,6 +46,7 @@ public sealed class AboutDialog : DialogBase
             VerticalAlignment = VerticalAlignment.Top,
         };
         closeResult.Classes.Add("resultClose");
+        FirstLine.SetText(closeResult, _linkResultText);
         Localized.SetToolTip(closeResult, "common.close");
         Localized.SetAutomationName(closeResult, "about.closeLinkResult");
         var resultGrid = new Grid

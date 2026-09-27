@@ -410,7 +410,8 @@
             <Setter Property="Padding" Value="12,10"/>
         </Style>
 
-        <!-- A row's inline action (e.g. a close/delete "✕"): revealed only when its list row is
+        <!-- A row's inline action (e.g. a close/delete "✕"): centred on its row's first text line
+             (FirstLine), and revealed only when its list row is
              hovered or selected, so rows stay clean. Space is reserved at all times, so revealing
              it never reflows the row. Because the row must be hovered for the icon to appear, an
              opacity-0 icon is never under the pointer — no accidental clicks. -->
@@ -446,7 +447,7 @@
             <Setter Property="Background" Value="{DynamicResource DangerSurfacePressedBrush}"/>
         </Style>
 
-        <!-- A result keeps a quiet, always-present close affordance at its upper end. Hover and
+        <!-- A result keeps a quiet, always-present close affordance on its first line (FirstLine). Hover and
              keyboard focus reveal its hit area; the focus ring marks it as it marks every control. -->
         <Style Selector="Button.resultClose">
             <Setter Property="Background" Value="Transparent"/>
