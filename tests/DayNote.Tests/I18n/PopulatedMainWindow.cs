@@ -102,7 +102,33 @@ internal sealed class PopulatedMainWindow : IDisposable
 
     public void Dispose()
     {
-        _ = ViewModel.ShutdownAsync();
+        // Quit through the app's own path before Home is deleted. Shutdown writes state.json under
+        // Home, and a shown window left open is closed later by the headless platform, whose quit
+        // runs shutdown again and recreates the deleted folder. Closing the window here runs that
+        // quit now; a window never shown has no quit path, so its view model is shut down directly.
+        // The save's continuation runs on the UI thread, so the thread is pumped rather than blocked.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        if (Window.IsVisible)
+        {
+            var closed = false;
+            Window.Closed += (_, _) => closed = true;
+            Window.Close();
+            while (!closed && DateTime.UtcNow < deadline)
+            {
+                Dispatcher.UIThread.RunJobs();
+                System.Threading.Thread.Sleep(1);
+            }
+        }
+        else
+        {
+            var shutdown = ViewModel.ShutdownAsync();
+            while (!shutdown.IsCompleted && DateTime.UtcNow < deadline)
+            {
+                Dispatcher.UIThread.RunJobs();
+                System.Threading.Thread.Sleep(1);
+            }
+        }
+
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
         {
