@@ -25,7 +25,11 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private MainWindowViewModel? _viewModel;
 
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        MenuItemGestureSpace.Install();
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
