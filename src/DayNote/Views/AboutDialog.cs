@@ -14,9 +14,9 @@ namespace DayNote.Views;
 
 /// <summary>
 /// The About dialog: app name and version, a one-line description, links to the project on GitHub,
-/// and the license line. The window Title ("About DayNote") becomes the dialog's header via
-/// <see cref="DialogBase"/>; the content carries the version, description, links, and copyright. It is
-/// modal, so its words are rendered once, as it is built.
+/// and the license line. The window Title ("About DayNote") is the OS title bar's; the content leads
+/// with the app's name, then its version, description, links, and copyright. It is modal, so its words
+/// are rendered once, as it is built.
 /// </summary>
 public sealed class AboutDialog : DialogBase
 {
@@ -62,10 +62,10 @@ public sealed class AboutDialog : DialogBase
             IsVisible = false,
             Margin = new Thickness(0, 0, 0, 16),
             Padding = new Thickness(10, 8),
-            CornerRadius = new CornerRadius(6),
             BorderThickness = new Thickness(1),
             Child = resultGrid,
         }
+            .Themed(Border.CornerRadiusProperty, "ControlCornerRadius")
             .Themed(Border.BackgroundProperty, "AppBackgroundBrush")
             .Themed(Border.BorderBrushProperty, "DangerTextBrush");
         AutomationProperties.SetLiveSetting(_linkResult, AutomationLiveSetting.Assertive);
@@ -76,12 +76,20 @@ public sealed class AboutDialog : DialogBase
             Spacing = 0,
             Children =
             {
+                // The app's name leads, at the product-title size in the ordinary ink, with its version
+                // on a line of its own under it; the OS title bar already carries "About DayNote".
                 new TextBlock
                 {
-                    Text = $"{AppInfo.Name} {AppInfo.Version}",
-                    FontSize = 18,
-                    FontWeight = FontWeight.SemiBold,
-                    Margin = new Thickness(0, 0, 0, 12),
+                    Name = "AboutAppName",
+                    Text = AppInfo.Name,
+                    FontSize = 22,
+                    FontWeight = FontWeight.Bold,
+                }.Themed(TextBlock.ForegroundProperty, "TextPrimaryBrush"),
+                new TextBlock
+                {
+                    Name = "AboutAppVersion",
+                    Text = AppInfo.Version,
+                    Margin = new Thickness(0, 2, 0, 14),
                 }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush"),
                 new TextBlock
                 {
@@ -93,7 +101,7 @@ public sealed class AboutDialog : DialogBase
                 new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
-                    Spacing = 12,
+                    Spacing = 8,
                     Margin = new Thickness(0, 0, 0, 16),
                     Children =
                     {

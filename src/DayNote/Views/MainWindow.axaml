@@ -30,7 +30,7 @@
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="{StaticResource PaneCornerRadius}"/>
             <Setter Property="Margin" Value="4"/>
         </Style>
         <!-- State colors. The view models expose state (a note's lifecycle, the save state, a result's
@@ -87,7 +87,7 @@
             <Setter Property="Background" Value="{DynamicResource ResultInfoBackgroundBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="CornerRadius" Value="{StaticResource PaneCornerRadius}"/>
             <Setter Property="Padding" Value="14,12,8,12"/>
             <Setter Property="BoxShadow" Value="0 4 14 0 #40000000"/>
         </Style>
@@ -98,10 +98,6 @@
         <Style Selector="Border.shellResult.error">
             <Setter Property="Background" Value="{DynamicResource ResultErrorBackgroundBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}"/>
-        </Style>
-        <!-- Give list rows breathing room so the title and subtitle lines do not touch. -->
-        <Style Selector="ListBoxItem">
-            <Setter Property="Padding" Value="8,6"/>
         </Style>
     </Window.Styles>
 
@@ -120,7 +116,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
                     <!-- Settings / Shortcuts / About live in a hamburger menu, matching the fleet. -->
-                    <Button Classes="utility" Padding="8,6" i18n:Localized.ToolTip="menu.button" i18n:Localized.AutomationName="menu.button">
+                    <Button Classes="utility compact icon" i18n:Localized.ToolTip="menu.button" i18n:Localized.AutomationName="menu.button">
                         <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across
                              fonts. Bars 16 long and 2 thick with 5 between them: closer together they read as
                              one block rather than a menu, and the round caps stay inside the 18x16 box. -->
@@ -228,13 +224,13 @@
                     <Border DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock i18n:Localized.Text="binders.pane" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                                <Button i18n:Localized.Content="binders.new" Classes="accent" Command="{Binding NewBinderCommand}"/>
-                                <Button i18n:Localized.Content="binders.open" Classes="utility" Command="{Binding OpenBinderCommand}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button i18n:Localized.Content="binders.new" Classes="accent compact" Command="{Binding NewBinderCommand}"/>
+                                <Button i18n:Localized.Content="binders.open" Classes="utility compact" Command="{Binding OpenBinderCommand}"/>
                             </StackPanel>
                         </Grid>
                     </Border>
-                    <DockPanel Margin="10">
+                    <DockPanel Margin="8">
                         <ctl:ComposingTextBox DockPanel.Dock="Top" i18n:Localized.PlaceholderText="common.filter" Text="{Binding BindersFilter}" Margin="0,0,0,8"/>
                         <Panel>
                             <!-- Selecting a binder opens it (single click or arrow key); no double-click needed. -->
@@ -297,11 +293,11 @@
                     <Border DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock i18n:Localized.Text="notes.pane" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            <Button Grid.Column="1" i18n:Localized.Content="notes.new" Classes="accent"
+                            <Button Grid.Column="1" i18n:Localized.Content="notes.new" Classes="accent compact"
                                     Command="{Binding NewNoteCommand}" IsEnabled="{Binding HasBinder}"/>
                         </Grid>
                     </Border>
-                    <DockPanel Margin="10">
+                    <DockPanel Margin="8">
                         <ctl:ComposingTextBox x:Name="NotesFilterBox" DockPanel.Dock="Top" i18n:Localized.PlaceholderText="common.filter" Text="{Binding NotesFilter}" Margin="0,0,0,8"/>
                         <Panel>
                             <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}"
@@ -364,7 +360,7 @@
                         <!-- Header: title + lifecycle status in one row, then the body directly below (no
                              borderline — the metadata that used to sit here now lives in the status bar).
                              Published and expired notes are read-only until moved to draft or ready. -->
-                        <Grid x:Name="EditorHeader" DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="10,10,10,6">
+                        <Grid x:Name="EditorHeader" DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="8,8,8,6">
                             <ctl:ComposingTextBox x:Name="TitleBox"
                                                   Text="{Binding Editor.Title}" i18n:Localized.PlaceholderText="editor.titlePlaceholder"
                                                   FontSize="18" FontWeight="SemiBold" AcceptsReturn="False" SubmitOnEnter="True"
@@ -395,7 +391,7 @@
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
                         </Grid>
-                        <ctl:ComposingTextBox x:Name="BodyBox" Margin="10,0,10,10"
+                        <ctl:ComposingTextBox x:Name="BodyBox" Margin="8,0,8,8"
                                  Text="{Binding Editor.Body}"
                                  IsReadOnly="{Binding !Editor.IsEditable}"
                                  AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
@@ -416,16 +412,16 @@
                     <Border x:Name="AttachmentsHeader" DockPanel.Dock="Top" Classes="paneHeader">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock i18n:Localized.Text="attachments.pane" FontWeight="Bold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                            <Button Grid.Column="1" i18n:Localized.Content="common.add" Classes="utility"
+                            <Button Grid.Column="1" i18n:Localized.Content="common.add" Classes="utility compact"
                                     Command="{Binding AddAttachmentCommand}" IsEnabled="{Binding CanEditNote}"/>
                         </Grid>
                     </Border>
-                    <Border DockPanel.Dock="Top" Margin="10,10,10,0" Padding="10,8"
+                    <Border DockPanel.Dock="Top" Margin="8,8,8,0" Padding="10,8"
                             Background="{DynamicResource AppBackgroundBrush}"
                             Classes="resultFrame"
                             Classes.warning="{Binding AttachmentResult.IsWarning, FallbackValue=False}"
                             Classes.error="{Binding AttachmentResult.IsError, FallbackValue=False}" BorderThickness="1"
-                            CornerRadius="6" IsVisible="{Binding HasAttachmentResult}"
+                            CornerRadius="{StaticResource ControlCornerRadius}" IsVisible="{Binding HasAttachmentResult}"
                             AutomationProperties.Name="{Binding AttachmentResult.AccessibleMessage}"
                             AutomationProperties.LiveSetting="{Binding AttachmentResult.LiveSetting}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
@@ -440,7 +436,7 @@
                             </Button>
                         </Grid>
                     </Border>
-                    <Panel Margin="10">
+                    <Panel Margin="8">
                         <!-- A bordered list like the binders/notes lists; rows have no inner border.
                              Rows can be dragged to reorder (wired in code-behind). -->
                         <ListBox x:Name="AttachList" ItemsSource="{Binding Attachments}" DragDrop.AllowDrop="True">
@@ -448,7 +444,7 @@
                                 <DataTemplate DataType="vm:AttachmentItemViewModel">
                                     <StackPanel Spacing="6" DoubleTapped="Attachment_DoubleTapped">
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                        <Border Width="44" Height="44" CornerRadius="4" ClipToBounds="True"
+                                        <Border Width="44" Height="44" CornerRadius="{StaticResource CompactCornerRadius}" ClipToBounds="True"
                                                 Background="{DynamicResource AppBackgroundBrush}">
                                             <Panel>
                                                 <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" IsVisible="{Binding HasThumbnail}"/>
@@ -477,7 +473,7 @@
                                             Classes="resultFrame"
                                             Classes.warning="{Binding Result.IsWarning, FallbackValue=False}"
                                             Classes.error="{Binding Result.IsError, FallbackValue=False}"
-                                            BorderThickness="1" CornerRadius="5"
+                                            BorderThickness="1" CornerRadius="{StaticResource CompactCornerRadius}"
                                             IsVisible="{Binding HasResult}"
                                             AutomationProperties.Name="{Binding Result.AccessibleMessage}"
                                             AutomationProperties.LiveSetting="{Binding Result.LiveSetting}">
@@ -496,7 +492,7 @@
                         <!-- Drag-and-drop hover affordance, shown while files are dragged over the pane. -->
                         <Border IsVisible="{Binding IsAttachmentDropActive}" IsHitTestVisible="False"
                                 Background="{DynamicResource SurfaceBrush}" Opacity="0.92"
-                                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" CornerRadius="6">
+                                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" CornerRadius="{StaticResource ControlCornerRadius}">
                             <TextBlock i18n:Localized.Text="attachments.drop" HorizontalAlignment="Center" VerticalAlignment="Center"
                                        FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                         </Border>

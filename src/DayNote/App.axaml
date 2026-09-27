@@ -33,6 +33,7 @@
                     <SolidColorBrush x:Key="DangerPressedBrush" Color="#8D223A"/>
                     <SolidColorBrush x:Key="DangerTextBrush" Color="#A32C45"/>
                     <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#F7E4E9"/>
+                    <SolidColorBrush x:Key="DangerSurfacePressedBrush" Color="#F0D0D9"/>
                     <SolidColorBrush x:Key="WarningBrush" Color="#87500B"/>
                     <SolidColorBrush x:Key="PositiveBrush" Color="#236A47"/>
                     <SolidColorBrush x:Key="UtilityBrush" Color="#ECE7F1"/>
@@ -75,10 +76,11 @@
                     <SolidColorBrush x:Key="AccentPressedBrush" Color="#C5ADFF"/>
                     <SolidColorBrush x:Key="AccentForegroundBrush" Color="#1B1425"/>
                     <SolidColorBrush x:Key="DangerBrush" Color="#B93650"/>
-                    <SolidColorBrush x:Key="DangerHoverBrush" Color="#C2415D"/>
-                    <SolidColorBrush x:Key="DangerPressedBrush" Color="#A82F47"/>
+                    <SolidColorBrush x:Key="DangerHoverBrush" Color="#A82F47"/>
+                    <SolidColorBrush x:Key="DangerPressedBrush" Color="#962840"/>
                     <SolidColorBrush x:Key="DangerTextBrush" Color="#F08A9C"/>
                     <SolidColorBrush x:Key="DangerSurfaceBrush" Color="#3C2029"/>
+                    <SolidColorBrush x:Key="DangerSurfacePressedBrush" Color="#4D2733"/>
                     <SolidColorBrush x:Key="WarningBrush" Color="#E0A14A"/>
                     <SolidColorBrush x:Key="PositiveBrush" Color="#5FB98B"/>
                     <SolidColorBrush x:Key="UtilityBrush" Color="#3A3347"/>
@@ -117,6 +119,34 @@
                  dictionaries: a fade is a proportion of whatever the control already is, so it
                  lands the same in both themes without a second set of colours to keep in step. -->
             <x:Double x:Key="DisabledOpacity">0.45</x:Double>
+
+            <!-- The control vocabulary: two heights and a radius per surface size, read by every style
+                 below so one change moves the whole app (interface-styling conventions). The radius
+                 grows with the surface — a row or compact control, then a field or button, then a pane
+                 or floating card — and a nested surface is always rounder on the outside than what it
+                 holds. ControlCornerRadius is also Fluent's own key, so the fields, pickers and number
+                 boxes take the app's corner without a style per control. -->
+            <x:Double x:Key="ControlHeight">32</x:Double>
+            <x:Double x:Key="CompactControlHeight">28</x:Double>
+            <CornerRadius x:Key="CompactCornerRadius">6</CornerRadius>
+            <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
+            <CornerRadius x:Key="OverlayCornerRadius">10</CornerRadius>
+            <CornerRadius x:Key="PaneCornerRadius">12</CornerRadius>
+
+            <!-- The one keyboard-focus treatment: an accent ring just clear of the control's edge (a
+                 1px gap), following its corners. Fluent's own is a square black-and-white double
+                 frame around rounded controls. Each template matches one radius from above: the
+                 ring's radius is the control's plus its 3px offset. A list row draws its ring inside
+                 its own bounds instead, where the list's clip cannot cut it into fragments. -->
+            <FocusAdornerTemplate x:Key="ControlFocusRing">
+                <Border Margin="-3" AdornerLayer.IsClipEnabled="False" BorderThickness="2" CornerRadius="11" BorderBrush="{DynamicResource AccentBrush}"/>
+            </FocusAdornerTemplate>
+            <FocusAdornerTemplate x:Key="CompactFocusRing">
+                <Border Margin="-3" AdornerLayer.IsClipEnabled="False" BorderThickness="2" CornerRadius="9" BorderBrush="{DynamicResource AccentBrush}"/>
+            </FocusAdornerTemplate>
+            <FocusAdornerTemplate x:Key="RowFocusRing">
+                <Border BorderThickness="2" CornerRadius="6" BorderBrush="{DynamicResource AccentBrush}"/>
+            </FocusAdornerTemplate>
         </ResourceDictionary>
     </Application.Resources>
 
@@ -143,11 +173,64 @@
             <Setter Property="FontSize" Value="13"/>
         </Style>
 
+        <!-- A button states everything it requires of its label: that the content is
+             centred, and that the padding around it is symmetric. Avalonia's stock button
+             padding is lopsided (8,5,8,6), so leaving either unstated is the app failing
+             to say what it wants rather than the toolkit getting it wrong. Anything still
+             off after both are declared is the toolkit's, and is not to be chased with
+             compensating values that would be wrong at the next font or size. -->
+        <!-- A checkbox states the same as a button: its label is centred against the box.
+             Left unstated it inherits the theme's own idea, which is not reliably centred. -->
+        <Style Selector="CheckBox, RadioButton">
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FocusAdorner" Value="{StaticResource CompactFocusRing}"/>
+        </Style>
+        <!-- The check box's own square stays crisp: the control radius would round a 20px box
+             into a pill. -->
+        <Style Selector="CheckBox">
+            <Setter Property="CornerRadius" Value="5"/>
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="FocusAdorner" Value="{StaticResource ControlFocusRing}"/>
+        </Style>
+        <!-- Nothing moves on press: the state is a step of the surface, never a shrink. -->
+        <Style Selector="Button:pressed">
+            <Setter Property="RenderTransform" Value="none"/>
+        </Style>
+
+        <!-- The four button roles share one anatomy: the app's control height, its control radius
+             and one horizontal inset, whatever the role and whatever the button sits in. A role
+             changes only the surface. The height is set outright rather than grown from padding,
+             so an outlined button stands exactly as tall as a filled one and as the fields beside
+             it. Focus is the ring above, not a fill: a fill on focus stays after a click and reads
+             as a button still under the pointer. -->
+        <Style Selector="Button.accent, Button.utility, Button.danger, Button.destructive">
+            <Setter Property="Height" Value="{StaticResource ControlHeight}"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <!-- The compact size, for a pane header's or the toolbar's own actions: declared where the
+             button is used, never inferred from what holds it. -->
+        <Style Selector="Button.compact">
+            <Setter Property="Height" Value="{StaticResource CompactControlHeight}"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CompactCornerRadius}"/>
+            <Setter Property="FocusAdorner" Value="{StaticResource CompactFocusRing}"/>
+        </Style>
+        <!-- An icon-only compact button is square. -->
+        <Style Selector="Button.compact.icon">
+            <Setter Property="Width" Value="{StaticResource CompactControlHeight}"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+
         <Style Selector="Button.accent">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
-            <Setter Property="Padding" Value="12,6"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <Style Selector="Button.accent /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
@@ -157,16 +240,11 @@
             <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
-        <Style Selector="Button.accent:focus /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
-        </Style>
         <!-- Pressed is a further step of the control's own surface, one beyond hover in whichever
              direction that theme's hover moves. A filled class that leaves it unsaid gets Fluent's
              grey instead, so the accent button gave no feedback at all under the finger and the
-             others turned grey at the moment of the click. The dark theme's danger fill is the one
-             exception: it cannot lighten past its hover without the white label dropping under the
-             contrast floor, so there the press deepens rather than lifts. -->
+             others turned grey at the moment of the click. The filled red deepens through hover and
+             press in both themes: a ladder moves one way, and white only gains on a deeper red. -->
         <Style Selector="Button.accent:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
@@ -176,56 +254,45 @@
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
 
-        <!-- A button states everything it requires of its label: that the content is
-             centred, and that the padding around it is symmetric. Avalonia's stock button
-             padding is lopsided (8,5,8,6), so leaving either unstated is the app failing
-             to say what it wants rather than the toolkit getting it wrong. Anything still
-             off after both are declared is the toolkit's, and is not to be chased with
-             compensating values that would be wrong at the next font or size. -->
-        <!-- A checkbox states the same as a button: its label is centred against the box.
-             Left unstated it inherits the theme's own idea, which is not reliably centred. -->
-        <Style Selector="CheckBox">
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-        </Style>
-
-        <Style Selector="Button">
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Padding" Value="12,6"/>
-            <!-- One radius for every button; a class that omits it must not fall back to
-                 the theme's smaller default, which reads as square beside these. -->
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
         <!-- A disabled button is the resting button, faded: it keeps its own fill, outline, ink and
              size, and the whole control is drawn at DisabledOpacity. It stays recognisably the
              control that will come back, and the classes stay told apart while they are off.
              Fluent instead swaps the fill and the ink for greys of its own, which turns a filled
              button into a grey slab heavier than its resting self, and strips the outlined danger
-             button down to bare grey letters — a link where a button should be. So every class that
-             can be disabled restates below what it keeps; a class that is never disabled says
-             nothing. The fade is on the button, not the presenter, so it carries the outline too. -->
+             button down to bare grey letters — a link where a button should be. So every role
+             restates below what it keeps. The fade is on the button, not the presenter, so it
+             carries the outline too. -->
         <Style Selector="Button:disabled">
             <Setter Property="Opacity" Value="{DynamicResource DisabledOpacity}"/>
         </Style>
-        <Style Selector="TextBox">
+        <!-- :is() so the app's own ComposingTextBox, which every editable field here is, takes it too;
+             a bare type selector matches only the exact type. -->
+        <Style Selector=":is(TextBox)">
             <!-- A single-line field states that its text centres and that its padding is
                  symmetric. That is the whole of the intent; if Avalonia's text layout
                  still lands the line slightly off, that is the toolkit's, not something
                  to chase with lopsided values. -->
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="MinHeight" Value="{StaticResource ControlHeight}"/>
+        </Style>
+        <!-- Every one-line field is the control height, whatever kind it is, so a picker or a number
+             box never stands shorter or taller than the text box beside it. -->
+        <Style Selector="ComboBox, NumericUpDown">
+            <Setter Property="Height" Value="{StaticResource ControlHeight}"/>
+            <Setter Property="MinHeight" Value="{StaticResource ControlHeight}"/>
+            <Setter Property="FocusAdorner" Value="{StaticResource ControlFocusRing}"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Padding" Value="10,0,0,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
 
         <Style Selector="Button.utility">
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-            <Setter Property="Padding" Value="12,6"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <Style Selector="Button.utility:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-        </Style>
-        <Style Selector="Button.utility:focus /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
@@ -239,27 +306,27 @@
         </Style>
 
         <!-- The button that OPENS a destructive path is outlined, never filled: red letters in a red
-             outline over at most a faint tint, deepening on hover and press. Only the button that
-             commits it, in the dialog that asks, is filled (interface-styling conventions). -->
+             outline over at most a faint tint, deepening that tint on hover and again on press. Only
+             the button that commits it, in the dialog that asks, is filled (interface-styling
+             conventions), so a press here must not borrow the commit's solid red. -->
         <Style Selector="Button.danger">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="11,5"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
         <Style Selector="Button.danger /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent"/>
         </Style>
         <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource DangerSurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
         </Style>
         <Style Selector="Button.danger:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="{DynamicResource DangerSurfacePressedBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerTextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
         </Style>
         <!-- Off, it is still the red outlined button: same outline, same letters, same footprint,
              faded by the rule above. Red is what says the action destroys something, and that does
@@ -273,14 +340,12 @@
         <Style Selector="Button.destructive">
             <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="12,6"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
-        <Style Selector="Button.destructive:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource DangerHoverBrush}"/>
+        <Style Selector="Button.destructive /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
-        <Style Selector="Button.destructive:focus /template/ ContentPresenter">
+        <Style Selector="Button.destructive:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource DangerHoverBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
@@ -288,14 +353,33 @@
             <Setter Property="Background" Value="{DynamicResource DangerPressedBrush}"/>
             <Setter Property="Foreground" Value="White"/>
         </Style>
-
-        <Style Selector="ListBox">
-            <Setter Property="Background" Value="{DynamicResource ListBackgroundBrush}"/>
+        <Style Selector="Button.destructive:disabled /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
         </Style>
 
-        <!-- Stable app-toned list selection instead of the user's platform accent. -->
+        <!-- A list reads as items: its rows sit inset from the list's rounded edge, each rounded
+             itself, with a hover, a pressed and a selected fill in the app's own tones instead of
+             the user's platform accent. -->
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="{DynamicResource ListBackgroundBrush}"/>
+            <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}"/>
+            <Setter Property="Padding" Value="3"/>
+        </Style>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="7,6"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CompactCornerRadius}"/>
+            <Setter Property="FocusAdorner" Value="{StaticResource RowFocusRing}"/>
+        </Style>
+        <Style Selector="ListBoxItem /template/ ContentPresenter">
+            <Setter Property="CornerRadius" Value="{StaticResource CompactCornerRadius}"/>
+        </Style>
         <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
+        </Style>
+        <Style Selector="ListBoxItem:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
         </Style>
         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource ListSelectionBrush}"/>
@@ -303,14 +387,27 @@
         <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource ListSelectionHoverBrush}"/>
         </Style>
+        <Style Selector="ListBoxItem:selected:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource ListSelectionHoverBrush}"/>
+        </Style>
 
-        <!-- Pane header strip: a title row separated from the pane body by a bottom borderline,
-             matching the fleet (zipkit). The header spans the full pane width; the body below
-             carries its own padding. -->
+        <!-- A menu opened from the app highlights an inset, rounded item rather than a full-width bar. -->
+        <Style Selector="MenuFlyoutPresenter">
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="CornerRadius" Value="{StaticResource OverlayCornerRadius}"/>
+        </Style>
+        <Style Selector="MenuFlyoutPresenter MenuItem">
+            <Setter Property="CornerRadius" Value="{StaticResource CompactCornerRadius}"/>
+            <Setter Property="Padding" Value="10,6"/>
+        </Style>
+
+        <!-- Pane header strip: a title row separated from the pane body by a bottom borderline. The
+             header spans the full pane width; the body below carries its own padding. Its actions
+             are compact buttons, so the strip keeps its height with room above and below them. -->
         <Style Selector="Border.paneHeader">
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Padding" Value="12,10"/>
         </Style>
 
         <!-- A row's inline action (e.g. a close/delete "✕"): revealed only when its list row is
@@ -321,8 +418,8 @@
             <Setter Property="Opacity" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
-            <Setter Property="Padding" Value="5"/>
-            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="6"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CompactCornerRadius}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <!-- Pointer-only affordance: a row's ✕ is not a keyboard tab stop (so Tab never lands on a
                  hidden, opacity-0 icon). The keyboard path is Delete on the selected row. -->
@@ -343,23 +440,28 @@
             <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
         </Style>
         <Style Selector="Button.rowAction:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource DangerSurfaceBrush}"/>
+        </Style>
+        <Style Selector="Button.rowAction:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerSurfacePressedBrush}"/>
         </Style>
 
-        <!-- A result keeps a quiet, always-present close affordance at its upper end. -->
+        <!-- A result keeps a quiet, always-present close affordance at its upper end. Hover and
+             keyboard focus reveal its hit area; the focus ring marks it as it marks every control. -->
         <Style Selector="Button.resultClose">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="6"/>
-            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CompactCornerRadius}"/>
+            <Setter Property="FocusAdorner" Value="{StaticResource CompactFocusRing}"/>
         </Style>
-        <Style Selector="Button.resultClose:pointerover /template/ ContentPresenter">
+        <Style Selector="Button.resultClose:pointerover /template/ ContentPresenter, Button.resultClose:focus-visible /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
-        <Style Selector="Button.resultClose:focus /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
+        <Style Selector="Button.resultClose:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 

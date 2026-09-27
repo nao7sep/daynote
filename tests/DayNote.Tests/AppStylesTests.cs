@@ -23,6 +23,7 @@ public sealed class AppStylesTests
     [InlineData("accent")]
     [InlineData("utility")]
     [InlineData("danger")]
+    [InlineData("destructive")]
     public void A_disabled_button_is_its_resting_self_faded(string variant)
     {
         var resting = Classed(variant, enabled: true);
@@ -74,7 +75,7 @@ public sealed class AppStylesTests
     [InlineData("accent", "AccentPressedBrush")]
     [InlineData("utility", "UtilityPressedBrush")]
     [InlineData("destructive", "DangerPressedBrush")]
-    [InlineData("danger", "DangerBrush")]
+    [InlineData("danger", "DangerSurfacePressedBrush")]
     public void A_pressed_button_is_a_step_of_its_own_surface(string variant, string pressedBrush)
     {
         var resting = Classed(variant, enabled: true);
@@ -94,6 +95,73 @@ public sealed class AppStylesTests
             Assert.Equal(Color(Brush(pressedBrush)), Fill(pressed));
             Assert.NotEqual(Fill(resting), Fill(pressed));
             Assert.NotEqual(Fill(hovered), Fill(pressed));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // One height for a row: every button role stands exactly as tall as every kind of one-line field,
+    // so a button beside a text box, a picker or a number box lines up with it. The compact size is
+    // its own role, declared where it is used.
+    [AvaloniaFact]
+    public void Button_roles_and_one_line_fields_share_the_control_height()
+    {
+        Control[] standard =
+        [
+            Classed("accent", enabled: true), Classed("utility", enabled: true),
+            Classed("danger", enabled: true), Classed("destructive", enabled: true),
+            new TextBox(), new DayNote.Controls.ComposingTextBox(), new ComboBox(), new NumericUpDown(),
+        ];
+        var compact = Classed("utility", enabled: true);
+        compact.Classes.Add("compact");
+        var panel = new StackPanel();
+        foreach (var control in standard)
+            panel.Children.Add(control);
+        panel.Children.Add(compact);
+        var window = new Window { Content = panel };
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            foreach (var control in standard)
+                Assert.True(Resource("ControlHeight") is double height && Math.Abs(control.Bounds.Height - height) < 0.5,
+                    $"{control.GetType().Name} {string.Join(" ", control.Classes)} is {control.Bounds.Height} px");
+            Assert.Equal((double)Resource("CompactControlHeight"), compact.Bounds.Height, 1);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // One focus treatment: the app's rounded accent ring just clear of the edge, never Fluent's square
+    // black-and-white frame, and never a fill that outlasts the click that gave the focus.
+    [AvaloniaTheory]
+    [InlineData("accent", "ControlFocusRing")]
+    [InlineData("utility", "ControlFocusRing")]
+    [InlineData("danger", "ControlFocusRing")]
+    [InlineData("destructive", "ControlFocusRing")]
+    [InlineData("utility compact", "CompactFocusRing")]
+    public void Every_button_role_draws_the_apps_focus_ring(string classes, string ring)
+    {
+        var button = new Button { Content = "Save" };
+        button.Classes.AddRange(classes.Split(' '));
+        var window = new Window { Content = button };
+
+        try
+        {
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var resting = Fill(button);
+            ((IPseudoClasses)button.Classes).Set(":focus", true);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Same(Resource(ring), button.FocusAdorner);
+            Assert.Equal(resting, Fill(button));
         }
         finally
         {

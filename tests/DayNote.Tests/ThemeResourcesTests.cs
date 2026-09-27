@@ -137,6 +137,29 @@ public sealed class ThemeResourcesTests
         Assert.True(failures.Count == 0, $"{theme}: {string.Join("; ", failures)}");
     }
 
+    // The filled red is one ladder in both themes: hover deepens it and press deepens it further. A
+    // step that turns back to stay above a number is a bent ladder (interface-styling conventions).
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void TheDangerFillDeepensThroughHoverAndPress(string theme)
+    {
+        var b = ThemeBrushes(theme);
+        Assert.True(Luminance(b["DangerHoverBrush"]) < Luminance(b["DangerBrush"]), $"{theme}: hover does not deepen");
+        Assert.True(Luminance(b["DangerPressedBrush"]) < Luminance(b["DangerHoverBrush"]), $"{theme}: press does not deepen past hover");
+    }
+
+    // The outlined trigger keeps red letters over a tint that deepens on hover and again on press.
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void TheOutlinedTriggerKeepsReadableLettersOnItsTints(string theme)
+    {
+        var b = ThemeBrushes(theme);
+        foreach (var tint in new[] { "DangerSurfaceBrush", "DangerSurfacePressedBrush" })
+            Assert.True(Contrast(b["DangerTextBrush"], b[tint]) >= 4.5, $"{theme}: danger text on {tint}");
+    }
+
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
@@ -171,11 +194,11 @@ public sealed class ThemeResourcesTests
             AppTheme.Apply(ThemePreference.Light);
             dialog.Show();
             Dispatcher.UIThread.RunJobs();
-            var light = CardBackgrounds(dialog);
+            var light = KeycapBackgrounds(dialog);
 
             AppTheme.Apply(ThemePreference.Dark);
             Dispatcher.UIThread.RunJobs();
-            var dark = CardBackgrounds(dialog);
+            var dark = KeycapBackgrounds(dialog);
 
             Assert.Equal(ThemeBrushes("Light")["SurfaceBrush"], Assert.Single(light.Distinct()));
             Assert.Equal(ThemeBrushes("Dark")["SurfaceBrush"], Assert.Single(dark.Distinct()));
@@ -219,9 +242,9 @@ public sealed class ThemeResourcesTests
         Assert.False(info.IsWarning || info.IsError);
     }
 
-    private static List<Color> CardBackgrounds(Window dialog) =>
+    private static List<Color> KeycapBackgrounds(Window dialog) =>
         dialog.GetLogicalDescendants().OfType<Border>()
-            .Where(border => border.CornerRadius == new CornerRadius(8) && border.Background is not null)
+            .Where(border => border.Classes.Contains("keycap"))
             .Select(border => ((ISolidColorBrush)border.Background!).Color)
             .ToList();
 

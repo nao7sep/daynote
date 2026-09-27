@@ -9,8 +9,8 @@ namespace DayNote.Views;
 /// <summary>
 /// Keyboard-shortcuts help. Renders the <see cref="ShortcutCatalog"/> it is handed — the same source
 /// the live accelerators are built from — grouped into sections laid out in two balanced columns, each
-/// a rounded card with the description on the left and the key on the right as a keycap. The window
-/// Title becomes the header (via <see cref="DialogBase"/>). Read-only: no draft state.
+/// a heading over its rows, with the description on the left and the key on the right as a keycap. The
+/// window Title is the OS title bar's. Read-only: no draft state.
 /// </summary>
 public sealed class ShortcutsDialog : DialogBase
 {
@@ -25,10 +25,10 @@ public sealed class ShortcutsDialog : DialogBase
             .ToList();
         var split = BalancedSplit(groups.Select(section => section.Rows.Count).ToList());
 
-        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 20 };
+        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 40 };
         for (var column = 0; column < 2; column++)
         {
-            var stack = new StackPanel { Spacing = 16 };
+            var stack = new StackPanel { Spacing = 20 };
             foreach (var (group, rows) in column == 0 ? groups.Take(split) : groups.Skip(split))
             {
                 var section = new StackPanel();
@@ -36,11 +36,11 @@ public sealed class ShortcutsDialog : DialogBase
                 {
                     FontWeight = FontWeight.SemiBold,
                     FontSize = 13,
-                    Margin = new Thickness(2, 0, 0, 6),
+                    Margin = new Thickness(0, 0, 0, 4),
                 }.Themed(TextBlock.ForegroundProperty, "TextSecondaryBrush");
                 Localized.SetText(header, ShortcutCatalog.GroupHeaderKey(group));
                 section.Children.Add(header);
-                section.Children.Add(BuildCard(rows));
+                section.Children.Add(BuildRows(rows));
                 stack.Children.Add(section);
             }
 
@@ -81,28 +81,18 @@ public sealed class ShortcutsDialog : DialogBase
         return best;
     }
 
-    // A rounded card per section holding its rows, with a 1px divider between them (none after the last).
-    private static Border BuildCard(IReadOnlyList<ShortcutItem> rows)
+    // A reference list carries no card and no rule between rows: the heading above and the space
+    // between rows do the separating, and the keycap is the one mark on the surface
+    // (interface-styling conventions).
+    private static StackPanel BuildRows(IReadOnlyList<ShortcutItem> rows)
     {
-        var stack = new StackPanel();
-        for (var i = 0; i < rows.Count; i++)
+        var stack = new StackPanel { Spacing = 2 };
+        foreach (var row in rows)
         {
-            stack.Children.Add(BuildRow(rows[i]));
-            if (i < rows.Count - 1)
-            {
-                stack.Children.Add(new Border { Height = 1 }.Themed(Border.BackgroundProperty, "BorderBrush"));
-            }
+            stack.Children.Add(BuildRow(row));
         }
 
-        return new Border
-        {
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(14, 4),
-            Child = stack,
-        }
-            .Themed(Border.BorderBrushProperty, "BorderBrush")
-            .Themed(Border.BackgroundProperty, "SurfaceBrush");
+        return stack;
     }
 
     // Description on the left (wrapping), key on the right.
@@ -112,7 +102,7 @@ public sealed class ShortcutsDialog : DialogBase
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
             ColumnSpacing = 18,
-            Margin = new Thickness(0, 10),
+            Margin = new Thickness(0, 5),
         };
 
         var description = new TextBlock
@@ -133,8 +123,8 @@ public sealed class ShortcutsDialog : DialogBase
 
     private static Border Keycap(string label) => new Border
     {
+        Classes = { "keycap" },
         BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(5),
         Padding = new Thickness(8, 3),
         HorizontalAlignment = HorizontalAlignment.Right,
         VerticalAlignment = VerticalAlignment.Center,
@@ -145,7 +135,8 @@ public sealed class ShortcutsDialog : DialogBase
             FontSize = 12,
         }.Themed(TextBlock.ForegroundProperty, "TextPrimaryBrush"),
     }
-        .Themed(Border.BackgroundProperty, "AppBackgroundBrush")
+        .Themed(Border.CornerRadiusProperty, "CompactCornerRadius")
+        .Themed(Border.BackgroundProperty, "SurfaceBrush")
         .Themed(Border.BorderBrushProperty, "BorderBrush");
 
     private static TextBlock PlainAffordance(string label) => new TextBlock

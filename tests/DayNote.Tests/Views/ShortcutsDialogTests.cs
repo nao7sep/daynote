@@ -1,5 +1,7 @@
 using System.Linq;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
+using Avalonia.VisualTree;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using DayNote.Views;
@@ -27,5 +29,21 @@ public sealed class ShortcutsDialogTests : WindowTest
 
         // The main window opens at 1200×800; its shortcuts should be readable without scrolling there.
         Assert.True(dialog.DesiredSize.Height < 800, $"The dialog wants {dialog.DesiredSize.Height:0} px.");
+    }
+
+    // A reference list carries no card around a group and no rule between rows: the only drawn edge
+    // on the surface is each keycap's (interface-styling conventions).
+    [AvaloniaFact]
+    public void Only_the_keycaps_draw_an_edge()
+    {
+        var owner = Show(new Window());
+        var dialog = Show(new ShortcutsDialog(ShortcutCatalog.Build(owner)));
+        var content = dialog.FindControl<ContentPresenter>("DialogContent")!;
+
+        var framed = content.GetVisualDescendants().OfType<Border>()
+            .Where(border => border.BorderThickness != default || border.Height == 1)
+            .ToList();
+        Assert.NotEmpty(framed);
+        Assert.All(framed, border => Assert.Contains("keycap", border.Classes));
     }
 }

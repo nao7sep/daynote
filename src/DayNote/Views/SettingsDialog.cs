@@ -78,7 +78,6 @@ public sealed class SettingsDialog : DialogBase
             ItemTemplate = new FuncDataTemplate<StyleRow>((_, _) => StyleRowView()),
         };
         _styleList.BorderThickness = new Thickness(1);
-        _styleList.CornerRadius = new CornerRadius(6);
         _styleList.Themed(ListBox.BorderBrushProperty, "BorderBrush");
         Localized.SetAutomationName(_styleList, "settings.textStyles");
         DragDrop.SetAllowDrop(_styleList, true);
@@ -86,6 +85,7 @@ public sealed class SettingsDialog : DialogBase
         _ = new ListReorder<StyleRow>(_styleList, canReorder: null, MoveStyle, Revalidate, () => _styleRows.ToArray(), RestoreStyles);
 
         var addStyle = Utility("common.add", AddStyle, "AddTextStyleButton");
+        addStyle.Classes.Add("compact");
         addStyle.HorizontalAlignment = HorizontalAlignment.Right;
         var listHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
         var listLabel = Label("settings.textStyles");
@@ -122,7 +122,7 @@ public sealed class SettingsDialog : DialogBase
         // Where a language's labels are too long for one line, the actions take a line of their own.
         var decorationRow = new LeadingTrailingRow(decorations, styleActions) { Spacing = 16, LineSpacing = 10 };
 
-        var editor = new StackPanel { Spacing = 10 };
+        var editor = new StackPanel { Spacing = 12 };
         editor.Children.Add(Field("settings.fontFamily", _styleFontFamily));
         editor.Children.Add(Row(
             ("*", Field("settings.fontSize", _styleFontSize)),
@@ -142,7 +142,7 @@ public sealed class SettingsDialog : DialogBase
             ColumnDefinitions = new ColumnDefinitions("200,*"),
             RowDefinitions = new RowDefinitions("Auto,*"),
             ColumnSpacing = 16,
-            RowSpacing = 6,
+            RowSpacing = 8,
         };
         styleSurface.Children.Add(listHeader);
         Grid.SetRow(_styleList, 1);
@@ -202,20 +202,15 @@ public sealed class SettingsDialog : DialogBase
         };
         Localized.SetAutomationName(_timeZone, "settings.timeZone");
 
-        var panel = new StackPanel { Spacing = 8, Width = 600 };
-        panel.Children.Add(Label("settings.language"));
-        panel.Children.Add(_language);
+        // Grouped by space: a setting's label, control and hint sit close together, and the settings
+        // stand apart from one another by a larger gap, so no rule or frame is needed between them.
+        var panel = new StackPanel { Spacing = 20, Width = 600 };
+        panel.Children.Add(Group(Label("settings.language"), _language));
         panel.Children.Add(styleSurface);
-        panel.Children.Add(Label("settings.theme"));
-        panel.Children.Add(themeRow);
-        panel.Children.Add(themeHint);
-        panel.Children.Add(Label("settings.uiFont"));
-        panel.Children.Add(_uiFont);
-        panel.Children.Add(Hint("settings.uiFontHint"));
-        panel.Children.Add(Label("settings.autosave"));
-        panel.Children.Add(_autosave);
-        panel.Children.Add(Label("settings.timeZone"));
-        panel.Children.Add(_timeZone);
+        panel.Children.Add(Group(Label("settings.theme"), themeRow, themeHint));
+        panel.Children.Add(Group(Label("settings.uiFont"), _uiFont, Hint("settings.uiFontHint")));
+        panel.Children.Add(Group(Label("settings.autosave"), _autosave));
+        panel.Children.Add(Group(Label("settings.timeZone"), _timeZone));
         _saveError = new TextBlock
         {
             FontSize = 12,
@@ -601,7 +596,7 @@ public sealed class SettingsDialog : DialogBase
     // A field's label wraps rather than running past its third of the editor in a longer language.
     private static StackPanel Field(string labelKey, Control control)
     {
-        var field = new StackPanel { Spacing = 4 };
+        var field = new StackPanel { Spacing = 6 };
         var label = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 12, TextWrapping = TextWrapping.Wrap };
         Localized.SetText(label, labelKey);
         field.Children.Add(label);
@@ -623,6 +618,17 @@ public sealed class SettingsDialog : DialogBase
         }
 
         return grid;
+    }
+
+    private static StackPanel Group(params Control[] children)
+    {
+        var group = new StackPanel { Spacing = 6 };
+        foreach (var child in children)
+        {
+            group.Children.Add(child);
+        }
+
+        return group;
     }
 
     // Section labels and hints wrap inside the dialog's fixed width in every language.

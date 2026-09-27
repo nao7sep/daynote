@@ -2,8 +2,10 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
@@ -34,6 +36,31 @@ public sealed class AboutDialogTests
         Assert.DoesNotContain("DAYNOTE-LINK-SENTINEL", AutomationProperties.GetName(result), StringComparison.Ordinal);
 
         dialog.Close();
+    }
+
+    // About opens with the app's own name at the product-title size, and the version on its own line
+    // under it rather than sharing the name's line (modal-dialog conventions; the fleet About pattern).
+    [AvaloniaFact]
+    public void The_name_leads_with_the_version_under_it()
+    {
+        var dialog = new AboutDialog(new NullLogger());
+        dialog.Show();
+        try
+        {
+            var body = dialog.GetVisualDescendants().OfType<ContentPresenter>().Single(presenter => presenter.Name == "DialogContent");
+            var blocks = body.GetVisualDescendants().OfType<TextBlock>().ToList();
+            var name = blocks.Single(block => block.Name == "AboutAppName");
+            var version = blocks.Single(block => block.Name == "AboutAppVersion");
+
+            Assert.Equal("DayNote", name.Text);
+            Assert.Same(blocks.First(block => !string.IsNullOrEmpty(block.Text)), name);
+            Assert.True(name.FontSize >= 20 && name.FontSize > version.FontSize);
+            Assert.True(version.TranslatePoint(default, name)!.Value.Y >= name.Bounds.Height);
+        }
+        finally
+        {
+            dialog.Close();
+        }
     }
 
     private sealed class NullLogger : IAppLogger
