@@ -367,7 +367,7 @@
             <Setter Property="Padding" Value="3"/>
         </Style>
         <Style Selector="ListBoxItem">
-            <Setter Property="Padding" Value="7,6"/>
+            <Setter Property="Padding" Value="13,6,7,6"/>
             <Setter Property="Margin" Value="0,1"/>
             <Setter Property="CornerRadius" Value="{StaticResource CompactCornerRadius}"/>
             <Setter Property="FocusAdorner" Value="{StaticResource RowFocusRing}"/>
