@@ -47,6 +47,29 @@ public sealed class SettingsDialogTests
     }
 
     [AvaloniaFact]
+    public void An_empty_stored_ui_font_shows_the_default_as_placeholder_and_stays_empty_on_save()
+    {
+        var config = new AppConfig();
+        Assert.Equal("", config.UiFontFamily);
+        var dialog = new SettingsDialog(config, _ => true);
+        var font = dialog.GetLogicalDescendants()
+            .OfType<TextBox>()
+            .Single(box => box.PlaceholderText == AppConfig.DefaultUiFontFamily);
+
+        Assert.Equal("", font.Text);
+
+        // Touch an unrelated field so Save is enabled, then save without typing a UI font.
+        var zones = Named<ComboBox>(dialog, "TimeZoneBox");
+        var options = zones.Items.OfType<TimeZoneOption>().ToList();
+        zones.SelectedItem = options.Single(option => option.Value == "Europe/Berlin");
+        Dispatcher.UIThread.RunJobs();
+        var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
+        save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal("", config.UiFontFamily);
+    }
+
+    [AvaloniaFact]
     public void The_time_zone_is_chosen_from_a_list_that_starts_with_system()
     {
         var config = new AppConfig();

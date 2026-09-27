@@ -36,10 +36,11 @@ public sealed class AppConfig : IJsonOnDeserialized
     /// </summary>
     public string Language { get; set; } = SystemLanguage;
 
-    // App appearance — the UI (chrome) font family. Family only; an empty value falls back to the
-    // bundled default (Inter). Applied app-wide; the editor body uses its own text-style preset, so
-    // this never touches the note content's font.
-    public string UiFontFamily { get; set; } = DefaultUiFontFamily;
+    // App appearance — the UI (chrome) font family. Family only; nothing is stored until the user
+    // types one. Empty shows the bundled default (Inter) as the field's placeholder and resolves to
+    // it. Applied app-wide; the editor body uses its own text-style preset, so this never touches the
+    // note content's font.
+    public string UiFontFamily { get; set; } = "";
 
     // App appearance — the theme. System follows the OS; applied app-wide before the main window
     // exists and again on each Save.
@@ -104,6 +105,11 @@ public sealed class AppConfig : IJsonOnDeserialized
         }
 
         LegacyDisplayTimeZone = null;
+
+        if (string.Equals(UiFontFamily, DefaultUiFontFamily, StringComparison.Ordinal))
+        {
+            UiFontFamily = "";
+        }
     }
 
     /// <summary>

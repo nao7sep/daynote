@@ -12,10 +12,26 @@ namespace DayNote.Tests.Configuration;
 public sealed class AppConfigTests
 {
     [Fact]
-    public void Default_ui_font_is_the_bundled_inter()
+    public void Default_ui_font_is_stored_empty_and_resolves_to_the_bundled_inter()
     {
-        Assert.Equal("Inter", new AppConfig().UiFontFamily);
+        Assert.Equal("", new AppConfig().UiFontFamily);
         Assert.Equal("Inter", AppConfig.DefaultUiFontFamily);
+    }
+
+    [Fact]
+    public void A_stored_value_equal_to_the_former_default_migrates_to_empty()
+    {
+        const string json = """{ "uiFontFamily": "Inter" }""";
+        var restored = JsonSerializer.Deserialize<AppConfig>(json, DayNoteJson.Options)!;
+        Assert.Equal("", restored.UiFontFamily);
+    }
+
+    [Fact]
+    public void A_stored_value_different_from_the_default_is_kept()
+    {
+        const string json = """{ "uiFontFamily": "Helvetica Neue" }""";
+        var restored = JsonSerializer.Deserialize<AppConfig>(json, DayNoteJson.Options)!;
+        Assert.Equal("Helvetica Neue", restored.UiFontFamily);
     }
 
     [Fact]
