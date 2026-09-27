@@ -456,40 +456,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // Row context-menu equivalents of the Cmd/Ctrl+Shift+Up/Down chord (ListReorder.TryMoveByOffset
-    // runs the identical move-then-commit transaction), so the reorder is reachable without a keyboard.
-    private void BinderMoveUp_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Control { DataContext: BinderListItemViewModel item })
-        {
-            _binderReorder.TryMoveByOffset(item, -1);
-        }
-    }
-
-    private void BinderMoveDown_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Control { DataContext: BinderListItemViewModel item })
-        {
-            _binderReorder.TryMoveByOffset(item, 1);
-        }
-    }
-
-    private void AttachmentMoveUp_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Control { DataContext: AttachmentItemViewModel item })
-        {
-            _attachmentReorder.TryMoveByOffset(item, -1);
-        }
-    }
-
-    private void AttachmentMoveDown_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Control { DataContext: AttachmentItemViewModel item })
-        {
-            _attachmentReorder.TryMoveByOffset(item, 1);
-        }
-    }
-
     // Double-tap a binder row to rename its title inline. The first tap of the double already selected
     // (and opened) the binder; this just enters edit mode and focuses the field.
     private void BinderRow_DoubleTapped(object? sender, TappedEventArgs e)

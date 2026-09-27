@@ -3,7 +3,6 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Input;
@@ -36,7 +35,6 @@ public sealed class SettingsDialog : DialogBase
     private readonly AppConfig _original;
     private readonly ObservableCollection<StyleRow> _styleRows = [];
     private readonly ListBox _styleList;
-    private readonly ListReorder<StyleRow> _styleReorder;
     private readonly ComposingTextBox _styleFontFamily;
     private readonly NumericUpDown _styleFontSize;
     private readonly NumericUpDown _styleLineSpacing;
@@ -85,7 +83,7 @@ public sealed class SettingsDialog : DialogBase
         Localized.SetAutomationName(_styleList, "settings.textStyles");
         DragDrop.SetAllowDrop(_styleList, true);
         _styleList.SelectionChanged += (_, _) => LoadSelectedStyle();
-        _styleReorder = new ListReorder<StyleRow>(_styleList, canReorder: null, MoveStyle, Revalidate, () => _styleRows.ToArray(), RestoreStyles);
+        _ = new ListReorder<StyleRow>(_styleList, canReorder: null, MoveStyle, Revalidate, () => _styleRows.ToArray(), RestoreStyles);
 
         var addStyle = Utility("common.add", AddStyle, "AddTextStyleButton");
         addStyle.HorizontalAlignment = HorizontalAlignment.Right;
@@ -524,10 +522,8 @@ public sealed class SettingsDialog : DialogBase
     }
 
     // One row: the preset's label, and a "Default" badge on the default preset so it shows without
-    // selecting each row in turn. The context flyout is the same Move Up / Move Down pattern as the
-    // binder and attachment rows (MainWindow.axaml), running the identical TryMoveByOffset transaction
-    // as the row's Cmd/Ctrl+Shift+Up/Down chord, so a mouse or trackpad user reaches it without one.
-    private Control StyleRowView()
+    // selecting each row in turn.
+    private static Control StyleRowView()
     {
         var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         label.Bind(TextBlock.TextProperty, new Binding(nameof(StyleRow.Label)));
@@ -541,30 +537,7 @@ public sealed class SettingsDialog : DialogBase
         row.Children.Add(label);
         Grid.SetColumn(badge, 1);
         row.Children.Add(badge);
-        row.ContextFlyout = StyleRowMenu();
         return row;
-    }
-
-    private MenuFlyout StyleRowMenu()
-    {
-        var moveUp = new MenuItem();
-        Localized.SetHeader(moveUp, "common.moveUp");
-        moveUp.Click += (sender, _) => StyleRowMove_Click(sender, -1);
-        var moveDown = new MenuItem();
-        Localized.SetHeader(moveDown, "common.moveDown");
-        moveDown.Click += (sender, _) => StyleRowMove_Click(sender, 1);
-        var flyout = new MenuFlyout { Placement = PlacementMode.Pointer };
-        flyout.Items.Add(moveUp);
-        flyout.Items.Add(moveDown);
-        return flyout;
-    }
-
-    private void StyleRowMove_Click(object? sender, int offset)
-    {
-        if (sender is Control { DataContext: StyleRow row })
-        {
-            _styleReorder.TryMoveByOffset(row, offset);
-        }
     }
 
     // Minus and plus, each 1.5 units thick in a 10x10 box, so the two glyphs carry one weight.

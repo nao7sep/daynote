@@ -245,15 +245,6 @@
                                     <!-- Primary label is the binder title (capitalized, human-friendly); the path
                                          below shows the lowercase file. Double-tap the row to rename the title. -->
                                     <Grid ColumnDefinitions="*,Auto,Auto" Background="Transparent" DoubleTapped="BinderRow_DoubleTapped">
-                                        <Grid.ContextFlyout>
-                                            <!-- Same MenuFlyout pattern as the hamburger menu; a mouse or
-                                                 trackpad user reaches the reorder chords (Cmd/Ctrl+Shift+Up/Down)
-                                                 without a keyboard, per keyboard-shortcut-conventions. -->
-                                            <MenuFlyout Placement="Pointer">
-                                                <MenuItem i18n:Localized.Header="common.moveUp" Click="BinderMoveUp_Click"/>
-                                                <MenuItem i18n:Localized.Header="common.moveDown" Click="BinderMoveDown_Click"/>
-                                            </MenuFlyout>
-                                        </Grid.ContextFlyout>
                                         <StackPanel Spacing="2">
                                             <Panel>
                                                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
@@ -456,15 +447,6 @@
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="vm:AttachmentItemViewModel">
                                     <StackPanel Spacing="6" DoubleTapped="Attachment_DoubleTapped">
-                                    <StackPanel.ContextFlyout>
-                                        <!-- Same MenuFlyout pattern as the hamburger menu and the binder row;
-                                             reaches the same Cmd/Ctrl+Shift+Up/Down reorder chords without a
-                                             keyboard, per keyboard-shortcut-conventions. -->
-                                        <MenuFlyout Placement="Pointer">
-                                            <MenuItem i18n:Localized.Header="common.moveUp" Click="AttachmentMoveUp_Click"/>
-                                            <MenuItem i18n:Localized.Header="common.moveDown" Click="AttachmentMoveDown_Click"/>
-                                        </MenuFlyout>
-                                    </StackPanel.ContextFlyout>
                                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                                         <Border Width="44" Height="44" CornerRadius="4" ClipToBounds="True"
                                                 Background="{DynamicResource AppBackgroundBrush}">
