@@ -34,11 +34,55 @@ public sealed class AppPaths
     /// </summary>
     public string BackupStoreFile => Path.Combine(Root, "backups.sqlite3");
 
-    /// <summary>Creates the root and logs directories if they do not yet exist.</summary>
+    /// <summary>Installs the warn sink used to report a failure to tighten the storage root's
+    /// permissions to owner-only (<c>0700</c>) on POSIX. Optional: DayNote.Core stays logger-framework-
+    /// free (see <see cref="DayNote.Core.Backup.BackupStore.ConfigureWarn"/> for the same pattern), so with
+    /// no sink installed — such as during the very first <see cref="EnsureCreated"/> call at startup,
+    /// before the app's logger exists — the failure goes to stderr instead. Either way, a tightening
+    /// failure is reported, never thrown; it must never stop the app from starting.</summary>
+    public static void ConfigureWarn(Action<string, Exception> warn) => _permissionWarn = warn;
+
+    private static Action<string, Exception>? _permissionWarn;
+
+    /// <summary>Creates the root and logs directories if they do not yet exist, and — on POSIX — makes
+    /// sure the root itself (never its contents or subdirectories) is owner-only (<c>0700</c>), tightening
+    /// it when an existing root is broader. Windows uses its own permission model and skips this step
+    /// (storage-path conventions, "The resolver creates the root").</summary>
     public void EnsureCreated()
     {
         Directory.CreateDirectory(Root);
+        EnsureOwnerOnly(Root);
         Directory.CreateDirectory(LogsDirectory);
+    }
+
+    private static void EnsureOwnerOnly(string root)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        const UnixFileMode ownerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        var current = File.GetUnixFileMode(root);
+        if ((current & ~ownerOnly) != 0)
+        {
+            try
+            {
+                File.SetUnixFileMode(root, ownerOnly);
+            }
+            catch (Exception ex)
+            {
+                var message = $"Could not tighten permissions on the storage root '{root}' to owner-only (0700).";
+                if (_permissionWarn is { } warn)
+                {
+                    warn(message, ex);
+                }
+                else
+                {
+                    Console.Error.WriteLine("DayNote: " + message + " " + ex.Message);
+                }
+            }
+        }
     }
 
     private static string ResolveRoot()

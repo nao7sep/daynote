@@ -86,6 +86,7 @@ internal static class Program
         // as a delegate installed here. Installed before any managed save so the very first record's
         // failure (should one occur) is logged. The store logs ONLY failures; success is silent.
         BackupStore.ConfigureWarn((message, path, error) => logger.Warn(message, new { file = path }, error));
+        AppPaths.ConfigureWarn((message, error) => logger.Warn(message, new { root = paths.Root }, error));
 
         logger.Info("DayNote starting", new
         {

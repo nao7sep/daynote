@@ -160,13 +160,17 @@ public static class BackupStore
         var file = "(unresolved)";
         try
         {
-            file = new AppPaths().BackupStoreFile;
+            var paths = new AppPaths();
+            file = paths.BackupStoreFile;
             // The first writer under the root does the mkdir -p (storage-path convention); the store may
-            // be the first thing written on a fresh root.
+            // be the first thing written on a fresh root. Routed through the one root resolver's
+            // EnsureCreated (rather than mkdir'ing the parent directly) so the root still gets created —
+            // and, on POSIX, tightened to owner-only (0700) — the same way on every path, even when the
+            // store happens to be first.
             // not recorded: backups.sqlite3 is the store itself — binary, and written by this backup layer,
             // not through the managed-text atomic-write path — so it never records itself. No recursion,
             // no special case (data-backup conventions: "A binary store, excluded from itself").
-            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            paths.EnsureCreated();
 
             var connection = new SqliteConnection($"Data Source={file}");
             connection.Open();
