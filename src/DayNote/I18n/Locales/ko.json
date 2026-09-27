@@ -20,10 +20,10 @@
   "attachments.join": "{first} {rest}",
   "attachments.noNote": "첨부 파일을 추가하려면 노트를 선택하거나 만드십시오.",
   "attachments.pane": "첨부 파일",
-  "attachments.remove": "첨부 파일 삭제",
-  "attachments.removeFailed": "첨부 파일을 삭제하지 못했습니다. 첨부는 그대로이며 파일도 변경되지 않았습니다. 다시 시도하십시오.",
-  "attachments.removeMessage": "“{name}”을(를) 삭제하시겠습니까? 파일도 삭제됩니다.",
-  "attachments.removeTitle": "첨부 파일 삭제",
+  "attachments.remove": "첨부 파일 제거",
+  "attachments.removeFailed": "첨부 파일을 제거하지 못했습니다. 첨부는 그대로이며 파일도 변경되지 않았습니다. 다시 시도하십시오.",
+  "attachments.removeMessage": "“{name}”을(를) 제거하시겠습니까? 파일도 삭제됩니다.",
+  "attachments.removeTitle": "첨부 파일 제거",
   "attachments.unreadable": {
     "other": "항목 {count}개는 읽을 수 있는 로컬 파일이 아닙니다."
   },
@@ -52,7 +52,7 @@
   "common.delete": "삭제",
   "common.filter": "필터…",
   "common.ok": "확인",
-  "common.remove": "삭제",
+  "common.remove": "제거",
   "common.save": "저장",
   "counts.chars": {
     "other": "{count}자"
@@ -156,8 +156,8 @@
   "settings.lineSpacing": "줄 간격",
   "settings.noFontFamily": "글꼴 미지정",
   "settings.padding": "여백",
-  "settings.removeStyleMessage": "텍스트 스타일 “{style}”을(를) 삭제하시겠습니까?",
-  "settings.removeStyleTitle": "텍스트 스타일 삭제",
+  "settings.removeStyleMessage": "텍스트 스타일 “{style}”을(를) 제거하시겠습니까?",
+  "settings.removeStyleTitle": "텍스트 스타일 제거",
   "settings.setDefault": "기본값으로 설정",
   "settings.textStyles": "텍스트 스타일",
   "settings.theme": "테마",

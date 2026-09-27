@@ -20,10 +20,10 @@
   "attachments.join": "{first}{rest}",
   "attachments.noNote": "请选择或新建一条笔记以添加附件。",
   "attachments.pane": "附件",
-  "attachments.remove": "删除附件",
-  "attachments.removeFailed": "无法删除附件。附件仍然保留，文件也未改动；请重试。",
-  "attachments.removeMessage": "要删除“{name}”吗？该文件将被删除。",
-  "attachments.removeTitle": "删除附件",
+  "attachments.remove": "移除附件",
+  "attachments.removeFailed": "无法移除附件。附件仍然保留，文件也未改动；请重试。",
+  "attachments.removeMessage": "要移除“{name}”吗？该文件将被删除。",
+  "attachments.removeTitle": "移除附件",
   "attachments.unreadable": {
     "other": "{count} 个项目不是可读取的本地文件。"
   },
@@ -52,7 +52,7 @@
   "common.delete": "删除",
   "common.filter": "筛选…",
   "common.ok": "确定",
-  "common.remove": "删除",
+  "common.remove": "移除",
   "common.save": "保存",
   "counts.chars": {
     "other": "{count} 个字符"
@@ -156,8 +156,8 @@
   "settings.lineSpacing": "行距",
   "settings.noFontFamily": "未指定字体",
   "settings.padding": "内边距",
-  "settings.removeStyleMessage": "要删除文本样式“{style}”吗？",
-  "settings.removeStyleTitle": "删除文本样式",
+  "settings.removeStyleMessage": "要移除文本样式“{style}”吗？",
+  "settings.removeStyleTitle": "移除文本样式",
   "settings.setDefault": "设为默认",
   "settings.textStyles": "文本样式",
   "settings.theme": "主题",
