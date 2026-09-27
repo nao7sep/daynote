@@ -290,19 +290,39 @@ public sealed class ListReorder<T>
             return;
         }
 
-        var keepFocus = _list.IsKeyboardFocusWithin;
         var offset = ListReorder.KeyboardOffset(e.Key, e.KeyModifiers);
+        if (offset != 0 && TryMoveByOffset(item, offset))
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Moves <paramref name="item"/> one or more positions by <paramref name="offset"/> (-1 up, +1
+    /// down) and commits, exactly as the keyboard chord does. Shared by the chord and by the row's
+    /// Move Up / Move Down menu items, so a mouse user without easy arrow-key access reaches the same
+    /// transaction. A no-op — at an edge, mid-drag, or while the owner has reordering locked — returns
+    /// false and changes nothing.
+    /// </summary>
+    public bool TryMoveByOffset(T item, int offset)
+    {
+        if (IsReordering || _canReorder?.Invoke() == false)
+        {
+            return false;
+        }
+
+        var keepFocus = _list.IsKeyboardFocusWithin;
         var targetIndex = _list.Items.IndexOf(item) + offset;
         if (offset == 0 || targetIndex < 0 || targetIndex >= _list.ItemCount
             || _list.Items[targetIndex] is not T target || !_move(item, target))
         {
-            return;
+            return false;
         }
 
-        // A keyboard move is one complete transaction: the same move as a drag preview, then one
-        // commit. The stable item stays selected and, because the list owns focus, follows its row.
+        // One complete transaction: the same move as a drag preview, then one commit. The stable item
+        // stays selected and, because the list owns focus, follows its row.
         _commit();
         Follow(item, keepFocus);
-        e.Handled = true;
+        return true;
     }
 }

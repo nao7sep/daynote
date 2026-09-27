@@ -57,6 +57,8 @@
   "common.close": "Cerrar",
   "common.delete": "Eliminar",
   "common.filter": "Filtrar…",
+  "common.moveDown": "Bajar",
+  "common.moveUp": "Subir",
   "common.ok": "Aceptar",
   "common.remove": "Quitar",
   "common.save": "Guardar",
