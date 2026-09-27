@@ -37,18 +37,6 @@
         <!-- State colors. The view models expose state (a note's lifecycle, the save state, a result's
              severity) and these styles map it to theme brushes, so an open window repaints when the
              theme changes. -->
-        <Style Selector="Border.statusStripe">
-            <Setter Property="Background" Value="{DynamicResource StatusDraftBrush}"/>
-        </Style>
-        <Style Selector="Border.statusStripe.ready">
-            <Setter Property="Background" Value="{DynamicResource StatusReadyBrush}"/>
-        </Style>
-        <Style Selector="Border.statusStripe.published">
-            <Setter Property="Background" Value="{DynamicResource StatusPublishedBrush}"/>
-        </Style>
-        <Style Selector="Border.statusStripe.expired">
-            <Setter Property="Background" Value="{DynamicResource StatusExpiredBrush}"/>
-        </Style>
         <Style Selector="TextBlock.statusLabel">
             <Setter Property="Foreground" Value="{DynamicResource StatusDraftBrush}"/>
         </Style>
@@ -306,14 +294,8 @@
                                      KeyDown="NotesList_KeyDown">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate DataType="vm:NoteListItemViewModel">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                                        <!-- A status-colored stripe makes each row read by lifecycle state at a glance. -->
-                                        <Border Width="3" CornerRadius="1.5" VerticalAlignment="Stretch"
-                                                Classes="statusStripe"
-                                                Classes.ready="{Binding IsStatusReady}"
-                                                Classes.published="{Binding IsStatusPublished}"
-                                                Classes.expired="{Binding IsStatusExpired}"/>
-                                        <StackPanel Grid.Column="1" Spacing="2">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <StackPanel Spacing="2">
                                             <TextBlock x:Name="NoteTitle" Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                             <!-- The status keeps its word; the creation time trims when the pane is
                                                  narrower than both, as the title above it does. -->
@@ -329,7 +311,7 @@
                                             </Grid>
                                         </StackPanel>
                                         <!-- Per-row delete, revealed on hover/selection (replaces the Delete button). -->
-                                        <Button Grid.Column="2" Classes="rowAction" Click="DeleteNoteRow_Click"
+                                        <Button Grid.Column="1" Classes="rowAction" Click="DeleteNoteRow_Click"
                                                 views:FirstLine.Text="{Binding #NoteTitle}"
                                                 i18n:Localized.ToolTip="note.delete" i18n:Localized.AutomationName="note.delete">
                                             <Path Width="10" Height="10" Stroke="{Binding $parent[Button].Foreground}"
