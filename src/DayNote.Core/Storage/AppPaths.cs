@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 
 namespace DayNote.Core.Storage;
@@ -44,31 +45,42 @@ public sealed class AppPaths
 
     private static Action<string, Exception>? _permissionWarn;
 
-    /// <summary>Creates the root and logs directories if they do not yet exist, and — on POSIX — makes
-    /// sure the root itself (never its contents or subdirectories) is owner-only (<c>0700</c>), tightening
-    /// it when an existing root is broader. Windows uses its own permission model and skips this step
-    /// (storage-path conventions, "The resolver creates the root").</summary>
-    public void EnsureCreated()
-    {
-        Directory.CreateDirectory(Root);
-        EnsureOwnerOnly(Root);
-        Directory.CreateDirectory(LogsDirectory);
-    }
+    /// <summary>The permission mode the root must have on POSIX: owner read/write/execute, nothing else.</summary>
+    private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
-    private static void EnsureOwnerOnly(string root)
+    /// <summary>Creates the root and logs directories if they do not yet exist, and — on POSIX — makes
+    /// sure the root itself (never its contents or subdirectories) is owner-only (<c>0700</c>): created
+    /// that way from the start, and tightened when an existing root is broader. Windows uses its own
+    /// permission model and skips both steps (storage-path conventions, "The resolver creates the
+    /// root").</summary>
+    public void EnsureCreated()
     {
         if (OperatingSystem.IsWindows())
         {
-            return;
+            Directory.CreateDirectory(Root);
+        }
+        else
+        {
+            // The UnixFileMode overload only applies the mode to a directory it actually creates — an
+            // existing root is left untouched here, so a broader root left by an earlier build still
+            // needs the EnsureOwnerOnly tightening below. This just ensures a *fresh* root is never
+            // briefly created under the default umask before being chmod'd.
+            Directory.CreateDirectory(Root, OwnerOnly);
+            EnsureOwnerOnly(Root);
         }
 
-        const UnixFileMode ownerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        Directory.CreateDirectory(LogsDirectory);
+    }
+
+    [UnsupportedOSPlatform("windows")]
+    private static void EnsureOwnerOnly(string root)
+    {
         var current = File.GetUnixFileMode(root);
-        if ((current & ~ownerOnly) != 0)
+        if ((current & ~OwnerOnly) != 0)
         {
             try
             {
-                File.SetUnixFileMode(root, ownerOnly);
+                File.SetUnixFileMode(root, OwnerOnly);
             }
             catch (Exception ex)
             {

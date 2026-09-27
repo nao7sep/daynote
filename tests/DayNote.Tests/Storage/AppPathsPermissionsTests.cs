@@ -154,4 +154,23 @@ public sealed class AppPathsPermissionsTests : IDisposable
         var mode = File.GetUnixFileMode(paths.Root) & (UnixFileMode)0x1FF;
         Assert.Equal(OwnerOnly, mode);
     }
+
+    [Fact]
+    public void Fresh_root_is_created_owner_only_without_a_prior_broader_window()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "0700 tightening is POSIX-only; Windows uses its own permission model.");
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Directory.CreateDirectory(path, UnixFileMode) is the call under test here: the root must be
+        // born owner-only rather than created under the default umask and only chmod'd afterward, which
+        // would leave a brief window where a freshly created root is broader than 0700.
+        var root = Path.Combine(_home, "owner-only-from-birth");
+        Directory.CreateDirectory(root, OwnerOnly);
+
+        var mode = File.GetUnixFileMode(root) & (UnixFileMode)0x1FF;
+        Assert.Equal(OwnerOnly, mode);
+    }
 }
