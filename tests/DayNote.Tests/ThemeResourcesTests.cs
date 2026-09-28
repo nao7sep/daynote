@@ -96,6 +96,27 @@ public sealed class ThemeResourcesTests
         Assert.True(failures.Count == 0, $"{theme}: {string.Join("; ", failures)}");
     }
 
+    // The dialog shell's header/footer line (DialogBase's FooterSeparator) must read at least as
+    // clearly against the surface as the app's own control borders — here the fields' outline, since
+    // the filled buttons carry no border of their own (modal-dialog conventions).
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public void TheDialogSeparatorIsAtLeastAsVisibleAsAFieldBorder(string theme)
+    {
+        var b = ThemeBrushes(theme);
+        var separatorKey = DialogBaseXaml().Descendants()
+            .Single(element => element.Name.LocalName == "Border" && (string?)element.Attribute(X + "Name") == "FooterSeparator")
+            .Attribute("Background")!.Value
+            .Trim('{', '}').Replace("DynamicResource ", "").Replace("StaticResource ", "");
+
+        var fieldContrast = Contrast(b["FieldBorderBrush"], b["AppBackgroundBrush"]);
+        var separatorContrast = Contrast(b[separatorKey], b["AppBackgroundBrush"]);
+        Assert.True(
+            separatorContrast >= fieldContrast - 0.01,
+            $"{theme}: dialog separator ({separatorKey}) contrast {separatorContrast:F2} is fainter than the field border's {fieldContrast:F2}");
+    }
+
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
@@ -250,6 +271,9 @@ public sealed class ThemeResourcesTests
 
     private static XDocument AppXaml() =>
         XDocument.Load(Path.Combine(RepoRoot(), "src", "DayNote", "App.axaml"));
+
+    private static XDocument DialogBaseXaml() =>
+        XDocument.Load(Path.Combine(RepoRoot(), "src", "DayNote", "Views", "DialogBase.axaml"));
 
     private static Dictionary<string, Color> ThemeBrushes(string theme) =>
         AppXaml().Descendants()
