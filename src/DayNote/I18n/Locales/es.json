@@ -1,6 +1,6 @@
 {
   "about.closeLinkResult": "Cerrar el aviso del enlace",
-  "about.description": "Una aplicación de escritorio para notas en texto sin formato, guardadas en archivadores. Sucesora de quickdeck.",
+  "about.description": "Guarda notas de texto sin formato en archivadores, mueve cada nota de borrador a publicada y cuenta los caracteres frente al límite de 280 de X.",
   "about.github": "GitHub",
   "about.licence": "© 2026 Yoshinao Inoguchi · GNU GPL v3 o posterior",
   "about.reportIssue": "Notificar un problema",

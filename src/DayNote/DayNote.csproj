@@ -6,7 +6,7 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AssemblyTitle>DayNote</AssemblyTitle>
-    <Description>DayNote — a plain-text notes and daily-journal desktop application.</Description>
+    <Description>Keep plain-text notes in binders, move each note from draft to published, and count characters against X's 280 limit.</Description>
     <ApplicationIcon>icon.ico</ApplicationIcon>
     <RuntimeIdentifiers>osx-arm64;osx-x64;win-x64</RuntimeIdentifiers>
   </PropertyGroup>

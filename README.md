@@ -1,6 +1,6 @@
 # DayNote
 
-DayNote is a local-first desktop app for keeping plain-text notes in **binders**. Each binder is a `.daynote` file you choose where to save; copied attachments live in a matching `-assets` folder beside it. The format is easy to move or back up as ordinary files on macOS and Windows.
+Keep plain-text notes in binders, move each note from draft to published, and count characters against X's 280 limit. DayNote is a local-first desktop app: each **binder** is a `.daynote` file you choose where to save, with copied attachments living in a matching `-assets` folder beside it, easy to move or back up as ordinary files on macOS and Windows.
 
 DayNote is for short journal entries, working notes, and other text you want to own as files instead of placing in a hosted account. Binders contain a flat list of notes rather than calendar or date-grouped pages. Saves are atomic, external edits are detected, and a failed autosave is shown while the in-memory edit remains available to retry.
 

@@ -1,6 +1,6 @@
 {
   "about.closeLinkResult": "リンクの結果を閉じる",
-  "about.description": "プレーンテキストのノートを扱うデスクトップアプリです。ノートはバインダーにまとめます。quickdeck の後継です。",
+  "about.description": "プレーンテキストのノートをバインダーで管理し、各ノートを下書きから公開済みへ移動し、X の280文字制限に対して文字数を数えましょう。",
   "about.github": "GitHub",
   "about.licence": "© 2026 Yoshinao Inoguchi · GNU GPL v3 以降",
   "about.reportIssue": "問題を報告",
