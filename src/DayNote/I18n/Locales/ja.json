@@ -96,7 +96,7 @@
   "meta.modified": "更新 {time}",
   "meta.published": "公開 {time}",
   "meta.ready": "準備完了 {time}",
-  "nativeMenu.about": "{app}について",
+  "nativeMenu.about": "{app} について",
   "nativeMenu.bringAllToFront": "すべてを手前に移動",
   "nativeMenu.copy": "コピー",
   "nativeMenu.cut": "カット",
