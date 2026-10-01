@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Threading;
+using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
 using DayNote.Core.Identity;
 using DayNote.Core.Models;
@@ -129,6 +130,9 @@ internal sealed class PopulatedMainWindow : IDisposable
             }
         }
 
+        // The shutdown save opened the backup store singleton against Home. Close it so the next test
+        // re-opens against its own root instead of inheriting a connection to this deleted one.
+        BackupStore.Close();
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
         {
