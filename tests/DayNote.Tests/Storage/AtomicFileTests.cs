@@ -16,7 +16,7 @@ namespace DayNote.Tests.Storage;
 /// </summary>
 /// <remarks>
 /// The atomic writer is the write-through data-backup hook (<see cref="BackupStore.Record"/> fires after
-/// each rename lands), so <c>DAYNOTE_HOME</c> is relocated to this test's throwaway directory — otherwise
+/// each rename lands), so <c>DAYNOTE_DATA_DIR</c> is relocated to this test's throwaway directory — otherwise
 /// the store would open under the developer's real <c>~/.daynote/</c>. Joined to the AppPaths collection
 /// so that process-wide env var never races another test; the store singleton is closed in teardown so it
 /// re-opens per throwaway root. Content assertions filter the store's own <c>backups.sqlite3</c>(+wal/shm).

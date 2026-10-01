@@ -7,7 +7,7 @@ namespace DayNote.Core.Backup;
 
 /// <summary>
 /// The write-through data-backup store (data-backup conventions). It owns one add-only SQLite file,
-/// <c>backups.sqlite3</c>, directly under DayNote's storage root (<c>DAYNOTE_HOME</c> or <c>~/.daynote</c>,
+/// <c>backups.sqlite3</c>, directly under DayNote's storage root (<c>DAYNOTE_DATA_DIR</c> or <c>~/.daynote</c>,
 /// resolved in one place by <see cref="AppPaths"/> — never a hardcoded path). Every managed <em>text</em>
 /// save records the exact bytes it just wrote here, strictly AFTER its atomic rename lands, so the history
 /// is always as current as the last save. There is no startup scan, no periodic pass, no restore path.
@@ -220,7 +220,7 @@ public static class BackupStore
     /// <summary>
     /// Close the store (best-effort). For tests that need to release the file handle between throwaway
     /// roots; the app itself lets the process exit close it. Resets the singleton so the next
-    /// <see cref="Record"/> re-opens against the current <c>DAYNOTE_HOME</c>.
+    /// <see cref="Record"/> re-opens against the current <c>DAYNOTE_DATA_DIR</c>.
     /// </summary>
     public static void Close()
     {

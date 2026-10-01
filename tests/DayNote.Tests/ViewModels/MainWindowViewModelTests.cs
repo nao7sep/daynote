@@ -32,7 +32,7 @@ namespace DayNote.Tests.ViewModels;
 /// <summary>
 /// The main view model orchestrates open/close, autosave, dirty tracking, and the known-binders list —
 /// the logic where data loss would hide. [AvaloniaFact] runs each test on the headless UI thread (which
-/// owns the DispatcherTimers); the storage root is relocated to a throwaway directory via DAYNOTE_HOME.
+/// owns the DispatcherTimers); the storage root is relocated to a throwaway directory via DAYNOTE_DATA_DIR.
 /// Joined to the AppPaths collection so that process-wide env var never races another test.
 /// </summary>
 [Collection(AppPathsEnvironment.CollectionName)]

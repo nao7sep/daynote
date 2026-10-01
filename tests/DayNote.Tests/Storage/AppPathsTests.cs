@@ -7,7 +7,7 @@ using Xunit;
 namespace DayNote.Tests.Storage;
 
 /// <summary>
-/// Storage-root resolution: <c>DAYNOTE_HOME</c> relocates the whole tree when set, the default
+/// Storage-root resolution: <c>DAYNOTE_DATA_DIR</c> relocates the whole tree when set, the default
 /// <c>~/.daynote</c> is used when it is not, and a relative override resolves against the home
 /// directory (never the working directory) so no path can depend on how the app was launched.
 /// </summary>

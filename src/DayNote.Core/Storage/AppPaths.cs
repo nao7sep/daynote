@@ -8,16 +8,16 @@ namespace DayNote.Core.Storage;
 /// session state, and logs.
 /// </summary>
 /// <remarks>
-/// The root is <c>DAYNOTE_HOME</c> when that environment variable is set and non-empty (the value is
+/// The root is <c>DAYNOTE_DATA_DIR</c> when that environment variable is set and non-empty (the value is
 /// expanded for a leading <c>~</c> and for environment references, then made absolute against the home
 /// directory), otherwise the default <c>~/.daynote/</c>. The working directory is never a base for any
-/// path, per the storage-path conventions. <c>DAYNOTE_HOME</c> is the one relocation seam, used the same
+/// path, per the storage-path conventions. <c>DAYNOTE_DATA_DIR</c> is the one relocation seam, used the same
 /// way by tests and in production.
 /// </remarks>
 public sealed class AppPaths
 {
     /// <summary>Environment variable that relocates the entire storage root.</summary>
-    public const string HomeEnvironmentVariable = "DAYNOTE_HOME";
+    public const string HomeEnvironmentVariable = "DAYNOTE_DATA_DIR";
 
     public AppPaths() => Root = ResolveRoot();
 

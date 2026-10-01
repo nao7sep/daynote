@@ -24,7 +24,7 @@ namespace DayNote.Tests.Backup;
 /// </summary>
 /// <remarks>
 /// Records reach the store only through the atomic writer, so each test drives a real
-/// <see cref="AtomicFile.WriteAllText"/> under a throwaway <c>DAYNOTE_HOME</c> and reads the resulting
+/// <see cref="AtomicFile.WriteAllText"/> under a throwaway <c>DAYNOTE_DATA_DIR</c> and reads the resulting
 /// <c>backups.sqlite3</c> back with a direct read-only connection. Joined to the AppPaths collection so the
 /// process-wide env var never races; the store singleton is closed in teardown so it re-opens per root.
 /// </remarks>

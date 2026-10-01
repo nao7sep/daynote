@@ -22,7 +22,7 @@ namespace DayNote.Tests.I18n;
 /// is gone, the attachments strip, an app-shell result and the text-style status. The language gates
 /// read what it draws, so a surface that is empty in a test is one they cannot see.
 ///
-/// The storage root is a throwaway directory set through <c>DAYNOTE_HOME</c>, which is process-wide,
+/// The storage root is a throwaway directory set through <c>DAYNOTE_DATA_DIR</c>, which is process-wide,
 /// so a test using this joins the <see cref="Storage.AppPathsEnvironment"/> collection and disposes it.
 /// </summary>
 internal sealed class PopulatedMainWindow : IDisposable

@@ -43,7 +43,7 @@ internal static class Program
 
         if (resolved is not { } paths)
         {
-            // An unusable DAYNOTE_HOME (or an unknown home) is a startup error we report and STOP on.
+            // An unusable DAYNOTE_DATA_DIR (or an unknown home) is a startup error we report and STOP on.
             // The logger isn't up yet — its directory derives from these very paths — so stderr is the
             // channel, and it stays English with the exception's own message: this is the diagnostic
             // channel, not an interface surface. What the reader sees is the notice window.
