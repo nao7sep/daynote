@@ -108,32 +108,48 @@ internal sealed class PopulatedMainWindow : IDisposable
         // runs shutdown again and recreates the deleted folder. Closing the window here runs that
         // quit now; a window never shown has no quit path, so its view model is shut down directly.
         // The save's continuation runs on the UI thread, so the thread is pumped rather than blocked.
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        if (Window.IsVisible)
+        try
         {
-            var closed = false;
-            Window.Closed += (_, _) => closed = true;
-            Window.Close();
-            while (!closed && DateTime.UtcNow < deadline)
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            if (Window.IsVisible)
             {
-                Dispatcher.UIThread.RunJobs();
-                System.Threading.Thread.Sleep(1);
+                var closed = false;
+                Window.Closed += (_, _) => closed = true;
+                Window.Close();
+                while (!closed && DateTime.UtcNow < deadline)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    System.Threading.Thread.Sleep(1);
+                }
+                if (!closed)
+                {
+                    throw new TimeoutException("The fixture window did not finish closing.");
+                }
+            }
+            else
+            {
+                var shutdown = ViewModel.ShutdownAsync();
+                while (!shutdown.IsCompleted && DateTime.UtcNow < deadline)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    System.Threading.Thread.Sleep(1);
+                }
+                if (!shutdown.IsCompleted)
+                {
+                    throw new TimeoutException("The fixture view model did not finish shutting down.");
+                }
+                if (!shutdown.GetAwaiter().GetResult())
+                {
+                    throw new InvalidOperationException("The fixture view model could not save before shutdown.");
+                }
             }
         }
-        else
+        finally
         {
-            var shutdown = ViewModel.ShutdownAsync();
-            while (!shutdown.IsCompleted && DateTime.UtcNow < deadline)
-            {
-                Dispatcher.UIThread.RunJobs();
-                System.Threading.Thread.Sleep(1);
-            }
+            // Even a failed shutdown must release process-wide state before the next fixture.
+            BackupStore.Close();
+            Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         }
-
-        // The shutdown save opened the backup store singleton against Home. Close it so the next test
-        // re-opens against its own root instead of inheriting a connection to this deleted one.
-        BackupStore.Close();
-        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
         {
             Directory.Delete(Home, recursive: true);
