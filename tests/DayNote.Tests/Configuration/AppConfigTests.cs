@@ -12,6 +12,15 @@ namespace DayNote.Tests.Configuration;
 public sealed class AppConfigTests
 {
     [Fact]
+    public void Copy_owns_its_binder_entries()
+    {
+        var original = new AppConfig { Binders = new() { new KnownBinder { Path = "binder.daynote", Title = "Original" } } };
+        var draft = original.Copy();
+        draft.Binders[0].Title = "Draft";
+        Assert.Equal("Original", original.Binders[0].Title);
+    }
+
+    [Fact]
     public void Default_ui_font_is_stored_empty_and_resolves_to_the_bundled_inter()
     {
         Assert.Equal("", new AppConfig().UiFontFamily);

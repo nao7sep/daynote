@@ -19,7 +19,7 @@ public static class ConfigSets
                 continue;
             }
 
-            if (HasShape(value, BuiltIns.GetProperty(key))
+            if ((key == "binders" ? HasBinderListShape(value) : HasShape(value, BuiltIns.GetProperty(key)))
                 && (key != "theme" || IsTheme(value)))
             {
                 effective[key] = value;
@@ -42,6 +42,11 @@ public static class ConfigSets
 
     public static bool IsBuiltIn(AppConfig config, string key) => JsonElement.DeepEquals(
         JsonSerializer.SerializeToElement(config, DayNoteJson.Options).GetProperty(key), BuiltIns.GetProperty(key));
+
+    private static bool HasBinderListShape(JsonElement value) => value.ValueKind == JsonValueKind.Array
+        && value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.Object
+            && item.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.String
+            && item.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String);
 
     private static bool IsTheme(JsonElement value) => value.ValueKind == JsonValueKind.String
         && Enum.TryParse<ThemePreference>(value.GetString(), true, out var theme)

@@ -7,6 +7,16 @@ namespace DayNote.Tests.Configuration;
 public sealed class AppStateTests
 {
     [Fact]
+    public void The_old_binder_list_is_ignored_while_selection_stays_in_state()
+    {
+        var state = JsonSerializer.Deserialize<AppState>("""{ "binders": [{ "path": "old.daynote", "title": "Old" }], "currentBinderPath": "old.daynote", "currentNoteId": "note" }""", DayNoteJson.Options)!;
+        Assert.Equal("old.daynote", state.CurrentBinderPath);
+        Assert.Equal("note", state.CurrentNoteId);
+        using var saved = JsonDocument.Parse(JsonSerializer.Serialize(state, DayNoteJson.Options));
+        Assert.False(saved.RootElement.TryGetProperty("binders", out _));
+    }
+
+    [Fact]
     public void Window_placement_round_trips_as_five_primitives()
     {
         var state = new AppState

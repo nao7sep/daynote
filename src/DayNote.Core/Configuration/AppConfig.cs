@@ -54,6 +54,9 @@ public sealed class AppConfig
     // (DayNoteTime.SystemZone), which follows the computer's zone at every launch.
     public string TimeZone { get; set; } = DayNoteTime.SystemZone;
 
+    /// <summary>The opened binders and their user-authored display titles.</summary>
+    public List<KnownBinder> Binders { get; set; } = new();
+
     /// <summary>The preset the editor uses: the flagged default, or the first when none is flagged.</summary>
     public EditorTextStyle? ResolveDefaultStyle() =>
         TextStyles.FirstOrDefault(style => style.IsDefault) ?? TextStyles.FirstOrDefault();
@@ -67,5 +70,6 @@ public sealed class AppConfig
         TextStyles = TextStyles.Select(style => style.Copy()).ToList(),
         AutosaveDelaySeconds = AutosaveDelaySeconds,
         TimeZone = TimeZone,
+        Binders = Binders.Select(binder => new KnownBinder { Path = binder.Path, Title = binder.Title }).ToList(),
     };
 }

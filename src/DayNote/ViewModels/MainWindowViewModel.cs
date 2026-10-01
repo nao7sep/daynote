@@ -377,7 +377,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (!string.IsNullOrEmpty(_state.CurrentBinderPath) && File.Exists(_state.CurrentBinderPath))
+        if (!string.IsNullOrEmpty(_state.CurrentBinderPath)
+            && _config.Binders.Any(binder => PathKey.Equal(binder.Path, _state.CurrentBinderPath))
+            && File.Exists(_state.CurrentBinderPath))
         {
             await OpenBinderPathAsync(_state.CurrentBinderPath!, isNew: false, selectNoteId: _state.CurrentNoteId);
         }
@@ -1067,10 +1069,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var working = _config.Copy();
+        var original = _config.Copy();
+        var working = original.Copy();
         if (!await _dialogs.ShowSettingsAsync(working, (candidate, resetTextStyles) =>
             {
-                if (!TrySaveConfig(candidate, ConfigSets.ChangedKeys(candidate, _config), resetTextStyles))
+                if (!TrySaveConfig(candidate, ConfigSets.ChangedKeys(candidate, original), resetTextStyles))
                 {
                     return false;
                 }
@@ -1083,6 +1086,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var themeChanged = _config.Theme != working.Theme;
+        working.Binders = _config.Binders;
         _config = working;
         ApplyConfig();
         if (themeChanged)
@@ -1576,11 +1580,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Rebuilds the master binders list from state, then applies the current filter.</summary>
+    /// <summary>Rebuilds the master binders list from config, then applies the current filter.</summary>
     private void RebuildBinders()
     {
         _allBinders.Clear();
-        foreach (var entry in _state.Binders)
+        foreach (var entry in _config.Binders)
         {
             _allBinders.Add(new BinderListItemViewModel(entry.Path)
             {
@@ -1593,18 +1597,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// The binder's display title: its locally-stored title from app state, or the file name when no
-    /// title is stored. Titles live in state (not the .daynote file), so this needs no file I/O.
+    /// The binder's display title: its stored title from app config, or the file name when no
+    /// title is stored. Titles live in config (not the .daynote file), so this needs no file I/O.
     /// </summary>
     private string TitleFor(string path)
     {
-        var title = _state.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path))?.Title;
+        var title = _config.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path))?.Title;
         return string.IsNullOrWhiteSpace(title) ? Path.GetFileNameWithoutExtension(path) : title;
     }
 
     /// <summary>
-    /// Applies an inline title edit to a binder. The title is a local label stored in app state (never
-    /// in the .daynote file), so this just updates that state entry and persists. A blank or unchanged
+    /// Applies an inline title edit to a binder. The title is a label stored in app config (never
+    /// in the .daynote file), so this just updates that config entry and persists. A blank or unchanged
     /// title is ignored. Called by the view on blur / Enter.
     /// </summary>
     public void ApplyBinderRename(BinderListItemViewModel item, string rawTitle)
@@ -1621,7 +1625,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var entry = _state.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, item.Path));
+        var entry = _config.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, item.Path));
         if (entry is null)
         {
             return; // not a known binder (shouldn't happen for a visible row)
@@ -1629,7 +1633,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         entry.Title = newTitle;
         item.Title = newTitle;
-        PersistState();
+        TrySaveConfig(_config, ["binders"]);
         _log.Info("Renamed binder", new { path = item.Path });
     }
 
@@ -1715,22 +1719,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         return true;
     }
 
-    /// <summary>Persists the master binder order to app state once; a no-op when it is unchanged.</summary>
+    /// <summary>Persists the master binder order to app config once; a no-op when it is unchanged.</summary>
     public void CommitBinderOrder()
     {
         var order = _allBinders.Select(item => item.Path).ToList();
-        if (_state.Binders.Select(entry => entry.Path).SequenceEqual(order))
+        if (_config.Binders.Select(entry => entry.Path).SequenceEqual(order))
         {
             return;
         }
 
         var reordered = _allBinders
-            .Select(item => _state.Binders.Find(entry => PathKey.Equal(entry.Path, item.Path)))
+            .Select(item => _config.Binders.Find(entry => PathKey.Equal(entry.Path, item.Path)))
             .OfType<KnownBinder>()
             .ToList();
-        reordered.AddRange(_state.Binders.Except(reordered));
-        _state.Binders = reordered;
-        PersistState();
+        reordered.AddRange(_config.Binders.Except(reordered));
+        _config.Binders = reordered;
+        TrySaveConfig(_config, ["binders"]);
         _log.Info("Reordered binders", new { count = order.Count });
     }
 
@@ -1794,7 +1798,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private void AddBinder(string path)
     {
         var full = Path.GetFullPath(path);
-        if (_state.Binders.Any(b => PathKey.Equal(b.Path, full)))
+        if (_config.Binders.Any(b => PathKey.Equal(b.Path, full)))
         {
             // Already known: don't churn the list (which is this ListBox's ItemsSource); just refresh
             // which row is marked current.
@@ -1802,15 +1806,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        _state.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
+        _config.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
+        TrySaveConfig(_config, ["binders"]);
         RebuildBinders();
     }
 
     // Removes a binder from the known list and persists. Caller closes it first if it is the open one.
     private void ForgetBinder(string path)
     {
-        _state.Binders.RemoveAll(b => PathKey.Equal(b.Path, path));
-        PersistState();
+        if (_config.Binders.RemoveAll(b => PathKey.Equal(b.Path, path)) > 0)
+        {
+            TrySaveConfig(_config, ["binders"]);
+        }
         RebuildBinders();
         _log.Info("Forgot binder", new { path });
     }

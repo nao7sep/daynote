@@ -66,6 +66,8 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("textStyles", "null")]
     [InlineData("textStyles", "[{\"fontFamily\":\"A\"}]")]
     [InlineData("textStyles", "[null]")]
+    [InlineData("binders", "[{\"path\":\"x\"}]")]
+    [InlineData("binders", "[null]")]
     public void A_wrong_shape_falls_back_only_for_that_set_and_warns_once(string key, string value)
     {
         File.WriteAllText(ConfigPath, $"{{\"{key}\":{value}}}");

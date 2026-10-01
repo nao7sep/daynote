@@ -206,6 +206,39 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Binder_titles_are_config_and_deleting_config_does_not_reopen_a_stale_selection()
+    {
+        var vm = await OpenNewBinderAsync();
+        var row = Assert.Single(vm.Binders);
+        row.IsEditing = true;
+        vm.ApplyBinderRename(row, "My binder");
+        var configFile = Path.Combine(_home, "config.json");
+        using (var saved = JsonDocument.Parse(File.ReadAllText(configFile)))
+        {
+            Assert.Equal("binders", Assert.Single(saved.RootElement.EnumerateObject()).Name);
+            Assert.Equal("My binder", saved.RootElement.GetProperty("binders")[0].GetProperty("title").GetString());
+        }
+        using (var state = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "state.json"))))
+        {
+            Assert.False(state.RootElement.TryGetProperty("binders", out _));
+            Assert.Equal(BinderPath, state.RootElement.GetProperty("currentBinderPath").GetString());
+        }
+        await vm.ShutdownAsync();
+        var restored = NewViewModel();
+        Assert.Equal("My binder", Assert.Single(restored.Binders).Title);
+        await restored.InitializeAsync();
+        Assert.True(restored.HasBinder);
+        await restored.ShutdownAsync();
+        File.Delete(configFile);
+        var reset = NewViewModel();
+        await reset.InitializeAsync();
+        Assert.Empty(reset.Binders);
+        Assert.False(reset.HasBinder);
+        Assert.False(File.Exists(configFile));
+        await reset.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task New_binder_creates_the_file_and_lists_it()
     {
         var vm = await OpenNewBinderAsync();
@@ -776,8 +809,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(new[] { "alpha", "alpine" }, vm.Binders.Select(binder => binder.Name));
         Assert.Same(moved, list.SelectedItem);
         Assert.True(list.IsKeyboardFocusWithin);
-        var saved = JsonSerializer.Deserialize<AppState>(
-            File.ReadAllText(Path.Combine(_home, "state.json")), DayNoteJson.Options)!;
+        var saved = JsonSerializer.Deserialize<AppConfig>(
+            File.ReadAllText(Path.Combine(_home, "config.json")), DayNoteJson.Options)!;
         Assert.Equal(
             new[] { "hidden.daynote", "alpha.daynote", "alpine.daynote" },
             saved.Binders.Select(entry => Path.GetFileName(entry.Path)));
@@ -795,8 +828,8 @@ public sealed class MainWindowViewModelTests : IDisposable
             await vm.NewBinderCommand.ExecuteAsync(null);
         }
 
-        var statePath = Path.Combine(_home, "state.json");
-        var before = File.ReadAllText(statePath);
+        var configPath = Path.Combine(_home, "config.json");
+        var before = File.ReadAllText(configPath);
         var start = vm.BinderOrder();
 
         Assert.True(vm.MoveBinder(start[0], start[2]));
@@ -806,7 +839,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Equal(start, vm.BinderOrder());
         Assert.Equal(start, vm.Binders);
-        Assert.Equal(before, File.ReadAllText(statePath));
+        Assert.Equal(before, File.ReadAllText(configPath));
 
         await vm.ShutdownAsync();
     }
@@ -1004,9 +1037,9 @@ public sealed class MainWindowViewModelTests : IDisposable
         // Removing the entry needs no file, and it does not come back.
         await vm.RemoveBinderCommand.ExecuteAsync(missing);
         Assert.DoesNotContain(vm.Binders, binder => PathKey.Equal(binder.Path, travel));
-        var state = JsonSerializer.Deserialize<AppState>(
-            File.ReadAllText(Path.Combine(_home, "state.json")), DayNoteJson.Options)!;
-        Assert.DoesNotContain(state.Binders, entry => PathKey.Equal(entry.Path, travel));
+        var config = JsonSerializer.Deserialize<AppConfig>(
+            File.ReadAllText(Path.Combine(_home, "config.json")), DayNoteJson.Options)!;
+        Assert.DoesNotContain(config.Binders, entry => PathKey.Equal(entry.Path, travel));
 
         // A file that comes back clears the marker on the next look.
         File.WriteAllText(travel, "{}");
