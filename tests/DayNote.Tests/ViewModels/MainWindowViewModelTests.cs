@@ -224,6 +224,9 @@ public sealed class MainWindowViewModelTests : IDisposable
             Assert.Equal(BinderPath, state.RootElement.GetProperty("currentBinderPath").GetString());
         }
         await vm.ShutdownAsync();
+        BackupStore.Close();
+        Assert.True(RowCountFor(new AppPaths().BackupStoreFile, configFile) > 0);
+        Assert.Equal(0, RowCountFor(new AppPaths().BackupStoreFile, Path.Combine(_home, "state.json")));
         var restored = NewViewModel();
         Assert.Equal("My binder", Assert.Single(restored.Binders).Title);
         await restored.InitializeAsync();

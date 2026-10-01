@@ -15,7 +15,7 @@ namespace DayNote.Core.Storage;
 /// This is the single managed-text atomic-write choke point for the app: config.json and state.json
 /// (via <see cref="JsonStore{T}"/>) and every binder <c>.daynote</c> file (via
 /// <see cref="BinderStore"/>) all pass through here. That is exactly why the data-backup hook lives in
-/// this one place — a managed-text write that bypassed this helper would be a silent backup gap, and
+/// this one place; volatile state opts out while retaining the same durable atomic write, and
 /// there is deliberately no second atomic-write path in the app. The store records the exact bytes just
 /// written, strictly AFTER the rename lands (see <see cref="BackupStore.Record"/>).
 /// </remarks>
@@ -23,7 +23,7 @@ public static partial class AtomicFile
 {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
-    public static void WriteAllText(string path, string content)
+    public static void WriteAllText(string path, string content, bool recordBackup = true)
     {
         var fullPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath)
@@ -64,7 +64,10 @@ public static partial class AtomicFile
         // try/catch on purpose: the save has already fully succeeded, so a backup problem must never route
         // into the temp-delete-and-rethrow path. Record is itself best-effort — it catches, logs once, and
         // swallows every failure — so it can never throw here or break the save.
-        BackupStore.Record(fullPath, bytes);
+        if (recordBackup)
+        {
+            BackupStore.Record(fullPath, bytes);
+        }
     }
 
     /// <summary>

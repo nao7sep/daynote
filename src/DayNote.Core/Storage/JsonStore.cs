@@ -16,8 +16,13 @@ public sealed class JsonStore<T>
     where T : class
 {
     private readonly string _path;
+    private readonly bool _recordBackup;
 
-    public JsonStore(string path) => _path = path;
+    public JsonStore(string path, bool recordBackup = true)
+    {
+        _path = path;
+        _recordBackup = recordBackup;
+    }
 
     public T? Load()
     {
@@ -50,6 +55,6 @@ public sealed class JsonStore<T>
             json += "\n";
         }
 
-        AtomicFile.WriteAllText(_path, json);
+        AtomicFile.WriteAllText(_path, json, _recordBackup);
     }
 }

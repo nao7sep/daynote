@@ -31,7 +31,7 @@ Prebuilt builds for **macOS (Apple Silicon)** and **Windows (x64)** are on the [
 
 Move or back up a binder together with its adjacent `<binder-name>-assets` folder. Adding an attachment copies the file into that folder; removing an attachment deletes the copied file after confirmation. Deleting a note, after confirmation, also deletes its attachment files.
 
-DayNote also appends each changed managed-text save to `~/.daynote/backups.sqlite3` after the live file has been written. This history includes binder text and DayNote's configuration and state, but not binary attachments. There is no in-app restore browser, and a backup-store failure never blocks the live save, so this history is a recovery aid rather than a substitute for your normal file backups.
+DayNote also appends each changed managed-text save to `~/.daynote/backups.sqlite3` after the live file has been written. This history includes binder text and DayNote's configuration. Volatile window and selection state and binary attachments are excluded. There is no in-app restore browser, and a backup-store failure never blocks the live save, so this history is a recovery aid rather than a substitute for your normal file backups.
 
 ## Run from source
 

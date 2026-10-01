@@ -104,7 +104,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _deleteFile = deleteFile ?? File.Delete;
         _deleteDirectory = deleteDirectory ?? (path => Directory.Delete(path, recursive: true));
         _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
-        _stateStore = new JsonStore<AppState>(paths.StateFile);
+        _stateStore = new JsonStore<AppState>(paths.StateFile, recordBackup: false);
 
         // All startup I/O (directory creation, reading config/state) is gated here: any failure
         // becomes _loadError, which disables saving and surfaces an error dialog once the window is

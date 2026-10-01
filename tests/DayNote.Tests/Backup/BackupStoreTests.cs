@@ -236,6 +236,19 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Equal(1, RowCount(other));
     }
 
+    [Fact]
+    public void Opting_out_keeps_the_live_write_and_records_no_backup_row()
+    {
+        AtomicFile.WriteAllText(TargetPath, "configuration");
+        var statePath = Path.Combine(_home, "state.json");
+        AtomicFile.WriteAllText(statePath, "state one", recordBackup: false);
+        AtomicFile.WriteAllText(statePath, "state two", recordBackup: false);
+        Assert.Equal("state two", File.ReadAllText(statePath));
+        Assert.Equal(0, RowCount(statePath));
+        Assert.Equal(1, RowCount(TargetPath));
+        Assert.Empty(Directory.GetFiles(_home, "*.tmp"));
+    }
+
     // ----- Best-effort: a store failure never breaks the save ------------------------------------
 
     [Fact]
