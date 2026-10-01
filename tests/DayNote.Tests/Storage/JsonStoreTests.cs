@@ -93,7 +93,7 @@ public sealed class JsonStoreTests : IDisposable
     {
         // Config and state are rebuildable, so a corrupt file is set aside —
         // bytes preserved under the .invalid name — and the load proceeds with
-        // null so first-run materialization reseeds (storage-path conventions).
+        // null without writing a replacement.
         File.WriteAllText(_path, "{ this is not valid json");
         QuarantineJournal.Drain(); // isolate from other tests
 
@@ -104,33 +104,6 @@ public sealed class JsonStoreTests : IDisposable
         Assert.Single(quarantined);
         Assert.Equal("{ this is not valid json", File.ReadAllText(quarantined[0]));
         Assert.Equal(quarantined[0], Assert.Single(QuarantineJournal.Drain()));
-    }
-
-    [Fact]
-    public void CreateIfMissing_writes_the_defaults_on_first_run()
-    {
-        var created = _store.CreateIfMissing(new AppConfig());
-
-        Assert.True(created);
-        Assert.True(File.Exists(_path));
-        // Produced through Save, so it is the canonical form and round-trips.
-        Assert.EndsWith("\n", File.ReadAllText(_path));
-        Assert.NotNull(_store.Load());
-    }
-
-    [Fact]
-    public void CreateIfMissing_never_touches_an_existing_file()
-    {
-        _store.Save(new AppConfig { AutosaveDelaySeconds = 3 });
-        var before = File.ReadAllText(_path);
-
-        // A different value must not overwrite: the single trigger is absence, so a good (possibly
-        // hand-edited) file is left byte-for-byte as it was.
-        var created = _store.CreateIfMissing(new AppConfig { AutosaveDelaySeconds = 4 });
-
-        Assert.False(created);
-        Assert.Equal(before, File.ReadAllText(_path));
-        Assert.Equal(3, _store.Load()!.AutosaveDelaySeconds);
     }
 
     public void Dispose()

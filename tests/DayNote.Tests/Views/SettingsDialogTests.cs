@@ -20,10 +20,25 @@ namespace DayNote.Tests.Views;
 public sealed class SettingsDialogTests
 {
     [AvaloniaFact]
+    public void Reset_text_styles_uses_built_ins_and_reports_the_deletion_on_save()
+    {
+        var config = new AppConfig();
+        config.TextStyles[0].FontSize = 24;
+        bool? reset = null;
+        var dialog = new SettingsDialog(config, (_, requested) => { reset = requested; return true; });
+        Named<Button>(dialog, "ResetTextStylesButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(14, config.TextStyles[0].FontSize);
+        var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
+        Assert.True(save.IsEnabled);
+        save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(true, reset);
+    }
+
+    [AvaloniaFact]
     public void FailedSaveKeepsDraftOpenAndShowsInlineError()
     {
         var attempts = 0;
-        var dialog = new SettingsDialog(new AppConfig(), _ =>
+        var dialog = new SettingsDialog(new AppConfig(), (_, _) =>
         {
             attempts++;
             return false;
@@ -51,7 +66,7 @@ public sealed class SettingsDialogTests
     {
         var config = new AppConfig();
         Assert.Equal("", config.UiFontFamily);
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, (_, _) => true);
         var font = dialog.GetLogicalDescendants()
             .OfType<TextBox>()
             .Single(box => box.PlaceholderText == AppConfig.DefaultUiFontFamily);
@@ -73,7 +88,7 @@ public sealed class SettingsDialogTests
     public void The_time_zone_is_chosen_from_a_list_that_starts_with_system()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, (_, _) => true);
         var zones = Named<ComboBox>(dialog, "TimeZoneBox");
         var options = zones.Items.OfType<TimeZoneOption>().ToList();
         var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
@@ -95,7 +110,7 @@ public sealed class SettingsDialogTests
     public void A_saved_zone_no_platform_knows_shows_as_system_without_holding_save_disabled()
     {
         var config = new AppConfig { TimeZone = "Mars/Phobos" };
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, (_, _) => true);
         var zones = Named<ComboBox>(dialog, "TimeZoneBox");
         var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
 
@@ -110,7 +125,7 @@ public sealed class SettingsDialogTests
     public void SuccessfulSaveCommitsExactlyOnce()
     {
         var attempts = 0;
-        var dialog = new SettingsDialog(new AppConfig(), _ =>
+        var dialog = new SettingsDialog(new AppConfig(), (_, _) =>
         {
             attempts++;
             return true;
@@ -135,7 +150,7 @@ public sealed class SettingsDialogTests
         var config = new AppConfig();
         config.TextStyles[0].FontSize = 31;
         config.TextStyles[0].Bold = true;
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, (_, _) => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -161,7 +176,7 @@ public sealed class SettingsDialogTests
     public void The_default_shows_in_the_list_and_set_as_default_moves_it()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, (_, _) => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -189,7 +204,7 @@ public sealed class SettingsDialogTests
     {
         var config = new AppConfig();
         var families = config.TextStyles.Select(style => style.FontFamily).ToArray();
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, (_, _) => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -211,7 +226,7 @@ public sealed class SettingsDialogTests
     public void A_cleared_number_keeps_the_presets_value_and_shows_it_again()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, (_, _) => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var size = dialog.GetLogicalDescendants().OfType<NumericUpDown>().First();
@@ -231,7 +246,7 @@ public sealed class SettingsDialogTests
     public void A_styles_row_says_what_was_typed_even_when_no_such_font_is_installed()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => true, _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(config, (_, _) => true, _ => Task.FromResult(true));
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -258,7 +273,7 @@ public sealed class SettingsDialogTests
         var config = new AppConfig();
         var asked = new List<string>();
         var answer = false;
-        var dialog = new SettingsDialog(config, _ => true, label =>
+        var dialog = new SettingsDialog(config, (_, _) => true, label =>
         {
             asked.Add(label);
             return Task.FromResult(answer);
@@ -291,7 +306,7 @@ public sealed class SettingsDialogTests
     [AvaloniaFact]
     public void A_number_steps_with_a_minus_and_a_plus_in_that_order()
     {
-        var dialog = new SettingsDialog(new AppConfig(), _ => true);
+        var dialog = new SettingsDialog(new AppConfig(), (_, _) => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         dialog.UpdateLayout();

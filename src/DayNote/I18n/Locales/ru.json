@@ -180,6 +180,7 @@
   "settings.removeStyleMessage": "Убрать стиль текста «{style}»?",
   "settings.removeStyleTitle": "Убрать стиль текста",
   "settings.setDefault": "Сделать стилем по умолчанию",
+  "settings.resetTextStyles": "Сбросить стили текста",
   "settings.textStyles": "Стили текста",
   "settings.theme": "Тема",
   "settings.themeDark": "Тёмная",

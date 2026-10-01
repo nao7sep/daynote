@@ -37,7 +37,7 @@ public sealed class DialogBaseLayoutTests : IDisposable
         return owner;
     }
 
-    private SettingsDialog Settings() => new SettingsDialog(new AppConfig(), _ => true);
+    private SettingsDialog Settings() => new SettingsDialog(new AppConfig(), (_, _) => true);
 
     private SettingsDialog OpenSettings(Window owner)
     {
@@ -219,7 +219,7 @@ public sealed class DialogBaseLayoutTests : IDisposable
 
         foreach (var dialog in new Window[]
         {
-            new SettingsDialog(new AppConfig(), _ => true),
+            new SettingsDialog(new AppConfig(), (_, _) => true),
             new ShortcutsDialog(ShortcutCatalog.Build(owner)),
             new MessageDialog(DayNote.I18n.Message.Of("note.deleteTitle"), DayNote.I18n.Message.Of("note.deleteUntitled"),
                 [new DialogButton("common.cancel", "cancel", DialogButtonKind.Secondary)]),

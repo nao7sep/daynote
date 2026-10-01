@@ -188,40 +188,21 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void First_run_creates_config_json_but_not_state_json()
+    public async Task First_run_writes_no_config_and_changing_theme_writes_only_theme()
     {
         var configFile = Path.Combine(_home, "config.json");
-        var stateFile = Path.Combine(_home, "state.json");
+        var vm = NewViewModel();
         Assert.False(File.Exists(configFile));
-
-        _ = NewViewModel();
-
-        // config.json is written on first run so the settings file is present and hand-editable
-        // immediately; state.json (volatile UI state) is deliberately not created until there is state.
-        Assert.True(File.Exists(configFile));
-        Assert.False(File.Exists(stateFile));
-
-        // A second launch is create-if-absent, so the existing file is left byte-for-byte untouched.
-        var after = File.ReadAllText(configFile);
-        _ = NewViewModel();
-        Assert.Equal(after, File.ReadAllText(configFile));
-    }
-
-    [AvaloniaFact]
-    public void First_run_materializes_config_and_the_write_through_store_records_it()
-    {
-        // The write-through backup records config.json the instant its atomic write lands. The
-        // constructor materializes config.json synchronously (LoadConfigAndState via CreateIfMissing,
-        // which goes through AtomicFile), so the very first launch must already hold a config.json row —
-        // the regression this guards is materialization drifting away from the atomic-write choke point,
-        // which would leave the store with no record of the file it just created.
-        _ = NewViewModel();
-
-        var paths = new AppPaths();
-        BackupStore.Close(); // release the file handle the constructor opened, so we can read it here
-
-        var configFile = Path.Combine(_home, "config.json");
-        Assert.Equal(1, RowCountFor(paths.BackupStoreFile, configFile));
+        Assert.False(File.Exists(Path.Combine(_home, "state.json")));
+        _dialogs.SettingsApplied = true;
+        _dialogs.SettingsEdit = config => config.Theme = ThemePreference.Dark;
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        using var saved = JsonDocument.Parse(File.ReadAllText(configFile));
+        Assert.Equal("theme", Assert.Single(saved.RootElement.EnumerateObject()).Name);
+        Assert.Equal("dark", saved.RootElement.GetProperty("theme").GetString());
+        BackupStore.Close();
+        Assert.Equal(1, RowCountFor(new AppPaths().BackupStoreFile, configFile));
+        await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]
@@ -751,6 +732,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(vm.Results);
         var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
         Assert.Equal(new[] { false, true }, saved.TextStyles.Select(style => style.IsDefault));
+        using var sets = JsonDocument.Parse(File.ReadAllText(configPath));
+        Assert.Equal("textStyles", Assert.Single(sets.RootElement.EnumerateObject()).Name);
 
         vm.CycleTextStyleCommand.Execute(null);
 
@@ -1561,10 +1544,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task ShowErrorAsync(Message title, Message message) => Task.CompletedTask;
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
-        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
+        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool, bool> trySave)
         {
             SettingsEdit?.Invoke(config);
-            return Task.FromResult(SettingsApplied && trySave(config));
+            return Task.FromResult(SettingsApplied && trySave(config, false));
         }
         public int ExternalChangeQuestions { get; private set; }
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)

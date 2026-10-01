@@ -19,11 +19,11 @@ public sealed class AppConfigTests
     }
 
     [Fact]
-    public void A_stored_value_equal_to_the_former_default_migrates_to_empty()
+    public void A_stored_value_equal_to_the_former_default_is_kept()
     {
         const string json = """{ "uiFontFamily": "Inter" }""";
         var restored = JsonSerializer.Deserialize<AppConfig>(json, DayNoteJson.Options)!;
-        Assert.Equal("", restored.UiFontFamily);
+        Assert.Equal("Inter", restored.UiFontFamily);
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class AppConfigTests
     }
 
     [Fact]
-    public void A_config_that_selected_a_named_preset_migrates_to_the_default_flag()
+    public void Legacy_selection_keys_are_ignored()
     {
         // The shape written before presets went by their font family.
         const string legacy = """
@@ -67,22 +67,22 @@ public sealed class AppConfigTests
 
         var config = JsonSerializer.Deserialize<AppConfig>(legacy, DayNoteJson.Options)!;
 
-        Assert.Equal(new[] { false, false, true }, config.TextStyles.Select(style => style.IsDefault));
-        Assert.Same(config.TextStyles[2], config.ResolveDefaultStyle());
+        Assert.Equal(new[] { false, false, false }, config.TextStyles.Select(style => style.IsDefault));
+        Assert.Same(config.TextStyles[0], config.ResolveDefaultStyle());
         var saved = JsonSerializer.Serialize(config, DayNoteJson.Options);
         Assert.DoesNotContain("\"name\"", saved);
         Assert.DoesNotContain("selectedTextStyle", saved);
-        Assert.Contains("\"isDefault\": true", saved);
+        Assert.DoesNotContain("\"isDefault\": true", saved);
     }
 
     [Fact]
-    public void A_load_keeps_exactly_one_default_and_falls_back_to_the_first()
+    public void A_load_preserves_default_flags_and_resolution_falls_back_to_the_first()
     {
         const string none = """{ "textStyles": [ { "fontFamily": "A" }, { "fontFamily": "B" } ] }""";
         const string two = """{ "textStyles": [ { "fontFamily": "A" }, { "fontFamily": "B", "isDefault": true }, { "fontFamily": "C", "isDefault": true } ] }""";
 
-        Assert.Equal(new[] { true, false }, JsonSerializer.Deserialize<AppConfig>(none, DayNoteJson.Options)!.TextStyles.Select(style => style.IsDefault));
-        Assert.Equal(new[] { false, true, false }, JsonSerializer.Deserialize<AppConfig>(two, DayNoteJson.Options)!.TextStyles.Select(style => style.IsDefault));
+        Assert.Equal(new[] { false, false }, JsonSerializer.Deserialize<AppConfig>(none, DayNoteJson.Options)!.TextStyles.Select(style => style.IsDefault));
+        Assert.Equal(new[] { false, true, true }, JsonSerializer.Deserialize<AppConfig>(two, DayNoteJson.Options)!.TextStyles.Select(style => style.IsDefault));
     }
 
     [Fact]
@@ -137,25 +137,11 @@ public sealed class AppConfigTests
         Assert.Equal("system", DayNote.Core.Time.DayNoteTime.SystemZone);
     }
 
-    [Theory]
-    // The zone every older config was seeded with carries no choice, so it follows the computer.
-    [InlineData("Asia/Tokyo", "system")]
-    // A zone the user typed stays chosen.
-    [InlineData("Europe/London", "Europe/London")]
-    [InlineData(" America/New_York ", "America/New_York")]
-    // A blank or an id no zone answers to already displayed as UTC by accident; it follows the computer.
-    [InlineData("", "system")]
-    [InlineData("Mars/Phobos", "system")]
-    public void An_older_typed_zone_migrates_to_the_list(string legacy, string expected)
+    [Fact]
+    public void An_older_typed_zone_is_ignored()
     {
-        var json = $$"""{ "displayTimeZone": "{{legacy}}" }""";
-
-        var config = JsonSerializer.Deserialize<AppConfig>(json, DayNoteJson.Options)!;
-
-        Assert.Equal(expected, config.TimeZone);
-        var saved = JsonSerializer.Serialize(config, DayNoteJson.Options);
-        Assert.DoesNotContain("displayTimeZone", saved);
-        Assert.Contains($"\"timeZone\": \"{expected}\"", saved);
+        var config = JsonSerializer.Deserialize<AppConfig>("""{ "displayTimeZone": "Europe/London" }""", DayNoteJson.Options)!;
+        Assert.Equal("system", config.TimeZone);
     }
 
     [Fact]

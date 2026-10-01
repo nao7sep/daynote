@@ -40,7 +40,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
     private readonly AppPaths _paths;
     private readonly BinderStore _binderStore = new();
-    private readonly JsonStore<AppConfig> _configStore;
+    private readonly ConfigStore _configStore;
     private readonly JsonStore<AppState> _stateStore;
     private readonly IDialogService _dialogs;
     private readonly IAppLogger _log;
@@ -103,7 +103,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _log = log;
         _deleteFile = deleteFile ?? File.Delete;
         _deleteDirectory = deleteDirectory ?? (path => Directory.Delete(path, recursive: true));
-        _configStore = new JsonStore<AppConfig>(paths.ConfigFile);
+        _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         _stateStore = new JsonStore<AppState>(paths.StateFile);
 
         // All startup I/O (directory creation, reading config/state) is gated here: any failure
@@ -1068,9 +1068,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         var working = _config.Copy();
-        if (!await _dialogs.ShowSettingsAsync(working, candidate =>
+        if (!await _dialogs.ShowSettingsAsync(working, (candidate, resetTextStyles) =>
             {
-                if (!TrySaveConfig(candidate))
+                if (!TrySaveConfig(candidate, ConfigSets.ChangedKeys(candidate, _config), resetTextStyles))
                 {
                     return false;
                 }
@@ -1136,7 +1136,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _log.Info("Cycled text style", new { style = label });
         if (IsReady)
         {
-            TrySaveConfig();
+            TrySaveConfig(_config, ["textStyles"]);
         }
 
         _textStyleStatus = Message.Of("textStyle.applied", ("style", label));
@@ -2004,13 +2004,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     // ----- Configuration / state -----------------------------------------------------------------
 
     /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
-    private bool TrySaveConfig() => TrySaveConfig(_config);
-
-    private bool TrySaveConfig(AppConfig config)
+    private bool TrySaveConfig(AppConfig config, IEnumerable<string> changedKeys, bool resetTextStyles = false)
     {
         try
         {
-            _configStore.Save(config);
+            _configStore.Save(config, changedKeys, resetTextStyles);
             return true;
         }
         catch (Exception ex)
@@ -2025,7 +2023,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         try
         {
             _paths.EnsureCreated();
-            _config = _configStore.Load() ?? new AppConfig();
+            _config = _configStore.Load();
             _state = _stateStore.Load() ?? new AppState();
             _log.Info("Configuration and state loaded", ConfigSummary(_config));
         }
@@ -2036,28 +2034,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             _state = new AppState();
             _log.Error("Failed to load configuration or state; saving disabled", new { root = _paths.Root }, ex);
             return;
-        }
-
-        // Write config.json on first run so the settings file exists on disk immediately, rather than
-        // only after the user first changes something (storage-path conventions, "Materializing settings
-        // on first run"). This runs here — after _config is populated and before ApplyConfig or pane
-        // restore read it — and only creates the file when absent, so a good
-        // (possibly hand-edited) file is never at risk. A corrupt config never reaches this point as
-        // a file: the store quarantines it aside and reports at the window edge, so what is created
-        // here is a fresh seed beside the preserved .invalid copy, never an overwrite. state.json is deliberately not
-        // created here — it is volatile UI state, written only when there is state to record. A write
-        // failure is logged and tolerated (the in-memory defaults still drive the session and the next
-        // save surfaces a real error) rather than disabling editing over a transient inability to write.
-        try
-        {
-            if (_configStore.CreateIfMissing(_config))
-            {
-                _log.Info("Created config.json with defaults", ConfigSummary(_config));
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.Warn("Could not create config.json on first run", new { path = _paths.ConfigFile }, ex);
         }
     }
 

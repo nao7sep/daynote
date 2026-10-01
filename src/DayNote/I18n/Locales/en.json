@@ -166,6 +166,7 @@
   "settings.removeStyleMessage": "Remove the text style “{style}”?",
   "settings.removeStyleTitle": "Remove text style",
   "settings.setDefault": "Set as default",
+  "settings.resetTextStyles": "Reset text styles",
   "settings.textStyles": "Text styles",
   "settings.theme": "Theme",
   "settings.themeDark": "Dark",

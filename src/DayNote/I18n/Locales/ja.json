@@ -159,6 +159,7 @@
   "settings.removeStyleMessage": "テキストスタイル「{style}」を削除しますか？",
   "settings.removeStyleTitle": "テキストスタイルを削除",
   "settings.setDefault": "既定にする",
+  "settings.resetTextStyles": "テキストスタイルをリセット",
   "settings.textStyles": "テキストスタイル",
   "settings.theme": "テーマ",
   "settings.themeDark": "ダーク",

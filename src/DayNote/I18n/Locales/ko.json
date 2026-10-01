@@ -159,6 +159,7 @@
   "settings.removeStyleMessage": "텍스트 스타일 “{style}”을(를) 제거하시겠습니까?",
   "settings.removeStyleTitle": "텍스트 스타일 제거",
   "settings.setDefault": "기본값으로 설정",
+  "settings.resetTextStyles": "텍스트 스타일 초기화",
   "settings.textStyles": "텍스트 스타일",
   "settings.theme": "테마",
   "settings.themeDark": "다크",

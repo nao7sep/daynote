@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace DayNote.Core.Configuration;
 
 /// <summary>
@@ -36,13 +34,6 @@ public sealed class EditorTextStyle
     public bool Bold { get; set; }
 
     public bool Italic { get; set; }
-
-    /// <summary>
-    /// The name presets carried before they went by their font family. It is read only so that
-    /// <see cref="AppConfig"/> can find the preset an older config selected by name, and never written.
-    /// </summary>
-    [JsonInclude, JsonPropertyName("name"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    internal string? LegacyName { get; set; }
 
     public EditorTextStyle Copy() => new()
     {

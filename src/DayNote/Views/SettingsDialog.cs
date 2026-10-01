@@ -50,9 +50,10 @@ public sealed class SettingsDialog : DialogBase
     private readonly ComboBox _timeZone;
     private readonly Button _saveButton;
     private readonly TextBlock _saveError;
-    private readonly Func<AppConfig, bool> _trySave;
+    private readonly Func<AppConfig, bool, bool> _trySave;
     private readonly Func<string, Task<bool>> _askBeforeRemoving;
     private bool _loadingStyleEditor;
+    private bool _resetTextStyles;
 
     /// <param name="askBeforeRemoving">
     /// Asks whether the named style may go. The default asks in a dialog stacked over this one, which
@@ -60,7 +61,7 @@ public sealed class SettingsDialog : DialogBase
     /// </param>
     public SettingsDialog(
         AppConfig config,
-        Func<AppConfig, bool> trySave,
+        Func<AppConfig, bool, bool> trySave,
         Func<string, Task<bool>>? askBeforeRemoving = null)
     {
         _config = config;
@@ -207,6 +208,7 @@ public sealed class SettingsDialog : DialogBase
         var panel = new StackPanel { Spacing = 20, Width = 600 };
         panel.Children.Add(Group(Label("settings.language"), _language));
         panel.Children.Add(styleSurface);
+        panel.Children.Add(Utility("settings.resetTextStyles", ResetTextStyles, "ResetTextStylesButton"));
         panel.Children.Add(Group(Label("settings.theme"), themeRow, themeHint));
         panel.Children.Add(Group(Label("settings.uiFont"), _uiFont, Hint("settings.uiFontHint")));
         panel.Children.Add(Group(Label("settings.autosave"), _autosave));
@@ -289,7 +291,7 @@ public sealed class SettingsDialog : DialogBase
 
         _saveError.IsVisible = false;
         _saveError.Text = string.Empty;
-        if (_trySave(_config))
+        if (_trySave(_config, _resetTextStyles))
         {
             return true;
         }
@@ -297,6 +299,15 @@ public sealed class SettingsDialog : DialogBase
         _saveError.Text = Localizer.T("failure.settingsSave");
         _saveError.IsVisible = true;
         return false;
+    }
+
+    private void ResetTextStyles()
+    {
+        _resetTextStyles = true;
+        _config.TextStyles = AppConfig.DefaultTextStyles();
+        _styleRows.Clear();
+        BuildStyleList();
+        Revalidate();
     }
 
     private void BuildStyleList()
@@ -499,7 +510,7 @@ public sealed class SettingsDialog : DialogBase
         _removeStyle.IsEnabled = row is not null && !row.Style.IsDefault && _styleRows.Count > 1;
     }
 
-    private void Revalidate() => _saveButton.IsEnabled = IsValid() && SettingsValidator.IsDirty(_config, _original);
+    private void Revalidate() => _saveButton.IsEnabled = IsValid() && (_resetTextStyles || SettingsValidator.IsDirty(_config, _original));
 
     private bool IsValid()
     {
