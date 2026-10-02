@@ -86,20 +86,6 @@ public sealed class JsonLinesLoggerTests
     }
 
     [Fact]
-    public void Redacts_denied_fields_carried_in_the_data_object()
-    {
-        using var temp = new TempDir();
-        using (var log = JsonLinesLogger.Open(temp.Path, debugEnabled: false))
-        {
-            log.Info("config", new { password = "hunter2", displayTimeZone = "Asia/Tokyo" });
-        }
-
-        var line = Assert.Single(ReadLines(temp.Path));
-        Assert.Equal(LogRedactor.Marker, (string?)line["password"]);
-        Assert.Equal("Asia/Tokyo", (string?)line["displayTimeZone"]);
-    }
-
-    [Fact]
     public void Captures_the_exception_type_message_stack_and_cause_chain()
     {
         using var temp = new TempDir();

@@ -8,8 +8,8 @@ namespace DayNote.Logging;
 /// <summary>
 /// DayNote's only logger: one JSON object per line, one file per process launch, kept indefinitely.
 /// Hand-rolled on <see cref="System.Text.Json"/> + a lock + a <see cref="StreamWriter"/> (no logging
-/// framework) so flush, the debug gate, redaction, and the console fallback all behave exactly as the
-/// logging convention requires.
+/// framework) so flush, the debug gate, and the console fallback all behave exactly as the logging
+/// convention requires.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -26,20 +26,6 @@ namespace DayNote.Logging;
 /// </remarks>
 public sealed class JsonLinesLogger : IAppLogger, IDisposable
 {
-    /// <summary>
-    /// Field names whose values are redacted before serialization (exact, case-insensitive). Seeded
-    /// with the obvious secrets; DayNote logs none of these today, but the backstop is mandatory for
-    /// the day an object that happens to carry one is logged.
-    /// </summary>
-    private static readonly IReadOnlySet<string> DeniedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "apiKey",
-        "authorization",
-        "token",
-        "password",
-        "secret",
-    };
-
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         // One physical line per event; keep non-ASCII (file paths, Japanese titles) readable rather
@@ -200,7 +186,6 @@ public sealed class JsonLinesLogger : IAppLogger, IDisposable
             root["error"] = BuildError(error);
         }
 
-        LogRedactor.Redact(root, DeniedKeys);
         return root.ToJsonString(SerializerOptions);
     }
 
