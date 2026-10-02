@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -8,8 +9,9 @@ namespace DayNote.Logging;
 
 /// <summary>
 /// DayNote's only logger: each entry is a row in <c>records.sqlite3</c>, per the logging and
-/// data-lifecycle conventions. Hand-rolled on <see cref="System.Text.Json"/> + a lock + one SQLite
-/// connection (no logging framework). This process is the database's only writer.
+/// data-lifecycle conventions. Hand-rolled on <see cref="System.Text.Json"/> + one SQLite connection (no
+/// logging framework). This process is the database's only writer, and one thread of it owns the
+/// connection and writes every entry in the order it was logged, so no caller waits on the disk.
 /// </summary>
 /// <remarks>
 /// A row holds the event <c>time</c>, its <c>session</c> (this launch's start time), <c>level</c>,
@@ -41,13 +43,17 @@ public sealed class RecordsLogger : IAppLogger, IDisposable
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private readonly object _gate = new();
+    private static readonly TimeSpan FlushWait = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan CloseWait = TimeSpan.FromSeconds(5);
+
+    private readonly BlockingCollection<Action> _queue = new();
+    private readonly Thread _owner;
     private readonly SqliteConnection? _connection;
     private readonly Exception? _openError;
     private readonly string _session;
     private readonly string _fallbackFile;
     private readonly bool _debugEnabled;
-    private bool _disposed;
+    private int _disposed;
 
     private RecordsLogger(
         SqliteConnection? connection, Exception? openError, DateTimeOffset sessionStart, string fallbackDirectory, bool debugEnabled)
@@ -57,6 +63,8 @@ public sealed class RecordsLogger : IAppLogger, IDisposable
         _session = DayNoteTime.ToIso(sessionStart);
         _fallbackFile = Path.Combine(fallbackDirectory, $"{DayNoteTime.FileStamp(sessionStart)}.log");
         _debugEnabled = debugEnabled;
+        _owner = new Thread(Own) { IsBackground = true, Name = "records" };
+        _owner.Start();
     }
 
     /// <summary>
@@ -122,42 +130,78 @@ public sealed class RecordsLogger : IAppLogger, IDisposable
     public void Error(string message, object? data = null, Exception? error = null) =>
         Write("error", message, data, error);
 
+    /// <summary>
+    /// Renders the entry now, so it carries the values as they were when logged, and queues its write.
+    /// </summary>
     private void Write(string level, string message, object? data, Exception? error)
     {
         var time = DayNoteTime.ToIso(DateTimeOffset.UtcNow);
         var (fields, noteId) = SafeFields(data, error);
+        TryQueue(() => Insert(time, level, message, noteId, fields));
+    }
 
-        lock (_gate)
+    private void Insert(string time, string level, string message, string? noteId, string fields)
+    {
+        if (_connection is null)
         {
-            if (_disposed)
-            {
-                return;
-            }
+            FallBack(time, level, message, fields, _openError!);
+            return;
+        }
 
-            if (_connection is null)
-            {
-                FallBack(time, level, message, fields, _openError!);
-                return;
-            }
+        try
+        {
+            using var insert = _connection.CreateCommand();
+            insert.CommandText =
+                "INSERT INTO logs (time, session, level, message, note_id, fields) " +
+                "VALUES ($time, $session, $level, $message, $noteId, $fields)";
+            insert.Parameters.AddWithValue("$time", time);
+            insert.Parameters.AddWithValue("$session", _session);
+            insert.Parameters.AddWithValue("$level", level);
+            insert.Parameters.AddWithValue("$message", message);
+            insert.Parameters.AddWithValue("$noteId", (object?)noteId ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$fields", fields);
+            insert.ExecuteNonQuery();
+        }
+        catch (Exception writeError)
+        {
+            FallBack(time, level, message, fields, writeError);
+        }
+    }
 
-            try
-            {
-                using var insert = _connection.CreateCommand();
-                insert.CommandText =
-                    "INSERT INTO logs (time, session, level, message, note_id, fields) " +
-                    "VALUES ($time, $session, $level, $message, $noteId, $fields)";
-                insert.Parameters.AddWithValue("$time", time);
-                insert.Parameters.AddWithValue("$session", _session);
-                insert.Parameters.AddWithValue("$level", level);
-                insert.Parameters.AddWithValue("$message", message);
-                insert.Parameters.AddWithValue("$noteId", (object?)noteId ?? DBNull.Value);
-                insert.Parameters.AddWithValue("$fields", fields);
-                insert.ExecuteNonQuery();
-            }
-            catch (Exception writeError)
-            {
-                FallBack(time, level, message, fields, writeError);
-            }
+    private void Own()
+    {
+        foreach (var operation in _queue.GetConsumingEnumerable())
+        {
+            operation();
+        }
+    }
+
+    /// <summary>Queues <paramref name="operation"/> for the owning thread; false once the logger is closed.</summary>
+    private bool TryQueue(Action operation)
+    {
+        try
+        {
+            return _queue.TryAdd(operation);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Waits, within a bound, until every entry logged so far is written.</summary>
+    public void Flush()
+    {
+        if (Thread.CurrentThread == _owner)
+        {
+            return;
+        }
+
+        // Never disposed: if the wait times out, the owning thread still sets it later.
+        var drained = new ManualResetEventSlim();
+        if (TryQueue(drained.Set))
+        {
+            drained.Wait(FlushWait);
         }
     }
 
@@ -298,25 +342,30 @@ public sealed class RecordsLogger : IAppLogger, IDisposable
         }
     }
 
-    /// <summary>Closes the database.</summary>
+    /// <summary>
+    /// Writes what is queued, within a bound, and closes the database. Entries logged afterwards are
+    /// dropped.
+    /// </summary>
     public void Dispose()
     {
-        lock (_gate)
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
         {
-            if (_disposed)
-            {
-                return;
-            }
+            return;
+        }
 
-            _disposed = true;
-            try
-            {
-                _connection?.Dispose();
-            }
-            catch
-            {
-                // Best effort on the way out.
-            }
+        _queue.CompleteAdding();
+        if (!_owner.Join(CloseWait))
+        {
+            return;
+        }
+
+        try
+        {
+            _connection?.Dispose();
+        }
+        catch
+        {
+            // Best effort on the way out.
         }
     }
 }

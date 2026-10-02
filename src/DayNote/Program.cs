@@ -123,12 +123,19 @@ internal static class Program
 
     /// <summary>
     /// Last-resort hooks: an exception escaping a background thread, or a faulted task whose result
-    /// is never observed, is logged at <c>error</c> (which flushes immediately) before the process dies.
+    /// is never observed, is logged at <c>error</c>, and a terminating one is written before the
+    /// process dies.
     /// </summary>
-    private static void RegisterCrashHooks(IAppLogger log)
+    private static void RegisterCrashHooks(RecordsLogger log)
     {
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
             log.Error("Unhandled exception", new { terminating = e.IsTerminating }, e.ExceptionObject as Exception);
+            if (e.IsTerminating)
+            {
+                log.Flush();
+            }
+        };
 
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {

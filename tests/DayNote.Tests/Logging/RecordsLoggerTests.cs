@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -203,8 +204,34 @@ public sealed class RecordsLoggerTests : IDisposable
     {
         using var log = Open();
         log.Info("now");
+        log.Flush();
 
         Assert.Equal("now", Assert.Single(ReadRows()).Message);
+    }
+
+    [Fact]
+    public void Logging_returns_while_the_database_is_locked_and_the_entry_is_written_once_it_is_free()
+    {
+        using (var log = Open())
+        {
+            log.Info("before");
+            log.Flush();
+
+            using var holder = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = RecordsFile,
+                Pooling = false,
+            }.ToString());
+            holder.Open();
+            using (holder.BeginTransaction())
+            {
+                var stopwatch = Stopwatch.StartNew();
+                log.Info("while locked");
+                Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1), $"Logging waited {stopwatch.Elapsed}.");
+            }
+        }
+
+        Assert.Equal(["before", "while locked"], ReadRows().Select(r => r.Message));
     }
 
     [Theory]
