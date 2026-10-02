@@ -85,9 +85,7 @@ public partial class App : Application
                 var quarantined = DayNote.Core.Storage.QuarantineJournal.Drain();
                 if (quarantined.Count > 0)
                 {
-                    // state.json contains the binder registry and needs more specific recovery copy.
-                    var lostBinderList = quarantined.Any(
-                        path => System.IO.Path.GetFileName(path).StartsWith("state-", StringComparison.Ordinal));
+                    var lostBinderList = FailurePresentation.BinderListWasReset(quarantined, Program.Paths.ConfigFile);
                     await dialogs.ShowErrorAsync(
                         Message.Of(lostBinderList ? "quarantine.binderListTitle" : "quarantine.settingsTitle"),
                         FailurePresentation.RecoveredData(lostBinderList));

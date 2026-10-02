@@ -10,6 +10,17 @@ public sealed class FailurePresentationTests
 {
     private const string Hostile = "EACCES Error invoking remote method IPC /private/tmp/hostile-sentinel";
 
+    [Theory]
+    [InlineData("config-20261002-101500-000-utc.invalid", true)]
+    [InlineData("state-20261002-101500-000-utc.invalid", false)]
+    public void Only_a_set_aside_config_reports_the_binder_list_reset(string fileName, bool reset)
+    {
+        var home = Path.Combine(Path.GetTempPath(), "daynote-home");
+        Assert.Equal(reset, FailurePresentation.BinderListWasReset(
+            [Path.Combine(home, fileName)],
+            Path.Combine(home, "config.json")));
+    }
+
     [Fact]
     public void ArbitraryDiagnosticsNeverBecomeBinderPresentation()
     {
