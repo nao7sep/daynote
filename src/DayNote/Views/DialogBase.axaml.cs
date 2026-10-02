@@ -11,20 +11,23 @@ namespace DayNote.Views;
 /// owner-centred window with a content area and a right-aligned button row. The clicked button's
 /// tag is exposed as <see cref="ResultTag"/>. Escape closes the dialog.
 /// <para>
-/// Copy-on-edit model: dialogs that edit durable data (e.g. <see cref="SettingsDialog"/>) mutate a
-/// throwaway copy the caller adopts only on confirm, so closing without confirming simply discards
-/// that copy. There is deliberately no dirty-close prompt here — do not add one.
+/// Every close path runs one close guard (modal-dialog conventions, Close Paths): a dialog that edits
+/// a copy of durable data, such as <see cref="SettingsDialog"/>, reports its unsaved changes, and a
+/// user's dismiss asks before discarding them.
 /// </para>
 /// </summary>
 public partial class DialogBase : Window
 {
+    private readonly HashSet<Button> _dismissButtons = [];
     private Control? _initialFocusControl;
+    private bool _closeConfirmed;
 
     public DialogBase()
     {
         InitializeComponent();
         Opened += OnOpened;
         KeyDown += OnKeyDown;
+        Closing += OnClosing;
     }
 
     public string? ResultTag { get; private set; }
@@ -34,6 +37,7 @@ public partial class DialogBase : Window
     protected IReadOnlyDictionary<string, Button> SetButtons(IEnumerable<DialogButton> buttons)
     {
         ButtonPanel.Children.Clear();
+        _dismissButtons.Clear();
         var created = new Dictionary<string, Button>();
 
         // Secondary (cancel/dismiss) actions sit before primary/destructive ones; the panel is right-aligned.
@@ -53,6 +57,11 @@ public partial class DialogBase : Window
                 DialogButtonKind.Destructive => "destructive",
                 _ => "utility",
             });
+            if (spec.Kind == DialogButtonKind.Secondary)
+            {
+                _dismissButtons.Add(button);
+            }
+
             button.Click += OnButtonClick;
             ButtonPanel.Children.Add(button);
             created[spec.Tag] = button;
@@ -102,6 +111,30 @@ public partial class DialogBase : Window
     /// <summary>Allows a feature dialog to finish its commit before the shell closes.</summary>
     protected virtual bool TryCommit(string tag) => true;
 
+    /// <summary>Whether closing now would discard edits the user has not saved.</summary>
+    protected virtual bool HasUnsavedChanges => false;
+
+    /// <summary>Asks whether the unsaved changes may go, in a dialog stacked over this one.</summary>
+    protected virtual async Task<bool> AskBeforeDiscardingAsync()
+    {
+        var dialog = new MessageDialog(
+            I18n.Message.Of("dialog.discardTitle"),
+            I18n.Message.Of("dialog.discardMessage"),
+            [
+                new DialogButton("common.cancel", "cancel"),
+                new DialogButton("dialog.discard", "discard", DialogButtonKind.Destructive),
+            ]);
+        await dialog.ShowBoundedAsync(this);
+        return dialog.ResultTag == "discard";
+    }
+
+    /// <summary>
+    /// Whether a close asks first: only the user's own dismiss of a dialog with unsaved changes. A
+    /// commit has already kept them, and an owner, app or system shutdown never waits on a question.
+    /// </summary>
+    internal static bool ShouldAskBeforeClosing(WindowCloseReason reason, bool confirmed, bool hasUnsavedChanges) =>
+        !confirmed && reason == WindowCloseReason.WindowClosing && hasUnsavedChanges;
+
     private void OnOpened(object? sender, EventArgs e)
     {
         if (_initialFocusControl is not null)
@@ -129,6 +162,22 @@ public partial class DialogBase : Window
             }
 
             ResultTag = tag;
+            _closeConfirmed = !_dismissButtons.Contains(button);
+            Close();
+        }
+    }
+
+    private async void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (!ShouldAskBeforeClosing(e.CloseReason, _closeConfirmed, HasUnsavedChanges))
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        if (await AskBeforeDiscardingAsync())
+        {
+            _closeConfirmed = true;
             Close();
         }
     }

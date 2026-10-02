@@ -58,6 +58,82 @@ public sealed class SettingsDialogTests
     }
 
     [AvaloniaFact]
+    public void Escape_cancel_and_the_close_button_ask_before_discarding_changes()
+    {
+        var config = new AppConfig();
+        var asked = 0;
+        var answer = false;
+        var dialog = new SettingsDialog(config, _ => true, askBeforeDiscarding: () =>
+        {
+            asked++;
+            return Task.FromResult(answer);
+        });
+        var closed = false;
+        dialog.Closed += (_, _) => closed = true;
+        dialog.Show();
+        Dispatcher.UIThread.RunJobs();
+        Named<Button>(dialog, "AddTextStyleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        dialog.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Dispatcher.UIThread.RunJobs();
+        Cancel(dialog).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        dialog.Close();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(3, asked);
+        Assert.False(closed);
+
+        answer = true;
+        Cancel(dialog).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(4, asked);
+        Assert.True(closed);
+        Assert.False(dialog.Applied);
+    }
+
+    [AvaloniaFact]
+    public void A_dialog_without_changes_or_a_save_closes_without_asking()
+    {
+        var asked = 0;
+        Func<Task<bool>> ask = () =>
+        {
+            asked++;
+            return Task.FromResult(false);
+        };
+        var clean = new SettingsDialog(new AppConfig(), _ => true, askBeforeDiscarding: ask);
+        clean.Show();
+        Cancel(clean).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        var saved = new SettingsDialog(new AppConfig(), _ => true, askBeforeDiscarding: ask);
+        saved.Show();
+        Dispatcher.UIThread.RunJobs();
+        Named<Button>(saved, "AddTextStyleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        saved.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"))
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(0, asked);
+        Assert.False(clean.IsVisible);
+        Assert.False(saved.IsVisible);
+        Assert.True(saved.Applied);
+    }
+
+    [Theory]
+    [InlineData(WindowCloseReason.WindowClosing, false, true, true)]
+    [InlineData(WindowCloseReason.WindowClosing, true, true, false)]
+    [InlineData(WindowCloseReason.WindowClosing, false, false, false)]
+    [InlineData(WindowCloseReason.OSShutdown, false, true, false)]
+    [InlineData(WindowCloseReason.ApplicationShutdown, false, true, false)]
+    [InlineData(WindowCloseReason.OwnerWindowClosing, false, true, false)]
+    public void Only_a_users_dismiss_of_unsaved_changes_asks(WindowCloseReason reason, bool confirmed, bool unsaved, bool asks) =>
+        Assert.Equal(asks, DialogBase.ShouldAskBeforeClosing(reason, confirmed, unsaved));
+
+    [AvaloniaFact]
     public void FailedSaveKeepsDraftOpenAndShowsInlineError()
     {
         var attempts = 0;
@@ -343,6 +419,9 @@ public sealed class SettingsDialogTests
             .Select(index => list.ContainerFromIndex(index)!.GetLogicalDescendants().OfType<Border>()
                 .Single(border => border.Classes.Contains("badge")).IsVisible)
             .ToArray();
+
+    private static Button Cancel(SettingsDialog dialog) =>
+        dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "cancel"));
 
     private static T Named<T>(SettingsDialog dialog, string name) where T : Control =>
         dialog.GetLogicalDescendants().OfType<T>().Single(control => control.Name == name);

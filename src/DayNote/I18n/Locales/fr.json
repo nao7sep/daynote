@@ -71,6 +71,9 @@
     "other": "{count} mots"
   },
   "counts.x": "X {count}/{limit}",
+  "dialog.discard": "Abandonner",
+  "dialog.discardMessage": "Vous avez des modifications non enregistrées. Voulez-vous les abandonner et fermer\u00a0?",
+  "dialog.discardTitle": "Abandonner les modifications",
   "editor.empty": "Sélectionnez une note ou créez-en une.",
   "editor.readOnly": "Lecture seule",
   "editor.readOnlyHint": "Cette note est en lecture seule\u00a0; passez son statut à «\u00a0Brouillon\u00a0» ou «\u00a0Prête\u00a0» pour la modifier.",

@@ -61,6 +61,9 @@
     "other": "{count} 語"
   },
   "counts.x": "X {count}/{limit}",
+  "dialog.discard": "破棄",
+  "dialog.discardMessage": "保存していない変更があります。破棄して閉じますか？",
+  "dialog.discardTitle": "変更を破棄",
   "editor.empty": "ノートを選択するか、新しく作成してください。",
   "editor.readOnly": "読み取り専用",
   "editor.readOnlyHint": "このノートは読み取り専用です。編集するには、ステータスを「下書き」か「準備完了」に変更してください。",

@@ -61,6 +61,9 @@
     "other": "{count} 个词"
   },
   "counts.x": "X {count}/{limit}",
+  "dialog.discard": "放弃",
+  "dialog.discardMessage": "你有未保存的更改。要放弃这些更改并关闭吗？",
+  "dialog.discardTitle": "放弃更改",
   "editor.empty": "请选择一条笔记，或新建一条。",
   "editor.readOnly": "只读",
   "editor.readOnlyHint": "此笔记为只读。要编辑，请将其状态设为“草稿”或“就绪”。",

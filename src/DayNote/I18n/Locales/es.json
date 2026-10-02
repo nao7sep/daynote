@@ -71,6 +71,9 @@
     "other": "{count} palabras"
   },
   "counts.x": "X {count}/{limit}",
+  "dialog.discard": "Descartar",
+  "dialog.discardMessage": "Tienes cambios sin guardar. ¿Descartarlos y cerrar?",
+  "dialog.discardTitle": "Descartar cambios",
   "editor.empty": "Selecciona una nota o crea una.",
   "editor.readOnly": "Solo lectura",
   "editor.readOnlyHint": "Esta nota es de solo lectura: cambia su estado a Borrador o Lista para editarla.",

@@ -53,20 +53,24 @@ public sealed class SettingsDialog : DialogBase
     private readonly TextBlock _saveError;
     private readonly Func<AppConfig, bool> _trySave;
     private readonly Func<string, Task<bool>> _askBeforeRemoving;
+    private readonly Func<Task<bool>>? _askBeforeDiscarding;
     private bool _loadingStyleEditor;
 
     /// <param name="askBeforeRemoving">
     /// Asks whether the named style may go. The default asks in a dialog stacked over this one, which
     /// is what the trigger of a destructive path owes; a caller passes its own to answer without one.
     /// </param>
+    /// <param name="askBeforeDiscarding">Asks whether unsaved changes may go, in place of the stacked dialog.</param>
     public SettingsDialog(
         AppConfig config,
         Func<AppConfig, bool> trySave,
-        Func<string, Task<bool>>? askBeforeRemoving = null)
+        Func<string, Task<bool>>? askBeforeRemoving = null,
+        Func<Task<bool>>? askBeforeDiscarding = null)
     {
         _config = config;
         _trySave = trySave;
         _askBeforeRemoving = askBeforeRemoving ?? AskBeforeRemovingAsync;
+        _askBeforeDiscarding = askBeforeDiscarding;
         Localized.SetTitle(this, "settings.title");
         Width = 660;
 
@@ -277,6 +281,11 @@ public sealed class SettingsDialog : DialogBase
     }
 
     public bool Applied => ResultTag == "ok";
+
+    protected override bool HasUnsavedChanges => ConfigSets.ChangedKeys(_config, _original).Count > 0;
+
+    protected override Task<bool> AskBeforeDiscardingAsync() =>
+        _askBeforeDiscarding?.Invoke() ?? base.AskBeforeDiscardingAsync();
 
     protected override bool TryCommit(string tag)
     {
@@ -505,7 +514,7 @@ public sealed class SettingsDialog : DialogBase
         _removeStyle.IsEnabled = row is not null && !row.Style.IsDefault && _styleRows.Count > 1;
     }
 
-    private void Revalidate() => _saveButton.IsEnabled = IsValid() && ConfigSets.ChangedKeys(_config, _original).Count > 0;
+    private void Revalidate() => _saveButton.IsEnabled = IsValid() && HasUnsavedChanges;
 
     private bool IsValid()
     {

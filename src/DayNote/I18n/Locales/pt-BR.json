@@ -71,6 +71,9 @@
     "other": "{count} palavras"
   },
   "counts.x": "X {count}/{limit}",
+  "dialog.discard": "Descartar",
+  "dialog.discardMessage": "Você tem alterações não salvas. Deseja descartá-las e fechar?",
+  "dialog.discardTitle": "Descartar alterações",
   "editor.empty": "Selecione uma nota ou crie uma.",
   "editor.readOnly": "Somente leitura",
   "editor.readOnlyHint": "Esta nota é somente leitura — mude o status para Rascunho ou Pronta para editá-la.",

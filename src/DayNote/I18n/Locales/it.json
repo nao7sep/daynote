@@ -71,6 +71,9 @@
     "other": "{count} parole"
   },
   "counts.x": "X {count}/{limit}",
+  "dialog.discard": "Scarta",
+  "dialog.discardMessage": "Hai modifiche non salvate. Vuoi scartarle e chiudere?",
+  "dialog.discardTitle": "Scarta modifiche",
   "editor.empty": "Seleziona una nota o creane una.",
   "editor.readOnly": "Sola lettura",
   "editor.readOnlyHint": "Questa nota è di sola lettura: imposta il suo stato su Bozza o Pronta per modificarla.",

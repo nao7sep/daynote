@@ -66,6 +66,9 @@
     "other": "{count} words"
   },
   "counts.x": "X {count}/{limit}",
+  "dialog.discard": "Discard",
+  "dialog.discardMessage": "You have unsaved changes. Discard them and close?",
+  "dialog.discardTitle": "Discard Changes",
   "editor.empty": "Select a note, or create one.",
   "editor.readOnly": "Read-only",
   "editor.readOnlyHint": "This note is read-only — set its status to Draft or Ready to edit.",
