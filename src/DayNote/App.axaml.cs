@@ -83,12 +83,16 @@ public partial class App : Application
             window.Opened += async (_, _) =>
             {
                 var quarantined = DayNote.Core.Storage.QuarantineJournal.Drain();
-                if (quarantined.Count > 0)
+                foreach (var path in quarantined)
                 {
-                    var lostBinderList = FailurePresentation.BinderListWasReset(quarantined, Program.Paths.ConfigFile);
+                    Program.Log.Warn("Unreadable file set aside", new { path });
+                }
+
+                if (FailurePresentation.SetAsideConfig(quarantined, Program.Paths.ConfigFile) is { } configCopy)
+                {
                     await dialogs.ShowErrorAsync(
-                        Message.Of(lostBinderList ? "quarantine.binderListTitle" : "quarantine.settingsTitle"),
-                        FailurePresentation.RecoveredData(lostBinderList));
+                        Message.Of("quarantine.settingsTitle"),
+                        FailurePresentation.SettingsReset(configCopy));
                 }
             };
         }

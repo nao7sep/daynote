@@ -14,15 +14,18 @@ public static class FailurePresentation
 
     public static Message StartupData() => Message.Of("failure.startupData");
 
-    /// <summary>Whether a set-aside copy is of the config file, which holds the binder list.</summary>
-    public static bool BinderListWasReset(IEnumerable<string> quarantined, string configFile)
+    /// <summary>
+    /// The set-aside copy of the config file among <paramref name="quarantined"/>, if any; only that
+    /// copy is reported to the user, per the store-recovery-conventions.
+    /// </summary>
+    public static string? SetAsideConfig(IEnumerable<string> quarantined, string configFile)
     {
         var prefix = Path.GetFileNameWithoutExtension(configFile) + "-";
-        return quarantined.Any(path => Path.GetFileName(path).StartsWith(prefix, StringComparison.Ordinal));
+        return quarantined.LastOrDefault(path => Path.GetFileName(path).StartsWith(prefix, StringComparison.Ordinal));
     }
 
-    public static Message RecoveredData(bool binderListWasReset) =>
-        Message.Of(binderListWasReset ? "quarantine.binderListBody" : "quarantine.settingsBody");
+    public static Message SettingsReset(string setAsidePath) =>
+        Message.Of("quarantine.settingsBody", ("path", setAsidePath));
 
     public static Message OpenBinder(Exception error) => Message.Of(error switch
     {

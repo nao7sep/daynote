@@ -10,15 +10,23 @@ public sealed class FailurePresentationTests
 {
     private const string Hostile = "EACCES Error invoking remote method IPC /private/tmp/hostile-sentinel";
 
-    [Theory]
-    [InlineData("config-20261002-101500-000-utc.invalid", true)]
-    [InlineData("state-20261002-101500-000-utc.invalid", false)]
-    public void Only_a_set_aside_config_reports_the_binder_list_reset(string fileName, bool reset)
+    [Fact]
+    public void Only_a_set_aside_config_is_reported()
     {
         var home = Path.Combine(Path.GetTempPath(), "daynote-home");
-        Assert.Equal(reset, FailurePresentation.BinderListWasReset(
-            [Path.Combine(home, fileName)],
-            Path.Combine(home, "config.json")));
+        var config = Path.Combine(home, "config-20261002-101500-000-utc.invalid");
+        var state = Path.Combine(home, "state-20261002-101500-000-utc.invalid");
+
+        Assert.Equal(config, FailurePresentation.SetAsideConfig([state, config], Path.Combine(home, "config.json")));
+        Assert.Null(FailurePresentation.SetAsideConfig([state], Path.Combine(home, "config.json")));
+    }
+
+    [Fact]
+    public void The_settings_reset_notice_names_the_set_aside_copy()
+    {
+        var copy = Path.Combine(Path.GetTempPath(), "daynote-home", "config-20261002-101500-000-utc.invalid");
+
+        Assert.Contains(copy, English.Of(FailurePresentation.SettingsReset(copy)), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -35,7 +43,7 @@ public sealed class FailurePresentationTests
         var link = English.Of(FailurePresentation.OpenExternalLink(error));
         var startup = English.Of(FailurePresentation.StartupData());
         var startupStorage = English.Of(FailurePresentation.StartupStorage());
-        var recovery = English.Of(FailurePresentation.RecoveredData(binderListWasReset: true));
+        var recovery = English.Of(FailurePresentation.SettingsReset("config.invalid"));
 
         Assert.DoesNotContain(Hostile, startup, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, startupStorage, StringComparison.Ordinal);
