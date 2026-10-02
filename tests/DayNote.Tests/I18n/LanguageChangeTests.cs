@@ -154,7 +154,7 @@ public class LanguageChangeTests : WindowTest
     public void choosing_a_language_enables_save()
     {
         var config = new AppConfig();
-        var dialog = Show(new SettingsDialog(config, _ => true));
+        var dialog = Show(new SettingsDialog(config, _ => true, askBeforeDiscarding: () => Task.FromResult(true)));
         var save = Button(dialog, English.Of("common.save"));
         var languages = dialog.GetVisualDescendants().OfType<ComboBox>().Single(box => box.Name == "LanguageBox");
         Assert.False(save.IsEnabled);

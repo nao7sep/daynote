@@ -234,7 +234,7 @@ public sealed class SettingsDialogTests
         var config = new AppConfig();
         config.TextStyles[0].FontSize = 31;
         config.TextStyles[0].Bold = true;
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, _ => true, askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -260,7 +260,7 @@ public sealed class SettingsDialogTests
     public void The_default_shows_in_the_list_and_set_as_default_moves_it()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, _ => true, askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -288,7 +288,7 @@ public sealed class SettingsDialogTests
     {
         var config = new AppConfig();
         var families = config.TextStyles.Select(style => style.FontFamily).ToArray();
-        var dialog = new SettingsDialog(config, _ => true);
+        var dialog = new SettingsDialog(config, _ => true, askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -330,7 +330,7 @@ public sealed class SettingsDialogTests
     public void A_styles_row_says_what_was_typed_even_when_no_such_font_is_installed()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => true, _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(config, _ => true, _ => Task.FromResult(true), askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -361,7 +361,7 @@ public sealed class SettingsDialogTests
         {
             asked.Add(label);
             return Task.FromResult(answer);
-        });
+        }, askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -419,6 +419,8 @@ public sealed class SettingsDialogTests
             .Select(index => list.ContainerFromIndex(index)!.GetLogicalDescendants().OfType<Border>()
                 .Single(border => border.Classes.Contains("badge")).IsVisible)
             .ToArray();
+
+    private static Task<bool> Discard() => Task.FromResult(true);
 
     private static Button Cancel(SettingsDialog dialog) =>
         dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "cancel"));
