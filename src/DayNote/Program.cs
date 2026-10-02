@@ -74,9 +74,9 @@ internal static class Program
         }
         using var ownedInstance = instanceLease;
 
-        // One log file per launch, named with a UTC timestamp. Once the storage root is owned,
-        // the logger is the first diagnostic subsystem up and can record every later failure.
-        var logger = JsonLinesLogger.Open(paths.LogsDirectory, DebugEnabled());
+        // Once the storage root is owned, the logger is the first diagnostic subsystem up and can
+        // record every later failure.
+        var logger = RecordsLogger.Open(paths.RecordsFile, paths.LogsDirectory, DebugEnabled());
         Log = logger;
         Paths = paths;
         RegisterCrashHooks(logger);

@@ -48,6 +48,7 @@ public sealed class AppPathsTests : IDisposable
         Assert.Equal(Path.GetFullPath(target), Path.GetFullPath(paths.Root));
         // Every subpath is derived from the relocated root.
         Assert.Equal(Path.Combine(paths.Root, "config.json"), paths.ConfigFile);
+        Assert.Equal(Path.Combine(paths.Root, "records.sqlite3"), paths.RecordsFile);
         Assert.Equal(Path.Combine(paths.Root, "logs"), paths.LogsDirectory);
     }
 

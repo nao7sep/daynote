@@ -1,10 +1,10 @@
 namespace DayNote.Logging;
 
 /// <summary>
-/// DayNote's application logger: a structured-object-in, JSON-Lines sink. Callers describe
+/// DayNote's application logger: structured objects in, records out. Callers describe
 /// <em>what happened</em> as a short, stable <paramref name="message"/> plus an optional anonymous
-/// <c>data</c> object whose properties become free fields on the log line; the logger owns the
-/// envelope (<c>time</c>/<c>level</c>/<c>message</c>), serialization, and flushing.
+/// <c>data</c> object whose properties become free fields on the record; the logger owns the
+/// envelope (<c>time</c>/<c>level</c>/<c>message</c>), serialization, and storage.
 /// </summary>
 /// <remarks>
 /// All four levels accept the same shape so a caught exception can be attached at whatever level is

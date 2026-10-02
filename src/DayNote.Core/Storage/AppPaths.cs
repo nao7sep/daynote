@@ -5,7 +5,7 @@ namespace DayNote.Core.Storage;
 
 /// <summary>
 /// Resolves the locations of the application's own files under <c>~/.daynote/</c>: configuration,
-/// session state, and logs.
+/// session state, records, and the backup store.
 /// </summary>
 /// <remarks>
 /// The root is <c>DAYNOTE_DATA_DIR</c> when that environment variable is set and non-empty (the value is
@@ -25,6 +25,11 @@ public sealed class AppPaths
 
     public string ConfigFile => Path.Combine(Root, "config.json");
     public string StateFile => Path.Combine(Root, "state.json");
+    /// <summary>The records database (data-lifecycle conventions), opened by the app's logger.</summary>
+    public string RecordsFile => Path.Combine(Root, "records.sqlite3");
+
+    /// <summary>Where a log entry the records database could not take is written instead. Created by
+    /// the first such write, never up front.</summary>
     public string LogsDirectory => Path.Combine(Root, "logs");
 
     /// <summary>
@@ -48,7 +53,7 @@ public sealed class AppPaths
     /// <summary>The permission mode the root must have on POSIX: owner read/write/execute, nothing else.</summary>
     private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
-    /// <summary>Creates the root and logs directories if they do not yet exist, and — on POSIX — makes
+    /// <summary>Creates the root if it does not yet exist, and — on POSIX — makes
     /// sure the root itself (never its contents or subdirectories) is owner-only (<c>0700</c>): created
     /// that way from the start, and tightened when an existing root is broader. Windows uses its own
     /// permission model and skips both steps (storage-path conventions, "The resolver creates the
@@ -68,8 +73,6 @@ public sealed class AppPaths
             Directory.CreateDirectory(Root, OwnerOnly);
             EnsureOwnerOnly(Root);
         }
-
-        Directory.CreateDirectory(LogsDirectory);
     }
 
     [UnsupportedOSPlatform("windows")]
