@@ -1069,24 +1069,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var working = _config.Copy();
-        if (!await _dialogs.ShowSettingsAsync(working, candidate =>
+        var draft = _config.CopySettings();
+        if (!await _dialogs.ShowSettingsAsync(draft, candidate =>
             {
-                if (!TrySaveConfig(candidate))
+                var next = _config.Copy();
+                next.TakeSettings(candidate);
+                if (!TrySaveConfig(next))
                 {
                     return false;
                 }
 
-                _log.Info("Settings saved", ConfigSummary(candidate));
+                _log.Info("Settings saved", ConfigSummary(next));
                 return true;
             }))
         {
             return;
         }
 
-        var themeChanged = _config.Theme != working.Theme;
-        working.Binders = _config.Binders;
-        _config = working;
+        var themeChanged = _config.Theme != draft.Theme;
+        _config.TakeSettings(draft);
         ApplyConfig();
         if (themeChanged)
         {

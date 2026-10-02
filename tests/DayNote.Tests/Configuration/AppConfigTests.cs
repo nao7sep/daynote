@@ -21,6 +21,23 @@ public sealed class AppConfigTests
     }
 
     [Fact]
+    public void Settings_travel_without_the_binder_list()
+    {
+        var live = new AppConfig { Binders = new() { new KnownBinder { Path = "binder.daynote", Title = "Kept" } } };
+        var draft = live.CopySettings();
+        draft.Theme = ThemePreference.Dark;
+        draft.TextStyles[0].FontSize = 20;
+
+        live.TakeSettings(draft);
+        draft.TextStyles[0].FontSize = 30;
+
+        Assert.Empty(draft.Binders);
+        Assert.Equal("Kept", Assert.Single(live.Binders).Title);
+        Assert.Equal(ThemePreference.Dark, live.Theme);
+        Assert.Equal(20, live.TextStyles[0].FontSize);
+    }
+
+    [Fact]
     public void Default_ui_font_is_stored_empty_and_resolves_to_the_bundled_inter()
     {
         Assert.Equal("", new AppConfig().UiFontFamily);

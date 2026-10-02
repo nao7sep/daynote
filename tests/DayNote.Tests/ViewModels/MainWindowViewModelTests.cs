@@ -206,6 +206,26 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Saving_settings_keeps_the_binder_list_out_of_the_draft()
+    {
+        var vm = await OpenNewBinderAsync();
+        var draftBinders = -1;
+        _dialogs.SettingsApplied = true;
+        _dialogs.SettingsEdit = config =>
+        {
+            draftBinders = config.Binders.Count;
+            config.Theme = ThemePreference.Dark;
+        };
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, draftBinders);
+        using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "config.json")));
+        Assert.Equal(new[] { "theme", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Single(vm.Binders);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Binder_titles_are_config_and_deleting_config_does_not_reopen_a_stale_selection()
     {
         var vm = await OpenNewBinderAsync();

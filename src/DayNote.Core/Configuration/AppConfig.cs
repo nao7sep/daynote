@@ -61,15 +61,30 @@ public sealed class AppConfig
     public EditorTextStyle? ResolveDefaultStyle() =>
         TextStyles.FirstOrDefault(style => style.IsDefault) ?? TextStyles.FirstOrDefault();
 
-    /// <summary>Returns a deep copy, used to give the settings dialog an editable working copy.</summary>
-    public AppConfig Copy() => new()
+    /// <summary>Returns a deep copy.</summary>
+    public AppConfig Copy()
     {
-        Language = Language,
-        UiFontFamily = UiFontFamily,
-        Theme = Theme,
-        TextStyles = TextStyles.Select(style => style.Copy()).ToList(),
-        AutosaveDelaySeconds = AutosaveDelaySeconds,
-        TimeZone = TimeZone,
-        Binders = Binders.Select(binder => new KnownBinder { Path = binder.Path, Title = binder.Title }).ToList(),
-    };
+        var copy = CopySettings();
+        copy.Binders = Binders.Select(binder => new KnownBinder { Path = binder.Path, Title = binder.Title }).ToList();
+        return copy;
+    }
+
+    /// <summary>Returns a deep copy of the sets the Settings dialog edits, without the binder list.</summary>
+    public AppConfig CopySettings()
+    {
+        var copy = new AppConfig();
+        copy.TakeSettings(this);
+        return copy;
+    }
+
+    /// <summary>Takes a deep copy of the sets the Settings dialog edits, keeping this binder list.</summary>
+    public void TakeSettings(AppConfig settings)
+    {
+        Language = settings.Language;
+        UiFontFamily = settings.UiFontFamily;
+        Theme = settings.Theme;
+        TextStyles = settings.TextStyles.Select(style => style.Copy()).ToList();
+        AutosaveDelaySeconds = settings.AutosaveDelaySeconds;
+        TimeZone = settings.TimeZone;
+    }
 }
