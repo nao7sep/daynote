@@ -152,7 +152,7 @@
   "picker.binderType": "Archivador de DayNote",
   "picker.newBinder": "Nuevo archivador",
   "picker.openBinder": "Abrir archivador",
-  "quarantine.settingsBody": "DayNote no pudo leer su archivo de configuración, así que lo apartó en {path} y se inició con la configuración predeterminada y la lista de archivadores vacía. Tus archivadores y notas no se tocaron; vuelve a abrirlos con Abrir en el panel Archivadores.",
+  "quarantine.settingsBody": "DayNote no pudo leer su archivo de configuración, así que lo guardó aparte en {path} y se inició con la configuración predeterminada y la lista de archivadores vacía. Tus archivadores y notas siguen intactos; vuelve a abrirlos con Abrir en el panel Archivadores.",
   "quarantine.settingsTitle": "Se restableció la configuración",
   "results.close": "Cerrar notificación",
   "save.failed": "Error al guardar",

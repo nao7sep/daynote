@@ -152,7 +152,7 @@
   "picker.binderType": "Raccoglitore DayNote",
   "picker.newBinder": "Nuovo raccoglitore",
   "picker.openBinder": "Apri raccoglitore",
-  "quarantine.settingsBody": "DayNote non è riuscito a leggere il suo file di impostazioni, quindi lo ha messo da parte in {path} e si è avviato con le impostazioni predefinite e l’elenco dei raccoglitori vuoto. I tuoi raccoglitori e le tue note non sono stati toccati; riaprili con Apri nel riquadro Raccoglitori.",
+  "quarantine.settingsBody": "DayNote non è riuscito a leggere il suo file di impostazioni, quindi lo ha messo da parte in {path} e si è avviato con le impostazioni predefinite e l’elenco dei raccoglitori vuoto. I tuoi raccoglitori e le tue note sono intatti; riaprili con Apri nel riquadro Raccoglitori.",
   "quarantine.settingsTitle": "Le impostazioni sono state reimpostate",
   "results.close": "Chiudi la notifica",
   "save.failed": "Salvataggio non riuscito",

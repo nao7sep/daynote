@@ -145,7 +145,7 @@
   "picker.binderType": "DayNote-Mappe",
   "picker.newBinder": "Neue Mappe",
   "picker.openBinder": "Mappe öffnen",
-  "quarantine.settingsBody": "DayNote konnte seine Einstellungsdatei nicht lesen. Es hat sie unter {path} beiseitegelegt und mit den Standardeinstellungen und einer leeren Mappenliste gestartet. Ihre Mappen und Notizen sind unberührt; öffnen Sie sie mit „Öffnen“ im Bereich „Mappen“ erneut.",
+  "quarantine.settingsBody": "DayNote konnte seine Einstellungsdatei nicht lesen. Es hat sie unter {path} beiseitegelegt und ist mit den Standardeinstellungen und einer leeren Mappenliste gestartet. Ihre Mappen und Notizen sind unberührt; öffnen Sie sie mit „Öffnen“ im Bereich „Mappen“ erneut.",
   "quarantine.settingsTitle": "Die Einstellungen wurden zurückgesetzt",
   "results.close": "Meldung schließen",
   "save.failed": "Speichern fehlgeschlagen",

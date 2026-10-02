@@ -152,7 +152,7 @@
   "picker.binderType": "Fichário do DayNote",
   "picker.newBinder": "Novo fichário",
   "picker.openBinder": "Abrir fichário",
-  "quarantine.settingsBody": "O DayNote não conseguiu ler seu arquivo de configurações, então o guardou à parte em {path} e foi iniciado com as configurações padrão e a lista de fichários vazia. Seus fichários e notas não foram tocados; reabra-os com Abrir no painel Fichários.",
+  "quarantine.settingsBody": "O DayNote não conseguiu ler seu arquivo de configurações, então o guardou à parte em {path} e iniciou com as configurações padrão e a lista de fichários vazia. Seus fichários e notas estão intactos; reabra-os com Abrir no painel Fichários.",
   "quarantine.settingsTitle": "As configurações foram redefinidas",
   "results.close": "Fechar notificação",
   "save.failed": "Falha ao salvar",

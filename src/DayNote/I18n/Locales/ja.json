@@ -138,7 +138,7 @@
   "picker.binderType": "DayNote バインダー",
   "picker.newBinder": "新しいバインダー",
   "picker.openBinder": "バインダーを開く",
-  "quarantine.settingsBody": "DayNote は設定ファイルを読み込めなかったため、{path} に退避し、既定の設定と空のバインダー一覧で起動しました。バインダーとノートには手を付けていません。「バインダー」欄の「開く」から開き直してください。",
+  "quarantine.settingsBody": "DayNote は設定ファイルを読み込めなかったため、{path} に退避し、既定の設定と空のバインダー一覧で起動しました。バインダーとノートには影響ありません。「バインダー」欄の「開く」から開き直してください。",
   "quarantine.settingsTitle": "設定がリセットされました",
   "results.close": "通知を閉じる",
   "save.failed": "保存に失敗しました",
