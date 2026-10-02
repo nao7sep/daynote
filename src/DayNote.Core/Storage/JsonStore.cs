@@ -4,13 +4,10 @@ using DayNote.Core.Configuration;
 namespace DayNote.Core.Storage;
 
 /// <summary>
-/// A typed JSON store for a single file, used for the configuration and state files — both
-/// rebuildable (settings are re-authored, view state is rebuilt by use), so a present-but-corrupt
-/// file is quarantined aside to its <c>.invalid</c> name and the load returns <c>null</c>: launch
-/// proceeds with built-ins without creating a replacement. The quarantine move either lands or its
-/// failure propagates — falling through to
-/// defaults with the corrupt bytes in place would let the next save overwrite them. An I/O read
-/// error is not corruption and still throws. Writes are atomic and end with a trailing newline.
+/// A typed JSON store for one file, the configuration or the state. A file that cannot be parsed is
+/// set aside under its <c>.invalid</c> name and the load returns <c>null</c>, per the
+/// store-recovery-conventions; a failed move throws, so the next save never writes over the bytes. A
+/// read error is not a parse failure and throws. Writes are atomic and end with a trailing newline.
 /// </summary>
 public sealed class JsonStore<T>
     where T : class

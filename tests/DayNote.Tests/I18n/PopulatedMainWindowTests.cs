@@ -55,4 +55,32 @@ public sealed class PopulatedMainWindowTests
             Assert.Equal(originalHome, Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable));
         }
     }
+
+    [AvaloniaFact]
+    public async Task A_fixture_that_cannot_save_is_not_deleted_and_still_releases_process_state()
+    {
+        var originalHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
+        var fixture = PopulatedMainWindow.Create();
+        await fixture.FillAsync();
+        var binder = Path.Combine(fixture.Home, "journal.daynote");
+        var contents = File.ReadAllText(binder);
+        fixture.ViewModel.Editor.Body = "An edit the shutdown cannot write.";
+        File.Delete(binder);
+        Directory.CreateDirectory(binder);
+
+        try
+        {
+            Assert.Throws<InvalidOperationException>(fixture.Dispose);
+            Assert.True(Directory.Exists(fixture.Home));
+            Assert.Equal(originalHome, Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable));
+        }
+        finally
+        {
+            Directory.Delete(binder);
+            File.WriteAllText(binder, contents);
+            Assert.True(await fixture.ViewModel.ShutdownAsync());
+            BackupStore.Close();
+            Directory.Delete(fixture.Home, recursive: true);
+        }
+    }
 }

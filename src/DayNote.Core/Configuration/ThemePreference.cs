@@ -13,9 +13,8 @@ public enum ThemePreference
 }
 
 /// <summary>
-/// Writes the theme as a lowercase name and reads any name case-insensitively. A missing,
-/// unrecognized, or wrongly typed value reads as System rather than failing the whole
-/// config.json, so a file from before the setting, or from a newer build, loads untouched.
+/// Writes the theme as a lowercase name and reads it through <see cref="TryParse"/>, which
+/// <see cref="ConfigSets"/> also checks a stored theme with; a value it refuses reads as System.
 /// </summary>
 public sealed class ThemePreferenceJsonConverter : JsonConverter<ThemePreference>
 {

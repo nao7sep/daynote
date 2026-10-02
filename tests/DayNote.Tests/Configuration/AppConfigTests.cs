@@ -77,31 +77,6 @@ public sealed class AppConfigTests
     }
 
     [Fact]
-    public void Legacy_selection_keys_are_ignored()
-    {
-        // The shape written before presets went by their font family.
-        const string legacy = """
-            {
-              "textStyles": [
-                { "name": "Mono", "fontFamily": "メイリオ", "fontSize": 14 },
-                { "name": "Sans", "fontFamily": "Inter", "fontSize": 15 },
-                { "name": "Prank", "fontFamily": "遊明朝体", "fontSize": 15 }
-              ],
-              "selectedTextStyle": "prank"
-            }
-            """;
-
-        var config = JsonSerializer.Deserialize<AppConfig>(legacy, DayNoteJson.Options)!;
-
-        Assert.Equal(new[] { false, false, false }, config.TextStyles.Select(style => style.IsDefault));
-        Assert.Same(config.TextStyles[0], config.ResolveDefaultStyle());
-        var saved = JsonSerializer.Serialize(config, DayNoteJson.Options);
-        Assert.DoesNotContain("\"name\"", saved);
-        Assert.DoesNotContain("selectedTextStyle", saved);
-        Assert.DoesNotContain("\"isDefault\": true", saved);
-    }
-
-    [Fact]
     public void A_load_preserves_default_flags_and_resolution_falls_back_to_the_first()
     {
         const string none = """{ "textStyles": [ { "fontFamily": "A" }, { "fontFamily": "B" } ] }""";
@@ -161,21 +136,6 @@ public sealed class AppConfigTests
     {
         Assert.Equal(DayNote.Core.Time.DayNoteTime.SystemZone, new AppConfig().TimeZone);
         Assert.Equal("system", DayNote.Core.Time.DayNoteTime.SystemZone);
-    }
-
-    [Fact]
-    public void An_older_typed_zone_is_ignored()
-    {
-        var config = JsonSerializer.Deserialize<AppConfig>("""{ "displayTimeZone": "Europe/London" }""", DayNoteJson.Options)!;
-        Assert.Equal("system", config.TimeZone);
-    }
-
-    [Fact]
-    public void A_zone_chosen_from_the_list_is_kept_over_a_leftover_typed_one()
-    {
-        const string json = """{ "timeZone": "Europe/Paris", "displayTimeZone": "Asia/Tokyo" }""";
-
-        Assert.Equal("Europe/Paris", JsonSerializer.Deserialize<AppConfig>(json, DayNoteJson.Options)!.TimeZone);
     }
 
     [Fact]

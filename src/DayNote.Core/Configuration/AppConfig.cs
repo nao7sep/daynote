@@ -3,9 +3,9 @@ using DayNote.Core.Time;
 namespace DayNote.Core.Configuration;
 
 /// <summary>
-/// Durable user preferences, persisted to <c>~/.daynote/config.json</c>. Properties are declared
-/// in a deliberate, grouped order so the serialized file is canonical: the interface language, then app
-/// appearance, then editor appearance, then editing behavior, then display.
+/// The user's settings, one property per set of <c>config.json</c> (config-sets-conventions), each
+/// initialized to its built-in. The declaration order is the file's key order: the interface language,
+/// app appearance, editor appearance, editing behavior, display, then the binder list.
 /// </summary>
 public sealed class AppConfig
 {
@@ -13,8 +13,8 @@ public sealed class AppConfig
     public const string DefaultUiFontFamily = "Inter";
 
     /// <summary>
-    /// The built-in text-style presets, used while the <see cref="TextStyles"/> set is absent. Returns a fresh list of fresh presets on every call, so each caller owns a
-    /// mutable copy it can edit without touching the built-ins.
+    /// The built-in text-style presets. Returns a fresh list of fresh presets on every call, so each
+    /// caller owns a mutable copy it can edit without touching the built-ins.
     /// </summary>
     public static List<EditorTextStyle> DefaultTextStyles() => new()
     {

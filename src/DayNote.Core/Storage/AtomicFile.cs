@@ -6,18 +6,15 @@ using DayNote.Core.Identity;
 namespace DayNote.Core.Storage;
 
 /// <summary>
-/// Atomic, durable text writes, ported from quickdeck: content is written to a temporary file,
-/// flushed to disk, and renamed over the target; then the containing directory is flushed so the
-/// rename itself survives a crash. Files are UTF-8 without a byte-order mark; callers are
-/// responsible for supplying LF-terminated content.
+/// Atomic, durable text writes: content is written to a temporary file, flushed to disk, and renamed
+/// over the target; then the containing directory is flushed so the rename itself survives a crash.
+/// Files are UTF-8 without a byte-order mark; callers supply LF-terminated content.
 /// </summary>
 /// <remarks>
-/// This is the single managed-text atomic-write choke point for the app: config.json and state.json
-/// (via <see cref="JsonStore{T}"/>) and every binder <c>.daynote</c> file (via
-/// <see cref="BinderStore"/>) all pass through here. That is exactly why the data-backup hook lives in
-/// this one place; volatile state opts out while retaining the same durable atomic write, and
-/// there is deliberately no second atomic-write path in the app. The store records the exact bytes just
-/// written, strictly AFTER the rename lands (see <see cref="BackupStore.Record"/>).
+/// The app's one atomic text write: config.json and state.json through <see cref="JsonStore{T}"/>, and
+/// every binder <c>.daynote</c> file through <see cref="BinderStore"/>. It is therefore where each write
+/// reaches the backup history (data-backup-conventions, see <see cref="BackupStore.Record"/>), unless the
+/// caller opts out, as state.json does.
 /// </remarks>
 public static partial class AtomicFile
 {
