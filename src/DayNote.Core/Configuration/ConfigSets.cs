@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace DayNote.Core.Configuration;
 
-/// <summary>Whole-set shape checks and effective values, without normalizing user copies.</summary>
+/// <summary>Whole-set reading, checking and comparison, per the config-sets-conventions.</summary>
 public static class ConfigSets
 {
     // AppConfig declares the known keys and built-ins in one place.
@@ -19,8 +19,7 @@ public static class ConfigSets
                 continue;
             }
 
-            if ((key == "binders" ? HasBinderListShape(value) : HasShape(value, BuiltIns.GetProperty(key)))
-                && (key != "theme" || IsTheme(value)))
+            if (IsValid(key, value))
             {
                 effective[key] = value;
             }
@@ -33,15 +32,36 @@ public static class ConfigSets
         return JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(effective), DayNoteJson.Options)!;
     }
 
-    public static IEnumerable<string> ChangedKeys(AppConfig current, AppConfig original)
+    /// <summary>The keys of the sets the draft holds differently from the baseline.</summary>
+    public static IReadOnlyList<string> ChangedKeys(AppConfig draft, AppConfig baseline)
     {
-        var draft = JsonSerializer.SerializeToElement(current, DayNoteJson.Options);
-        var baseline = JsonSerializer.SerializeToElement(original, DayNoteJson.Options);
-        return Keys.Where(key => !JsonElement.DeepEquals(draft.GetProperty(key), baseline.GetProperty(key))).ToArray();
+        var draftValues = JsonSerializer.SerializeToElement(draft, DayNoteJson.Options);
+        var baselineValues = JsonSerializer.SerializeToElement(baseline, DayNoteJson.Options);
+        return Keys.Where(key => !JsonElement.DeepEquals(draftValues.GetProperty(key), baselineValues.GetProperty(key))).ToArray();
     }
 
-    public static bool IsBuiltIn(AppConfig config, string key) => JsonElement.DeepEquals(
-        JsonSerializer.SerializeToElement(config, DayNoteJson.Options).GetProperty(key), BuiltIns.GetProperty(key));
+    /// <summary>Every set that differs from its built-in, whole, keyed as the file stores it.</summary>
+    public static Dictionary<string, JsonElement> UserSets(AppConfig config)
+    {
+        var values = JsonSerializer.SerializeToElement(config, DayNoteJson.Options);
+        return Keys
+            .Where(key => !JsonElement.DeepEquals(values.GetProperty(key), BuiltIns.GetProperty(key)))
+            .ToDictionary(key => key, key => values.GetProperty(key));
+    }
+
+    // Reading and healing (config-sets-conventions), by the validator Settings applies at Save.
+    private static bool IsValid(string key, JsonElement value) => key switch
+    {
+        "binders" => HasBinderListShape(value),
+        "theme" => IsTheme(value),
+        _ => HasShape(value, BuiltIns.GetProperty(key)) && key switch
+        {
+            "timeZone" => SettingsValidator.IsTimeZoneSetting(value.GetString()!),
+            "autosaveDelaySeconds" => SettingsValidator.IsAutosaveDelay(value.GetDouble()),
+            "textStyles" => SettingsValidator.AreValidTextStyles(value.Deserialize<List<EditorTextStyle>>(DayNoteJson.Options)!),
+            _ => true,
+        },
+    };
 
     private static bool HasBinderListShape(JsonElement value) => value.ValueKind == JsonValueKind.Array
         && value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.Object

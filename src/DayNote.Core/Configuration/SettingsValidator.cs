@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
 
 using DayNote.Core.Time;
 
@@ -13,10 +12,8 @@ public sealed record TextStyleDraft(string FontFamily, double FontSize, double L
 public sealed record SettingsDraft(string TimeZone, double AutosaveSeconds, IReadOnlyList<TextStyleDraft> Styles, bool HasDefault);
 
 /// <summary>
-/// The save-gating validation that used to live inside the settings dialog: timezone and
-/// numeric-range checks, the non-blank font requirement, and the "at least one style, exactly
-/// one default" invariant. Pure — the dialog projects its working copy into a
-/// <see cref="SettingsDraft"/> and asks here.
+/// What a valid setting is: the settings dialog applies it at Save, and <see cref="ConfigSets"/> as
+/// each set is read.
 /// </summary>
 public static class SettingsValidator
 {
@@ -33,38 +30,28 @@ public static class SettingsValidator
     {
         ArgumentNullException.ThrowIfNull(draft);
 
-        if (!IsTimeZoneSetting(draft.TimeZone)
-            || !InRange(draft.AutosaveSeconds, MinAutosaveSeconds, MaxAutosaveSeconds))
-        {
-            return false;
-        }
-
-        if (draft.Styles.Count == 0 || !draft.HasDefault)
-        {
-            return false;
-        }
-
-        foreach (var style in draft.Styles)
-        {
-            if (string.IsNullOrWhiteSpace(style.FontFamily)
-                || !InRange(style.FontSize, MinFontSize, MaxFontSize)
-                || !InRange(style.LineSpacing, MinLineSpacing, MaxLineSpacing)
-                || !InRange(style.Padding, MinPadding, MaxPadding))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return IsTimeZoneSetting(draft.TimeZone)
+            && IsAutosaveDelay(draft.AutosaveSeconds)
+            && AreValidTextStyles(draft.Styles, draft.HasDefault);
     }
 
     /// <summary>Whether a time-zone setting is System or a zone the platform knows.</summary>
     public static bool IsTimeZoneSetting(string setting) =>
         DayNoteTime.IsSystem(setting) || DayNoteTime.TryResolveTimeZone(setting.Trim(), out _);
 
-    /// <summary>True when the working config differs from the saved original, by canonical JSON.</summary>
-    public static bool IsDirty(AppConfig current, AppConfig original) =>
-        JsonSerializer.Serialize(current, DayNoteJson.Options) != JsonSerializer.Serialize(original, DayNoteJson.Options);
+    public static bool IsAutosaveDelay(double seconds) => InRange(seconds, MinAutosaveSeconds, MaxAutosaveSeconds);
+
+    public static bool AreValidTextStyles(IReadOnlyList<EditorTextStyle> styles) => AreValidTextStyles(
+        styles.Select(style => new TextStyleDraft(style.FontFamily, style.FontSize, style.LineSpacing, style.Padding)).ToList(),
+        styles.Count(style => style.IsDefault) == 1);
+
+    private static bool AreValidTextStyles(IReadOnlyList<TextStyleDraft> styles, bool hasDefault) =>
+        styles.Count > 0
+        && hasDefault
+        && styles.All(style => !string.IsNullOrWhiteSpace(style.FontFamily)
+            && InRange(style.FontSize, MinFontSize, MaxFontSize)
+            && InRange(style.LineSpacing, MinLineSpacing, MaxLineSpacing)
+            && InRange(style.Padding, MinPadding, MaxPadding));
 
     private static bool InRange(double value, double min, double max) => value >= min && value <= max;
 }

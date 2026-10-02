@@ -50,9 +50,9 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal(builtIns.TimeZone, config.TimeZone);
         Assert.Equal(JsonSerializer.Serialize(builtIns.TextStyles), JsonSerializer.Serialize(config.TextStyles));
         config.UiFontFamily = "Inter";
-        Store.Save(config, new[] { "uiFontFamily" });
+        Store.Save(config);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "theme", "uiFontFamily" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "uiFontFamily", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.Equal("Inter", Store.Load().UiFontFamily);
     }
 
@@ -63,65 +63,68 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("uiFontFamily", "[]")]
     [InlineData("autosaveDelaySeconds", "\"2\"")]
     [InlineData("timeZone", "false")]
+    [InlineData("timeZone", "\"Mars/Phobos\"")]
+    [InlineData("autosaveDelaySeconds", "0")]
     [InlineData("textStyles", "null")]
     [InlineData("textStyles", "[{\"fontFamily\":\"A\"}]")]
     [InlineData("textStyles", "[null]")]
+    [InlineData("textStyles", "[{\"isDefault\":false,\"fontFamily\":\"A\",\"fontSize\":14,\"lineSpacing\":1.4,\"padding\":12,\"bold\":false,\"italic\":false}]")]
+    [InlineData("textStyles", "[{\"isDefault\":true,\"fontFamily\":\"A\",\"fontSize\":70,\"lineSpacing\":1.4,\"padding\":12,\"bold\":false,\"italic\":false}]")]
     [InlineData("binders", "[{\"path\":\"x\"}]")]
     [InlineData("binders", "[null]")]
-    public void A_wrong_shape_falls_back_only_for_that_set_and_warns_once(string key, string value)
+    public void A_set_that_fails_its_check_falls_back_only_for_that_set_and_warns(string key, string value)
     {
         File.WriteAllText(ConfigPath, $"{{\"{key}\":{value}}}");
         var config = Store.Load();
-        Assert.False(SettingsValidator.IsDirty(config, new AppConfig()));
+        Assert.Empty(ConfigSets.UserSets(config));
         Assert.Equal(key, Assert.Single(_warnings));
         Assert.True(File.Exists(ConfigPath));
         Assert.Empty(Directory.GetFiles(_directory, "*.invalid"));
     }
 
     [Fact]
-    public void Whole_text_styles_are_preserved_without_normalization_or_default_merge()
+    public void Whole_text_styles_are_preserved_without_default_merge()
     {
         var config = new AppConfig();
-        config.TextStyles = new() { new EditorTextStyle { IsDefault = false, FontFamily = "Custom", FontSize = 70 } };
-        Store.Save(config, new[] { "textStyles" });
+        config.TextStyles = new() { new EditorTextStyle { IsDefault = true, FontFamily = "Custom", FontSize = 30 } };
+        Store.Save(config);
         var restored = Store.Load();
         var style = Assert.Single(restored.TextStyles);
-        Assert.False(style.IsDefault);
-        Assert.Equal(70, style.FontSize);
+        Assert.True(style.IsDefault);
+        Assert.Equal(30, style.FontSize);
         Assert.Equal("Custom", style.FontFamily);
     }
 
     [Fact]
-    public void Reset_deletes_the_set_while_preserving_other_copies()
+    public void A_set_saved_equal_to_its_built_in_loses_its_key()
     {
         var config = new AppConfig { Theme = ThemePreference.Dark };
-        Store.Save(config, new[] { "theme", "textStyles" });
-        Store.Save(config, Array.Empty<string>(), resetTextStyles: true);
+        config.TextStyles[0].FontSize = 22;
+        Store.Save(config);
+        config.TextStyles = AppConfig.DefaultTextStyles();
+        Store.Save(config);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
         Assert.Equal("theme", Assert.Single(saved.RootElement.EnumerateObject()).Name);
-        Assert.Equal(ThemePreference.Dark, Store.Load().Theme);
-        Assert.False(SettingsValidator.IsDirty(new AppConfig(), new AppConfig { TextStyles = Store.Load().TextStyles }));
     }
 
     [Fact]
-    public void Editing_a_reset_draft_saves_the_users_copy()
+    public void Save_writes_nothing_when_the_map_would_not_change()
     {
-        var config = new AppConfig();
-        config.TextStyles[0].FontSize = 22;
-        Store.Save(config, Array.Empty<string>(), resetTextStyles: true);
-        Assert.Equal(22, Store.Load().TextStyles[0].FontSize);
+        Store.Save(new AppConfig());
+        Assert.False(File.Exists(ConfigPath));
+
+        File.WriteAllText(ConfigPath, "{ }");
+        Store.Save(new AppConfig());
+        Assert.Equal("{ }", File.ReadAllText(ConfigPath));
     }
 
     [Fact]
-    public void Read_modify_write_preserves_a_set_written_after_the_dialog_opened()
+    public void Save_heals_every_set_from_memory()
     {
-        var original = Store.Load();
-        var draft = original.Copy();
-        Store.Save(new AppConfig { TimeZone = "Europe/London" }, new[] { "timeZone" });
-        draft.Theme = ThemePreference.Light;
-        Store.Save(draft, ConfigSets.ChangedKeys(draft, original));
-        Assert.Equal("Europe/London", Store.Load().TimeZone);
-        Assert.Equal(ThemePreference.Light, Store.Load().Theme);
+        File.WriteAllText(ConfigPath, """{ "timeZone": "Mars/Phobos", "theme": "system", "uiFontFamily": "Menlo" }""");
+        Store.Save(Store.Load());
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        Assert.Equal("uiFontFamily", Assert.Single(saved.RootElement.EnumerateObject()).Name);
     }
 
     public void Dispose()

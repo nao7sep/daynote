@@ -3,42 +3,26 @@ using DayNote.Core.Configuration;
 
 namespace DayNote.Core.Storage;
 
-/// <summary>Persists the user's whole sets; loading absent sets never writes their built-ins.</summary>
+/// <summary>Reads config.json and writes it from memory, per the config-sets-conventions.</summary>
 public sealed class ConfigStore(string path, Action<string> warn)
 {
     private readonly JsonStore<Dictionary<string, JsonElement>> _store = new(path);
 
     public AppConfig Load() => ConfigSets.Read(_store.Load() ?? new(), warn);
 
-    public void Save(AppConfig config, IEnumerable<string> changedKeys, bool resetTextStyles = false)
+    public void Save(AppConfig config)
     {
-        var keys = changedKeys.ToHashSet();
-        if (resetTextStyles)
-        {
-            keys.Add("textStyles");
-        }
-        if (keys.Count == 0)
+        var sets = ConfigSets.UserSets(config);
+        var stored = _store.Load();
+        if (stored is null ? sets.Count == 0 : SameSets(stored, sets))
         {
             return;
         }
 
-        var stored = _store.Load() ?? new();
-        foreach (var unknown in stored.Keys.Except(ConfigSets.Keys).ToArray())
-        {
-            stored.Remove(unknown);
-        }
-        var values = JsonSerializer.SerializeToElement(config, DayNoteJson.Options);
-        foreach (var key in keys)
-        {
-            if (resetTextStyles && key == "textStyles" && ConfigSets.IsBuiltIn(config, key))
-            {
-                stored.Remove(key);
-            }
-            else
-            {
-                stored[key] = values.GetProperty(key);
-            }
-        }
-        _store.Save(stored);
+        _store.Save(sets);
     }
+
+    private static bool SameSets(Dictionary<string, JsonElement> stored, Dictionary<string, JsonElement> sets) =>
+        stored.Count == sets.Count
+        && sets.All(set => stored.TryGetValue(set.Key, out var value) && JsonElement.DeepEquals(value, set.Value));
 }

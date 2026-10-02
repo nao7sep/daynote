@@ -236,7 +236,7 @@ public sealed class ThemeResourcesTests
     public void SettingsOffersTheThreeThemesAsOneRadioGroupAppliedOnlyBySave()
     {
         AppConfig? saved = null;
-        var dialog = new SettingsDialog(new AppConfig { Theme = ThemePreference.Dark }, (candidate, _) =>
+        var dialog = new SettingsDialog(new AppConfig { Theme = ThemePreference.Dark }, candidate =>
         {
             saved = candidate;
             return true;

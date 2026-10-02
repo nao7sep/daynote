@@ -179,12 +179,12 @@ internal sealed class PopulatedMainWindow : IDisposable
         /// <summary>What the reader changes in Settings before pressing Save; nothing is saved when null.</summary>
         public Action<AppConfig>? SettingsEdit { get; set; }
 
-        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool, bool> trySave)
+        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
         {
             if (SettingsEdit is null)
                 return Task.FromResult(false);
             SettingsEdit(config);
-            return Task.FromResult(trySave(config, false));
+            return Task.FromResult(trySave(config));
         }
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName) => Task.FromResult(ExternalChangeChoice.KeepMine);
         public Task OpenPathExternallyAsync(string path) => Task.CompletedTask;

@@ -1069,11 +1069,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        var original = _config.Copy();
-        var working = original.Copy();
-        if (!await _dialogs.ShowSettingsAsync(working, (candidate, resetTextStyles) =>
+        var working = _config.Copy();
+        if (!await _dialogs.ShowSettingsAsync(working, candidate =>
             {
-                if (!TrySaveConfig(candidate, ConfigSets.ChangedKeys(candidate, original), resetTextStyles))
+                if (!TrySaveConfig(candidate))
                 {
                     return false;
                 }
@@ -1140,7 +1139,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _log.Info("Cycled text style", new { style = label });
         if (IsReady)
         {
-            TrySaveConfig(_config, ["textStyles"]);
+            TrySaveConfig(_config);
         }
 
         _textStyleStatus = Message.Of("textStyle.applied", ("style", label));
@@ -1633,7 +1632,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
 
         entry.Title = newTitle;
         item.Title = newTitle;
-        TrySaveConfig(_config, ["binders"]);
+        TrySaveConfig(_config);
         _log.Info("Renamed binder", new { path = item.Path });
     }
 
@@ -1734,7 +1733,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
             .ToList();
         reordered.AddRange(_config.Binders.Except(reordered));
         _config.Binders = reordered;
-        TrySaveConfig(_config, ["binders"]);
+        TrySaveConfig(_config);
         _log.Info("Reordered binders", new { count = order.Count });
     }
 
@@ -1807,7 +1806,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         }
 
         _config.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
-        TrySaveConfig(_config, ["binders"]);
+        TrySaveConfig(_config);
         RebuildBinders();
     }
 
@@ -1816,7 +1815,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     {
         if (_config.Binders.RemoveAll(b => PathKey.Equal(b.Path, path)) > 0)
         {
-            TrySaveConfig(_config, ["binders"]);
+            TrySaveConfig(_config);
         }
         RebuildBinders();
         _log.Info("Forgot binder", new { path });
@@ -2011,11 +2010,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     // ----- Configuration / state -----------------------------------------------------------------
 
     /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
-    private bool TrySaveConfig(AppConfig config, IEnumerable<string> changedKeys, bool resetTextStyles = false)
+    private bool TrySaveConfig(AppConfig config)
     {
         try
         {
-            _configStore.Save(config, changedKeys, resetTextStyles);
+            _configStore.Save(config);
             return true;
         }
         catch (Exception ex)

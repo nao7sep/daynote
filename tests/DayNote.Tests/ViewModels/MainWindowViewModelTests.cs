@@ -1580,10 +1580,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task ShowErrorAsync(Message title, Message message) => Task.CompletedTask;
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
-        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool, bool> trySave)
+        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
         {
             SettingsEdit?.Invoke(config);
-            return Task.FromResult(SettingsApplied && trySave(config, false));
+            return Task.FromResult(SettingsApplied && trySave(config));
         }
         public int ExternalChangeQuestions { get; private set; }
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)

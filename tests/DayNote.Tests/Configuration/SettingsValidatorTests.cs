@@ -52,14 +52,4 @@ public sealed class SettingsValidatorTests
     [Fact]
     public void Two_presets_with_the_same_family_are_allowed() =>
         Assert.True(SettingsValidator.IsValid(Draft(new[] { Style(size: 14), Style(size: 18) })));
-
-    [Fact]
-    public void IsDirty_compares_by_canonical_json()
-    {
-        var a = new AppConfig();
-        var b = new AppConfig();
-        Assert.False(SettingsValidator.IsDirty(a, b));
-        b.AutosaveDelaySeconds = 5;
-        Assert.True(SettingsValidator.IsDirty(a, b));
-    }
 }

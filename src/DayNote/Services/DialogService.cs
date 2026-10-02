@@ -100,7 +100,7 @@ public sealed class DialogService : IDialogService
         await dialog.ShowBoundedAsync(owner);
     }
 
-    public async Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool, bool> trySave)
+    public async Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
     {
         var dialog = new SettingsDialog(config, trySave);
         await dialog.ShowBoundedAsync(RequireOwner());

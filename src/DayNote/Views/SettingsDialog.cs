@@ -11,6 +11,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using DayNote.Controls;
 using DayNote.Core.Configuration;
+using DayNote.Core.Text;
 using DayNote.Core.Time;
 using DayNote.I18n;
 
@@ -50,10 +51,9 @@ public sealed class SettingsDialog : DialogBase
     private readonly ComboBox _timeZone;
     private readonly Button _saveButton;
     private readonly TextBlock _saveError;
-    private readonly Func<AppConfig, bool, bool> _trySave;
+    private readonly Func<AppConfig, bool> _trySave;
     private readonly Func<string, Task<bool>> _askBeforeRemoving;
     private bool _loadingStyleEditor;
-    private bool _resetTextStyles;
 
     /// <param name="askBeforeRemoving">
     /// Asks whether the named style may go. The default asks in a dialog stacked over this one, which
@@ -61,7 +61,7 @@ public sealed class SettingsDialog : DialogBase
     /// </param>
     public SettingsDialog(
         AppConfig config,
-        Func<AppConfig, bool, bool> trySave,
+        Func<AppConfig, bool> trySave,
         Func<string, Task<bool>>? askBeforeRemoving = null)
     {
         _config = config;
@@ -188,15 +188,11 @@ public sealed class SettingsDialog : DialogBase
         _autosave.Value = (decimal)config.AutosaveDelaySeconds;
         // System first, then every zone the platform knows by its IANA id: chosen, never typed.
         var zones = TimeZoneOption.All(config.TimeZone);
-        var zone = TimeZoneOption.For(config.TimeZone, zones);
-        // A hand-edited id no zone answers to already displays as System; the draft says so too, so
-        // it is not an invalid value holding Save disabled behind a list that shows System.
-        config.TimeZone = zone.Value;
         _timeZone = new ComboBox
         {
             Name = "TimeZoneBox",
             ItemsSource = zones,
-            SelectedItem = zone,
+            SelectedItem = TimeZoneOption.For(config.TimeZone, zones),
             DisplayMemberBinding = new Binding(nameof(TimeZoneOption.Name)),
             MinWidth = 280,
             HorizontalAlignment = HorizontalAlignment.Left,
@@ -272,7 +268,7 @@ public sealed class SettingsDialog : DialogBase
 
         _uiFont.TextChanged += (_, _) =>
         {
-            _config.UiFontFamily = (_uiFont.Text ?? string.Empty).Trim();
+            _config.UiFontFamily = TextCleanup.SingleLine(_uiFont.Text ?? string.Empty);
             Revalidate();
         };
 
@@ -291,7 +287,7 @@ public sealed class SettingsDialog : DialogBase
 
         _saveError.IsVisible = false;
         _saveError.Text = string.Empty;
-        if (_trySave(_config, _resetTextStyles))
+        if (_trySave(_config))
         {
             return true;
         }
@@ -303,7 +299,6 @@ public sealed class SettingsDialog : DialogBase
 
     private void ResetTextStyles()
     {
-        _resetTextStyles = true;
         _config.TextStyles = AppConfig.DefaultTextStyles();
         _styleRows.Clear();
         BuildStyleList();
@@ -324,7 +319,7 @@ public sealed class SettingsDialog : DialogBase
     private void WireStyleEditor()
     {
         _styleFontFamily.TextChanged += (_, _) => UpdateSelectedStyle(style =>
-            style.FontFamily = (_styleFontFamily.Text ?? string.Empty).Trim());
+            style.FontFamily = TextCleanup.SingleLine(_styleFontFamily.Text ?? string.Empty));
         WireNumber(_styleFontSize, (style, value) => style.FontSize = value, style => style.FontSize);
         WireNumber(_styleLineSpacing, (style, value) => style.LineSpacing = value, style => style.LineSpacing);
         WireNumber(_stylePadding, (style, value) => style.Padding = value, style => style.Padding);
@@ -510,7 +505,7 @@ public sealed class SettingsDialog : DialogBase
         _removeStyle.IsEnabled = row is not null && !row.Style.IsDefault && _styleRows.Count > 1;
     }
 
-    private void Revalidate() => _saveButton.IsEnabled = IsValid() && (_resetTextStyles || SettingsValidator.IsDirty(_config, _original));
+    private void Revalidate() => _saveButton.IsEnabled = IsValid() && ConfigSets.ChangedKeys(_config, _original).Count > 0;
 
     private bool IsValid()
     {
