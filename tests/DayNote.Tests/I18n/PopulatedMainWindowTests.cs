@@ -78,8 +78,17 @@ public sealed class PopulatedMainWindowTests
         {
             Directory.Delete(binder);
             File.WriteAllText(binder, contents);
-            Assert.True(await fixture.ViewModel.ShutdownAsync());
-            BackupStore.Close();
+            // Dispose restored the original root; the shutdown's binder write records under the fixture's.
+            Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, fixture.Home);
+            try
+            {
+                Assert.True(await fixture.ViewModel.ShutdownAsync());
+            }
+            finally
+            {
+                BackupStore.Close();
+                Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, originalHome);
+            }
             Directory.Delete(fixture.Home, recursive: true);
         }
     }
