@@ -239,9 +239,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase
     private OperationResultViewModel? _announcedResult;
 
     /// <summary>
-    /// The text style just applied, which the status bar shows briefly and then drops. The style is
-    /// standing state of the editor, so app-chrome-conventions put this feedback in the always-present
-    /// strip rather than in a card the reader has to look away for.
+    /// The text style just applied, which the status bar shows briefly and then drops, per the
+    /// app-chrome-conventions.
     /// </summary>
     public string TextStyleStatusText => _textStyleStatus is null ? string.Empty : Localizer.Of(_textStyleStatus);
 

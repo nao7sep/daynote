@@ -66,10 +66,8 @@ public sealed class AppPaths
         }
         else
         {
-            // The UnixFileMode overload only applies the mode to a directory it actually creates — an
-            // existing root is left untouched here, so a broader root left by an earlier build still
-            // needs the EnsureOwnerOnly tightening below. This just ensures a *fresh* root is never
-            // briefly created under the default umask before being chmod'd.
+            // The UnixFileMode overload applies the mode only to a directory it creates, so a fresh root
+            // is never briefly broader than owner-only; an existing root is tightened below.
             Directory.CreateDirectory(Root, OwnerOnly);
             EnsureOwnerOnly(Root);
         }
