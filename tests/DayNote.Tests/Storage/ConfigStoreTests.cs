@@ -123,19 +123,35 @@ public sealed class ConfigStoreTests : IDisposable
     [Fact]
     public void Save_writes_nothing_when_the_map_would_not_change()
     {
-        Store.Save(new AppConfig());
+        var store = Store;
+        store.Save(store.Load());
         Assert.False(File.Exists(ConfigPath));
 
         File.WriteAllText(ConfigPath, "{ }");
-        Store.Save(new AppConfig());
+        store = Store;
+        store.Save(store.Load());
         Assert.Equal("{ }", File.ReadAllText(ConfigPath));
+    }
+
+    [Fact]
+    public void Save_writes_from_memory_without_reading_the_file()
+    {
+        var store = Store;
+        var config = store.Load();
+        File.WriteAllText(ConfigPath, "{ broken");
+        config.Theme = ThemePreference.Dark;
+        store.Save(config);
+        Assert.Empty(Directory.GetFiles(_directory, "*.invalid"));
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        Assert.Equal("theme", Assert.Single(saved.RootElement.EnumerateObject()).Name);
     }
 
     [Fact]
     public void Save_heals_every_set_from_memory()
     {
         File.WriteAllText(ConfigPath, """{ "timeZone": "Mars/Phobos", "theme": "system", "uiFontFamily": "Menlo" }""");
-        Store.Save(Store.Load());
+        var store = Store;
+        store.Save(store.Load());
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
         Assert.Equal("uiFontFamily", Assert.Single(saved.RootElement.EnumerateObject()).Name);
     }
