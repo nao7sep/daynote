@@ -147,7 +147,7 @@ public sealed class DayNoteTimeTests
     [Fact]
     public void TryResolveTimeZone_falls_back_to_utc_for_null_or_blank()
     {
-        // A null/blank id (e.g. a hand-edited "displayTimeZone": null) must not reach
+        // A null/blank id (e.g. a hand-edited "timeZone": null) must not reach
         // FindSystemTimeZoneById, which throws ArgumentNullException on null.
         Assert.False(DayNoteTime.TryResolveTimeZone(null, out var fromNull));
         Assert.Equal(TimeZoneInfo.Utc, fromNull);

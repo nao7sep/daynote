@@ -45,7 +45,7 @@ public sealed class AppConfigTests
     }
 
     [Fact]
-    public void A_stored_value_equal_to_the_former_default_is_kept()
+    public void A_stored_value_naming_the_bundled_font_is_kept()
     {
         const string json = """{ "uiFontFamily": "Inter" }""";
         var restored = JsonSerializer.Deserialize<AppConfig>(json, DayNoteJson.Options)!;
