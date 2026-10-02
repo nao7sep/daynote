@@ -69,8 +69,7 @@ public static class ConfigSets
             && item.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String);
 
     private static bool IsTheme(JsonElement value) => value.ValueKind == JsonValueKind.String
-        && Enum.TryParse<ThemePreference>(value.GetString(), true, out var theme)
-        && Enum.IsDefined(theme) && !int.TryParse(value.GetString(), out _);
+        && ThemePreferenceJsonConverter.TryParse(value.GetString(), out _);
 
     private static bool HasShape(JsonElement value, JsonElement expected) => expected.ValueKind switch
     {

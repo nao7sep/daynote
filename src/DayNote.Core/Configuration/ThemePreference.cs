@@ -21,10 +21,7 @@ public sealed class ThemePreferenceJsonConverter : JsonConverter<ThemePreference
 {
     public override ThemePreference Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.String
-            && Enum.TryParse<ThemePreference>(reader.GetString(), ignoreCase: true, out var value)
-            && Enum.IsDefined(value)
-            && !int.TryParse(reader.GetString(), out _))
+        if (reader.TokenType == JsonTokenType.String && TryParse(reader.GetString(), out var value))
         {
             return value;
         }
@@ -32,6 +29,10 @@ public sealed class ThemePreferenceJsonConverter : JsonConverter<ThemePreference
         reader.Skip();
         return ThemePreference.System;
     }
+
+    /// <summary>Reads a theme name in any case; a number or an unknown name is not a theme.</summary>
+    public static bool TryParse(string? text, out ThemePreference value) =>
+        Enum.TryParse(text, ignoreCase: true, out value) && Enum.IsDefined(value) && !int.TryParse(text, out _);
 
     public override void Write(Utf8JsonWriter writer, ThemePreference value, JsonSerializerOptions options) =>
         writer.WriteStringValue(value.ToString().ToLowerInvariant());

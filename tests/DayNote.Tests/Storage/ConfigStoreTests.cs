@@ -82,6 +82,19 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Empty(Directory.GetFiles(_directory, "*.invalid"));
     }
 
+    [Theory]
+    [InlineData("DARK", true)]
+    [InlineData("light", true)]
+    [InlineData("2", false)]
+    [InlineData("sepia", false)]
+    public void The_reader_and_the_converter_accept_the_same_themes(string name, bool accepted)
+    {
+        File.WriteAllText(ConfigPath, $"{{\"theme\":\"{name}\"}}");
+        Assert.Equal(accepted, ThemePreferenceJsonConverter.TryParse(name, out var parsed));
+        Assert.Equal(accepted ? parsed : ThemePreference.System, Store.Load().Theme);
+        Assert.Equal(accepted ? 0 : 1, _warnings.Count);
+    }
+
     [Fact]
     public void Whole_text_styles_are_preserved_without_default_merge()
     {
