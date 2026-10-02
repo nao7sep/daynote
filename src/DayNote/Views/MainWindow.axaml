@@ -90,10 +90,9 @@
         </Style>
     </Window.Styles>
 
-    <!-- Three reserved tracks (toolbar / pane track / status bar) so the fixed chrome bars each own
-         an auto-sized row and the star-sized middle track can never overlap the status bar (a
-         DockPanel fill child can — see the window-chrome conventions). The pane track holds the four
-         panes, with the app-shell results floating over them; WindowMetrics reserves the panes only. -->
+    <!-- Three reserved tracks (toolbar / pane track / status bar), each fixed chrome bar in its own
+         auto-sized row (window-conventions). The pane track holds the four panes, with the app-shell
+         results floating over them; WindowMetrics reserves the panes only. -->
     <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*,Auto">
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}"

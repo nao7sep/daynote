@@ -1,14 +1,11 @@
 namespace DayNote.Views;
 
 /// <summary>
-/// Derives the main window's minimum size and pane-layout sizes from the layout itself, per the
-/// window-chrome conventions: the minimum is the sum of the content panes' real minimums plus the
-/// fixed chrome — never a hand-typed magic constant. The pane Grid's four content columns drive
-/// the minimum width; the toolbar, status bar, and the tallest pane's content minimum drive the
-/// minimum height. Notifications overlay the panes and therefore contribute no layout reserve.
-/// The side-pane distribution computes the displayed pixel widths from the
-/// user's drag intents, clamped to the current window — so the side panes stay fixed on resize and
-/// only the fill pane (the editor) absorbs the change.
+/// Derives the main window's minimum size and pane-layout sizes from the layout itself
+/// (window-conventions). The pane Grid's four content columns drive the minimum width; the toolbar,
+/// status bar, and the tallest pane's content minimum drive the minimum height. Notifications
+/// overlay the panes and therefore contribute no layout reserve. The side panes are displayed from
+/// the user's drag intents, clamped to the current window; the editor is the fill pane.
 /// </summary>
 public static class WindowMetrics
 {

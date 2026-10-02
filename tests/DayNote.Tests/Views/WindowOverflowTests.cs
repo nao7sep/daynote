@@ -10,11 +10,9 @@ namespace DayNote.Tests.Views;
 
 public sealed class WindowOverflowTests
 {
-    // The window carries no scroll region of its own: every pane here bounds itself and scrolls its
-    // own content, and the layout's floor fits inside any work area this app runs on, so the native
-    // minimum already keeps the window above that floor (app-chrome conventions). A viewport added
-    // back would be one that can never scroll — and the app-wide scroll rules that used to aim at it
-    // reached nothing else, because a type selector does not enter a control template.
+    // The window carries no scroll region of its own (window-conventions): every pane here bounds
+    // itself and scrolls its own content, and the layout's floor fits inside any work area this app
+    // runs on.
     [AvaloniaFact]
     public void The_window_has_no_scroll_region_of_its_own()
     {

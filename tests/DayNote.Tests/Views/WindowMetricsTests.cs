@@ -10,13 +10,11 @@ using Xunit;
 namespace DayNote.Tests.Views;
 
 /// <summary>
-/// The window's minimum size is derived, not guessed (per the window-chrome conventions):
-/// <see cref="WindowMetrics"/> sums the live pane-Grid column minimums plus the splitters, grid
-/// margin and fixed chrome so the window can never shrink small enough to hide a pane, toolbar, or
-/// status bar. The bounded result viewport is an overlay and contributes no layout height. These tests pin the derivation math directly
-/// (no Avalonia headless harness, matching the suite's pure-helper style) and guard that every
-/// content column declares a non-zero minimum width — so a future column added without one fails
-/// here rather than silently letting the window under-size.
+/// The window's minimum size (window-conventions): <see cref="WindowMetrics"/> sums the live
+/// pane-Grid column minimums plus the splitters, grid margin and fixed chrome. The bounded result
+/// viewport is an overlay and contributes no layout height. These tests pin the derivation math
+/// directly (no Avalonia headless harness, matching the suite's pure-helper style) and guard that
+/// every content column declares a non-zero minimum width, so a column added without one fails here.
 /// </summary>
 public sealed class WindowMetricsTests
 {
