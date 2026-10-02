@@ -110,7 +110,7 @@ public static partial class AtomicFile
         }
         catch
         {
-            // Best effort: a leftover temp file is harmless and will be overwritten by name reuse.
+            // Best effort: a temp left behind is debris, per the storage-path-conventions.
         }
     }
 
