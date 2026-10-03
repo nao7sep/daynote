@@ -110,6 +110,25 @@ public class LabelFitTests : WindowTest
         }
     }
 
+    [AvaloniaTheory]
+    [MemberData(nameof(Tags))]
+    public void the_records_window_clips_nothing_at_its_minimum_size(string tag)
+    {
+        using var speaking = Localizer.Speaking(tag);
+
+        var source = new DayNote.Tests.ViewModels.FakeRecordsSource();
+        source.Add(3, level: "warn");
+        var vm = new DayNote.ViewModels.RecordsWindowViewModel(source, new DayNote.Tests.ViewModels.FakeRecordsHost(), new NullLogger());
+        var window = Show(new RecordsWindow(vm));
+        window.Width = window.MinWidth;
+        window.Height = window.MinHeight;
+        vm.SelectedRecord = vm.Records[0];
+        Dispatcher.UIThread.RunJobs();
+
+        // The rows' levels, the detail's level and its Details heading cannot move.
+        AssertNothingClipped(window, window, tag, atLeast: 4);
+    }
+
     // A theory over a whole window, with the checks for what cannot grow: every label's words fit the
     // box it was given, and every box ends inside the surface.
     private static void AssertNothingClipped(Visual root, Visual surface, string tag, int atLeast)

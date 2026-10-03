@@ -70,6 +70,7 @@ public partial class App : Application
             var window = new MainWindow
             {
                 DataContext = viewModel,
+                RecordsSource = Program.Records,
             };
             dialogs.Owner = window;
 
@@ -100,15 +101,28 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    private static void RegisterOwnerActivation(Window window)
+    // A second launch, and on macOS a click on the Dock icon, bring the main window back. AppKit
+    // restores a minimized window on a Dock click only while no other window is visible, so with the
+    // Records window open the main window would otherwise stay in the Dock.
+    private void RegisterOwnerActivation(Window window)
     {
-        SingleInstanceLease.RegisterOwnerActivationHandler(() => Dispatcher.UIThread.Post(() =>
+        void BringBack()
         {
             if (window.WindowState == WindowState.Minimized)
                 window.WindowState = WindowState.Normal;
             if (!window.IsVisible)
                 window.Show();
             window.Activate();
-        }));
+        }
+
+        SingleInstanceLease.RegisterOwnerActivationHandler(() => Dispatcher.UIThread.Post(BringBack));
+        if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
+        {
+            activatable.Activated += (_, e) =>
+            {
+                if (e.Kind == ActivationKind.Reopen)
+                    BringBack();
+            };
+        }
     }
 }

@@ -120,6 +120,21 @@ public static class DayNoteTime
     }
 
     /// <summary>
+    /// Renders a UTC timestamp in <paramref name="zone"/> as <paramref name="culture"/>'s short date
+    /// and long time, so the seconds show, and with <paramref name="milliseconds"/> the milliseconds
+    /// too, after the culture's own decimal separator.
+    /// </summary>
+    public static string ToPreciseDisplay(DateTimeOffset value, TimeZoneInfo zone, CultureInfo culture, bool milliseconds = false)
+    {
+        var local = TimeZoneInfo.ConvertTime(value.ToUniversalTime(), zone);
+        var format = culture.DateTimeFormat;
+        var time = milliseconds
+            ? format.LongTimePattern.Replace("ss", "ss'" + culture.NumberFormat.NumberDecimalSeparator + "'fff", StringComparison.Ordinal)
+            : format.LongTimePattern;
+        return local.ToString(format.ShortDatePattern + " " + time, culture);
+    }
+
+    /// <summary>
     /// Renders a UTC timestamp for the status bar, relative to <paramref name="now"/>, in
     /// <paramref name="zone"/>: the time alone when it falls on the same calendar day, the month and day
     /// when within the same year, otherwise the short date. The same-day and same-year comparison runs

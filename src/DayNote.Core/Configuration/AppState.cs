@@ -23,6 +23,15 @@ public sealed class AppState
     public double? WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
 
+    // The records window's own last normal geometry, kept the same way, and the pixel width the user
+    // last dragged its list pane to.
+    public int? RecordsWindowPositionX { get; set; }
+    public int? RecordsWindowPositionY { get; set; }
+    public double? RecordsWindowWidth { get; set; }
+    public double? RecordsWindowHeight { get; set; }
+    public bool RecordsWindowMaximized { get; set; }
+    public double RecordsListWidth { get; set; } = 380;
+
     // Current selection, restored on next launch.
     public string? CurrentBinderPath { get; set; }
     public string? CurrentNoteId { get; set; }

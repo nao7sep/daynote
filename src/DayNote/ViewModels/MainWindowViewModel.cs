@@ -26,7 +26,7 @@ namespace DayNote.ViewModels;
 /// sync clients. Side-effecting file work is delegated to the Core storage layer; dialogs and the
 /// native file picker go through <see cref="IDialogService"/>.
 /// </summary>
-public sealed partial class MainWindowViewModel : ViewModelBase
+public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowHost
 {
     // The subjects of app-shell results. Each holds at most one result, so these five are also the
     // most results the shell can show at once.
@@ -344,6 +344,36 @@ public sealed partial class MainWindowViewModel : ViewModelBase
         _state.WindowHeight = height;
         _state.WindowMaximized = maximized;
     }
+
+    // The records window keeps its layout in this app's state; each save writes state.json at once,
+    // as an accepted close or a finished drag happens rarely.
+    public double RecordsListWidth => _state.RecordsListWidth;
+
+    public void SaveRecordsListWidth(double width)
+    {
+        _state.RecordsListWidth = width;
+        PersistState();
+    }
+
+    public WindowPlacement? RecordsWindowPlacement =>
+        _state is { RecordsWindowPositionX: { } x, RecordsWindowPositionY: { } y, RecordsWindowWidth: { } width, RecordsWindowHeight: { } height }
+            ? new WindowPlacement(x, y, width, height, _state.RecordsWindowMaximized)
+            : null;
+
+    public void SaveRecordsWindowPlacement(WindowPlacement placement)
+    {
+        _state.RecordsWindowPositionX = placement.X;
+        _state.RecordsWindowPositionY = placement.Y;
+        _state.RecordsWindowWidth = placement.Width;
+        _state.RecordsWindowHeight = placement.Height;
+        _state.RecordsWindowMaximized = placement.Maximized;
+        PersistState();
+    }
+
+    public TimeZoneInfo DisplayZone => _displayZone;
+
+    /// <summary>The app's logger, which the windows this one opens log through.</summary>
+    internal IAppLogger Log => _log;
 
     [ObservableProperty]
     private FontFamily _editorFontFamily = UiFont.ResolveEditor(EditorTextStyle.DefaultFixedWidthFamilies);

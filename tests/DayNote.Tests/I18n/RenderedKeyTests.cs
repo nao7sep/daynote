@@ -46,7 +46,7 @@ public class RenderedKeyTests : WindowTest
 
         // The menu's items are not on screen until it opens, so the walk above cannot see them.
         var keys = Keys();
-        foreach (var name in new[] { "SettingsMenuItem", "ShortcutsMenuItem", "AboutMenuItem" })
+        foreach (var name in new[] { "SettingsMenuItem", "RecordsMenuItem", "ShortcutsMenuItem", "AboutMenuItem" })
         {
             var header = Assert.IsType<string>(window.FindControl<MenuItem>(name)!.Header);
             Assert.DoesNotContain(header, keys);
@@ -59,6 +59,24 @@ public class RenderedKeyTests : WindowTest
         using var empty = PopulatedMainWindow.Empty();
         var window = Show(empty.Window);
 
+        AssertNoKeys(window);
+    }
+
+    [AvaloniaFact]
+    public void the_records_window_shows_no_key()
+    {
+        // Rows, both filters, a selected record whole, and the end of the list after a failed page.
+        var source = new DayNote.Tests.ViewModels.FakeRecordsSource();
+        source.Add(150, level: "warn");
+        var vm = new RecordsWindowViewModel(source, new DayNote.Tests.ViewModels.FakeRecordsHost(), new NullLogger());
+        var window = Show(new RecordsWindow(vm));
+        vm.SelectedRecord = vm.Records[0];
+        source.PageFailure = new IOException("busy");
+        vm.ViewportChanged(atTop: false, nearEnd: true, byReader: true);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(vm.HasDetail);
+        Assert.NotNull(vm.EndNote);
         AssertNoKeys(window);
     }
 

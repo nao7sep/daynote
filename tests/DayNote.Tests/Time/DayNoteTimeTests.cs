@@ -163,4 +163,16 @@ public sealed class DayNoteTimeTests
         var value = new DateTimeOffset(2026, 6, 10, 3, 15, 42, 123, TimeSpan.Zero);
         Assert.Equal("20260610-031542-123-utc", DayNoteTime.FileStamp(value));
     }
+
+    [Theory]
+    [InlineData("de-DE", "04.10.2026 09:05:07", "04.10.2026 09:05:07,482")]
+    [InlineData("ja-JP", "2026/10/04 9:05:07", "2026/10/04 9:05:07.482")]
+    public void ToPreciseDisplay_shows_the_seconds_and_on_request_the_milliseconds(string culture, string seconds, string milliseconds)
+    {
+        var value = new DateTimeOffset(2026, 10, 4, 9, 5, 7, 482, TimeSpan.Zero);
+        var given = CultureInfo.GetCultureInfo(culture);
+
+        Assert.Equal(seconds, DayNoteTime.ToPreciseDisplay(value, TimeZoneInfo.Utc, given));
+        Assert.Equal(milliseconds, DayNoteTime.ToPreciseDisplay(value, TimeZoneInfo.Utc, given, milliseconds: true));
+    }
 }

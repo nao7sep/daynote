@@ -19,8 +19,11 @@ namespace DayNote.Logging;
 /// field given as one JSON object. An entry the database cannot take is appended as one JSON line to
 /// <c>logs/yyyymmdd-hhmmss-fff-utc.log</c>, named for the session, carrying the database's error; if that
 /// fails too, it goes to <see cref="Console.Error"/>. Logging never throws.
+///
+/// The records window reads through the same thread (<see cref="IRecordsSource"/>), so a read sees
+/// every entry logged before it and never contends with a write for the connection.
 /// </remarks>
-public sealed class RecordsLogger : IAppLogger, IDisposable
+public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
 {
     private const string Schema = """
         CREATE TABLE IF NOT EXISTS logs (
@@ -34,6 +37,7 @@ public sealed class RecordsLogger : IAppLogger, IDisposable
         );
         CREATE INDEX IF NOT EXISTS idx_logs_session ON logs (session, id);
         CREATE INDEX IF NOT EXISTS idx_logs_note_id ON logs (note_id, id) WHERE note_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_logs_time ON logs (time, id);
         """;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -45,6 +49,7 @@ public sealed class RecordsLogger : IAppLogger, IDisposable
 
     private static readonly TimeSpan FlushWait = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan CloseWait = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ReadWait = TimeSpan.FromSeconds(10);
 
     private readonly BlockingCollection<Action> _queue = new();
     private readonly Thread _owner;
@@ -165,7 +170,58 @@ public sealed class RecordsLogger : IAppLogger, IDisposable
         catch (Exception writeError)
         {
             FallBack(time, level, message, fields, writeError);
+            return;
         }
+
+        try
+        {
+            Stored?.Invoke();
+        }
+        catch
+        {
+            // A listener's failure is its own; the entry is stored and the thread keeps writing.
+        }
+    }
+
+    public string Session => _session;
+
+    public event Action? Stored;
+
+    public Task<RecordsPage> ReadPageAsync(RecordsQuery query) =>
+        ReadAsync(connection => RecordsReads.Page(connection, query));
+
+    public Task<RecordDetail?> ReadDetailAsync(long id) =>
+        ReadAsync(connection => RecordsReads.Detail(connection, id));
+
+    public Task<IReadOnlyList<string>> ReadSessionsAsync() =>
+        ReadAsync(RecordsReads.Sessions);
+
+    /// <summary>
+    /// Runs <paramref name="read"/> on the owning thread after every entry queued before it, and
+    /// gives up waiting after <see cref="ReadWait"/>. A read logs nothing: each record it wrote would
+    /// signal the next read of an open records window.
+    /// </summary>
+    private Task<T> ReadAsync<T>(Func<SqliteConnection, T> read)
+    {
+        var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queued = TryQueue(() =>
+        {
+            try
+            {
+                result.TrySetResult(read(_connection ?? throw new InvalidOperationException(
+                    "The records database could not be opened.", _openError)));
+            }
+            catch (Exception ex)
+            {
+                result.TrySetException(ex);
+            }
+        });
+        if (!queued)
+        {
+            result.TrySetException(new InvalidOperationException("The records logger is closed."));
+        }
+
+        return result.Task.WaitAsync(ReadWait);
     }
 
     private void Own()

@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     // The busy claim of a quit in flight (PLAYBOOK, Own the work in flight): a second close request
     // while the first is still flushing waits for it rather than starting another shutdown.
     private bool _quitting;
+    private RecordsWindow? _recordsWindow;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
     private (int X, int Y, double Width, double Height)? _normalGeometry;
 
@@ -37,6 +38,12 @@ public partial class MainWindow : Window
     private readonly ListReorder<AttachmentItemViewModel> _attachmentReorder;
 
     private MainWindowViewModel? Vm => DataContext as MainWindowViewModel;
+
+    /// <summary>The records the Records window reads; the app sets it, and without it the item does nothing.</summary>
+    internal DayNote.Logging.IRecordsSource? RecordsSource { get; set; }
+
+    /// <summary>The open Records window, if any.</summary>
+    internal RecordsWindow? RecordsWindow => _recordsWindow;
 
     private MainWindowViewModel? _themeSource;
 
@@ -360,6 +367,11 @@ public partial class MainWindow : Window
             }
 
             _quitting = true;
+
+            // The Records window goes first, so its placement is in the state this quit writes, and
+            // it can never be the window that keeps the app running.
+            _recordsWindow?.Close();
+
             CapturePaneWidths(vm);
             RememberNormalGeometry();
             if (WindowState is WindowState.Normal or WindowState.Maximized
@@ -387,6 +399,35 @@ public partial class MainWindow : Window
         }
 
         base.OnClosing(e);
+    }
+
+    /// <summary>
+    /// Opens the Records window, or brings it forward when it is open. Not while the app quits, so a
+    /// window opened then cannot outlive the main window.
+    /// </summary>
+    internal void OpenRecordsWindow()
+    {
+        if (_quitting || RecordsSource is not { } source || DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        if (_recordsWindow is { } open)
+        {
+            open.BringForward();
+            return;
+        }
+
+        vm.Log.Info("Showing records");
+        var window = new RecordsWindow(new RecordsWindowViewModel(source, vm, vm.Log));
+        window.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_recordsWindow, window))
+                _recordsWindow = null;
+        };
+        window.RestoreWindowGeometry();
+        _recordsWindow = window;
+        window.Show();
     }
 
     private void RememberNormalGeometry()
@@ -541,6 +582,8 @@ public partial class MainWindow : Window
     // does not reliably inherit the window's DataContext for command bindings.
     private void Settings_Click(object? sender, RoutedEventArgs e) =>
         (DataContext as MainWindowViewModel)?.OpenSettingsCommand.Execute(null);
+
+    private void Records_Click(object? sender, RoutedEventArgs e) => OpenRecordsWindow();
 
     private void Shortcuts_Click(object? sender, RoutedEventArgs e) =>
         (DataContext as MainWindowViewModel)?.OpenShortcutsCommand.Execute(null);

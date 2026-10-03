@@ -26,17 +26,19 @@ public class CatalogueTests
     /// </summary>
     private static readonly Dictionary<string, string[]> SameAsEnglish = new()
     {
-        // "OK", "Editor" and "Navigation" are the German words.
-        ["de"] = ["common.ok", "shortcuts.groupEditor", "shortcuts.groupNavigation"],
-        // "Editor" is the Spanish word, and Apple's Spanish Window menu says "Zoom".
-        ["es"] = ["nativeMenu.zoom", "shortcuts.groupEditor"],
-        // French writes OK, Menu, Navigation, Notes and "1 note" the same way, and Apple's French app
-        // menu says "Services".
+        // "OK", "Editor", "Navigation", "Details", "Info" and "Debug" are the German words.
+        ["de"] = [
+            "common.ok", "records.details", "records.levelDebug", "records.levelInfo",
+            "shortcuts.groupEditor", "shortcuts.groupNavigation"],
+        // "Editor" and "Error" are Spanish words, and Apple's Spanish Window menu says "Zoom".
+        ["es"] = ["nativeMenu.zoom", "records.levelError", "shortcuts.groupEditor"],
+        // French writes OK, Menu, Navigation, Note, Notes and "1 note" the same way, and Apple's French
+        // app menu says "Services".
         ["fr"] = [
             "binder.noteCount", "common.ok", "menu.button", "nativeMenu.services", "notes.pane",
-            "shortcuts.groupNavigation", "shortcuts.groupNotes"],
-        // "OK", "Menu" and "Editor" are Italian words.
-        ["it"] = ["common.ok", "menu.button", "shortcuts.groupEditor"],
+            "records.note", "shortcuts.groupNavigation", "shortcuts.groupNotes"],
+        // "OK", "Menu", "Editor", "Info" and "Debug" are Italian words.
+        ["it"] = ["common.ok", "menu.button", "records.levelDebug", "records.levelInfo", "shortcuts.groupEditor"],
         // "OK", "Menu" and "Editor" are Portuguese words, and Apple's Brazilian Window menu says "Zoom".
         ["pt-BR"] = ["common.ok", "menu.button", "nativeMenu.zoom", "shortcuts.groupEditor"],
         ["ru"] = [],

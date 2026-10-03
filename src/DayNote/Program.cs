@@ -15,6 +15,9 @@ internal static class Program
     /// <summary>The process-wide logger, available to the application once <see cref="Main"/> opens it.</summary>
     internal static IAppLogger Log { get; private set; } = null!;
 
+    /// <summary>The records the Records window reads: the logger's own database.</summary>
+    internal static IRecordsSource? Records { get; private set; }
+
     /// <summary>The single path resolver, resolved once here and threaded to the rest of the app.</summary>
     internal static AppPaths Paths { get; private set; } = null!;
 
@@ -78,6 +81,7 @@ internal static class Program
         // record every later failure.
         var logger = RecordsLogger.Open(paths.RecordsFile, paths.LogsDirectory, DebugEnabled());
         Log = logger;
+        Records = logger;
         Paths = paths;
         RegisterCrashHooks(logger);
 

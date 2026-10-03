@@ -103,7 +103,7 @@
                     <TextBlock Text="DayNote" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
-                    <!-- Settings / Shortcuts / About live in a hamburger menu, matching the fleet. -->
+                    <!-- Settings / Records / Shortcuts / About live in a hamburger menu, matching the fleet. -->
                     <Button Classes="utility compact icon" i18n:Localized.ToolTip="menu.button" i18n:Localized.AutomationName="menu.button">
                         <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across
                              fonts. Bars 16 long and 2 thick with 5 between them: closer together they read as
@@ -114,6 +114,7 @@
                         <Button.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedRight">
                                 <MenuItem x:Name="SettingsMenuItem" i18n:Localized.Header="menu.settings" Click="Settings_Click"/>
+                                <MenuItem x:Name="RecordsMenuItem" i18n:Localized.Header="menu.records" Click="Records_Click"/>
                                 <MenuItem x:Name="ShortcutsMenuItem" i18n:Localized.Header="menu.shortcuts" Click="Shortcuts_Click"/>
                                 <MenuItem x:Name="AboutMenuItem" i18n:Localized.Header="menu.about" Click="About_Click"/>
                             </MenuFlyout>
