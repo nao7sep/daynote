@@ -30,13 +30,13 @@ internal sealed class PopulatedMainWindow : IDisposable
 {
     private readonly string? _previousHome;
 
-    private PopulatedMainWindow()
+    private PopulatedMainWindow(IAppLogger? log = null)
     {
         _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
         Home = Path.Combine(Path.GetTempPath(), "daynote-i18n-tests-" + IdGenerator.New());
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, Home);
         Dialogs = new QuietDialogs();
-        ViewModel = new MainWindowViewModel(new AppPaths(), Dialogs, new NullLogger());
+        ViewModel = new MainWindowViewModel(new AppPaths(), Dialogs, log ?? new NullLogger());
         Window = new MainWindow { DataContext = ViewModel };
         Dialogs.Owner = Window;
     }
@@ -50,13 +50,13 @@ internal sealed class PopulatedMainWindow : IDisposable
     internal MainWindow Window { get; }
 
     /// <summary>A main window over an empty storage root: no binder, no notes, every pane empty.</summary>
-    internal static PopulatedMainWindow Empty() => new();
+    internal static PopulatedMainWindow Empty(IAppLogger? log = null) => new(log);
 
     /// <summary>
     /// A main window with every surface populated. Call it on the UI thread, and show
     /// <see cref="Window"/> before <see cref="FillAsync"/>, as the app does.
     /// </summary>
-    internal static PopulatedMainWindow Create() => new();
+    internal static PopulatedMainWindow Create(IAppLogger? log = null) => new(log);
 
     /// <summary>Opens a binder and puts something on every surface that holds words.</summary>
     internal async Task FillAsync()

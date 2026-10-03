@@ -18,6 +18,10 @@ namespace DayNote.Views;
 public partial class MainWindow : Window
 {
     private bool _shutdownComplete;
+
+    // The busy claim of a quit in flight (PLAYBOOK, Own the work in flight): a second close request
+    // while the first is still flushing waits for it rather than starting another shutdown.
+    private bool _quitting;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
     private (int X, int Y, double Width, double Height)? _normalGeometry;
 
@@ -350,6 +354,12 @@ public partial class MainWindow : Window
         if (!_shutdownComplete && DataContext is MainWindowViewModel vm)
         {
             e.Cancel = true;
+            if (_quitting)
+            {
+                return;
+            }
+
+            _quitting = true;
             CapturePaneWidths(vm);
             RememberNormalGeometry();
             if (WindowState is WindowState.Normal or WindowState.Maximized
@@ -367,6 +377,10 @@ public partial class MainWindow : Window
             {
                 _shutdownComplete = true;
                 Close();
+            }
+            else
+            {
+                _quitting = false;
             }
 
             return;
