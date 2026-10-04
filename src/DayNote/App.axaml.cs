@@ -79,23 +79,6 @@ public partial class App : Application
             desktop.MainWindow = window;
             _mainWindow = window;
             RegisterOwnerActivation(window);
-
-            // Report material recovery once the main window can own the dialog.
-            window.Opened += async (_, _) =>
-            {
-                var quarantined = DayNote.Core.Storage.QuarantineJournal.Drain();
-                foreach (var path in quarantined)
-                {
-                    Program.Log.Warn("Unreadable file set aside", new { path });
-                }
-
-                if (FailurePresentation.SetAsideConfig(quarantined, Program.Paths.ConfigFile) is { } configCopy)
-                {
-                    await dialogs.ShowErrorAsync(
-                        Message.Of("quarantine.settingsTitle"),
-                        FailurePresentation.SettingsReset(configCopy));
-                }
-            };
         }
 
         base.OnFrameworkInitializationCompleted();

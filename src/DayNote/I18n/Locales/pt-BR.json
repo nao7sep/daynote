@@ -92,8 +92,8 @@
   "failure.saveBinderGone": "Suas alterações continuam no DayNote, mas o local do fichário não está mais disponível. Restaure o local e tente novamente.",
   "failure.saveBinderPermission": "Suas alterações continuam no DayNote, mas não foi possível salvar o fichário. Verifique se o local do fichário permite gravação e tente novamente.",
   "failure.settingsSave": "Não foi possível salvar as configurações. Suas alterações continuam aqui; tente novamente.",
-  "failure.startupData": "O DayNote não conseguiu ler seus arquivos de configuração ou de estado, então o salvamento foi desativado para não substituir dados íntegros. Verifique o log da sessão, repare ou remova o arquivo afetado e reinicie.",
   "failure.startupDataTitle": "Falha ao carregar",
+  "failure.startupSettings": "O DayNote não conseguiu ler seu arquivo de configurações em {path}, então parou antes de alterar qualquer coisa. O arquivo continua onde estava. Verifique as permissões dele ou mova-o para outro lugar e reinicie o DayNote.",
   "failure.startupStorage": "O DayNote não conseguiu abrir seu local de armazenamento. Verifique se o local existe e permite gravação e reinicie o DayNote.",
   "files.andMore": {
     "one": "{names} e mais {count}",

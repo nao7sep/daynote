@@ -12,7 +12,8 @@ public static class FailurePresentation
 {
     public static Message StartupStorage() => Message.Of("failure.startupStorage");
 
-    public static Message StartupData() => Message.Of("failure.startupData");
+    public static Message StartupSettings(string configFile) =>
+        Message.Of("failure.startupSettings", ("path", configFile));
 
     /// <summary>
     /// The set-aside copy of the config file among <paramref name="quarantined"/>, if any; only that
@@ -20,8 +21,10 @@ public static class FailurePresentation
     /// </summary>
     public static string? SetAsideConfig(IEnumerable<string> quarantined, string configFile)
     {
+        var directory = Path.GetDirectoryName(configFile);
         var prefix = Path.GetFileNameWithoutExtension(configFile) + "-";
-        return quarantined.LastOrDefault(path => Path.GetFileName(path).StartsWith(prefix, StringComparison.Ordinal));
+        return quarantined.LastOrDefault(path => Path.GetDirectoryName(path) == directory
+            && Path.GetFileName(path).StartsWith(prefix, StringComparison.Ordinal));
     }
 
     public static Message SettingsReset(string setAsidePath) =>

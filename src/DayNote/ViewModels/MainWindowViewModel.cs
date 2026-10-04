@@ -62,7 +62,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // editor are handed it on every refresh rather than keeping their own copy.
     private TimeZoneInfo _displayZone = TimeZoneInfo.Local;
     private AppState _state = new();
-    private Exception? _loadError;
+
+    // The settings file that could not be read or set aside at launch; while set, nothing is saved.
+    private string? _unreadableConfig;
 
     private LoadedBinder? _current;
     private string _baselineHash = string.Empty;
@@ -106,9 +108,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         _stateStore = new JsonStore<AppState>(paths.StateFile, recordBackup: false);
 
-        // All startup I/O (directory creation, reading config/state) is gated here: any failure
-        // becomes _loadError, which disables saving and surfaces an error dialog once the window is
-        // shown, rather than crashing before any UI exists.
+        // All startup I/O (directory creation, reading config/state) is gated here, rather than
+        // crashing before any UI exists: a settings file that cannot be read halts with saving
+        // disabled and an error dialog once the window is shown; a state file that cannot be read
+        // only costs the remembered view.
         LoadConfigAndState();
         _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
 
@@ -166,7 +169,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             await CheckExternalChangeAsync();
         };
 
-        if (_loadError is null)
+        if (_unreadableConfig is null)
         {
             ApplyConfig();
             RestorePaneWidths();
@@ -398,12 +401,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// <summary>Runs after the window is shown, so dialogs have an owner.</summary>
     public async Task InitializeAsync()
     {
-        if (_loadError is not null)
+        // Material recovery is reported once the window can own the dialog (store-recovery-conventions).
+        var quarantined = QuarantineJournal.Drain();
+        foreach (var path in quarantined)
+        {
+            _log.Warn("Unreadable file set aside", new { path });
+        }
+
+        if (_unreadableConfig is { } unreadable)
         {
             await _dialogs.ShowErrorAsync(
                 Message.Of("failure.startupDataTitle"),
-                FailurePresentation.StartupData());
+                FailurePresentation.StartupSettings(unreadable));
             return;
+        }
+
+        if (FailurePresentation.SetAsideConfig(quarantined, _paths.ConfigFile) is { } configCopy)
+        {
+            await _dialogs.ShowErrorAsync(
+                Message.Of("quarantine.settingsTitle"),
+                FailurePresentation.SettingsReset(configCopy));
         }
 
         if (!string.IsNullOrEmpty(_state.CurrentBinderPath)
@@ -2054,23 +2071,34 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
+    // Each store recovers on its own path (store-recovery-conventions): the settings halt, the
+    // disposable view state is logged and replaced.
     private void LoadConfigAndState()
     {
         try
         {
             _paths.EnsureCreated();
             _config = _configStore.Load();
-            _state = _stateStore.Load() ?? new AppState();
-            _log.Info("Configuration and state loaded", ConfigSummary(_config));
         }
         catch (Exception ex)
         {
-            _loadError = ex;
+            _unreadableConfig = _paths.ConfigFile;
             _config = new AppConfig();
-            _state = new AppState();
-            _log.Error("Failed to load configuration or state; saving disabled", new { root = _paths.Root }, ex);
+            _log.Error("Failed to load configuration; saving disabled", new { path = _paths.ConfigFile }, ex);
             return;
         }
+
+        try
+        {
+            _state = _stateStore.Load() ?? new AppState();
+        }
+        catch (Exception ex)
+        {
+            _state = new AppState();
+            _log.Warn("Failed to load state; using defaults", new { path = _paths.StateFile }, ex);
+        }
+
+        _log.Info("Configuration and state loaded", ConfigSummary(_config));
     }
 
     private void ApplyConfig()

@@ -92,8 +92,8 @@
   "failure.saveBinderGone": "Vos modifications sont toujours dans DayNote, mais l’emplacement du classeur n’est plus disponible. Rétablissez l’emplacement, puis réessayez.",
   "failure.saveBinderPermission": "Vos modifications sont toujours dans DayNote, mais le classeur n’a pas pu être enregistré. Vérifiez que l’emplacement du classeur est accessible en écriture, puis réessayez.",
   "failure.settingsSave": "Les paramètres n’ont pas pu être enregistrés. Vos modifications sont toujours là\u00a0; réessayez.",
-  "failure.startupData": "DayNote n’a pas pu lire ses fichiers de configuration ou d’état\u00a0; l’enregistrement est donc désactivé pour ne pas écraser des données saines. Consultez le journal de session, réparez ou retirez le fichier concerné, puis redémarrez.",
   "failure.startupDataTitle": "Échec du chargement",
+  "failure.startupSettings": "DayNote n’a pas pu lire son fichier de paramètres situé à {path}\u00a0; il s’est donc arrêté avant de modifier quoi que ce soit. Le fichier a été laissé en place. Vérifiez ses autorisations ou déplacez-le ailleurs, puis redémarrez DayNote.",
   "failure.startupStorage": "DayNote n’a pas pu ouvrir son emplacement de stockage. Vérifiez qu’il existe et qu’il est accessible en écriture, puis redémarrez DayNote.",
   "files.andMore": {
     "one": "{names} et {count} autre",

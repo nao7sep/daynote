@@ -87,8 +87,8 @@
   "failure.saveBinderGone": "Ihre Änderungen sind noch in DayNote, aber der Speicherort der Mappe ist nicht mehr verfügbar. Stellen Sie den Speicherort wieder her, und versuchen Sie es dann erneut.",
   "failure.saveBinderPermission": "Ihre Änderungen sind noch in DayNote, aber die Mappe konnte nicht gespeichert werden. Prüfen Sie, ob der Speicherort der Mappe beschreibbar ist, und versuchen Sie es dann erneut.",
   "failure.settingsSave": "Die Einstellungen konnten nicht gespeichert werden. Ihre Änderungen sind noch vorhanden; versuchen Sie es erneut.",
-  "failure.startupData": "DayNote konnte seine Konfigurations- oder Statusdateien nicht lesen. Das Speichern ist deshalb deaktiviert, damit keine intakten Daten überschrieben werden. Sehen Sie im Sitzungsprotokoll nach, reparieren oder entfernen Sie die betroffene Datei, und starten Sie DayNote neu.",
   "failure.startupDataTitle": "Laden fehlgeschlagen",
+  "failure.startupSettings": "DayNote konnte seine Einstellungsdatei unter {path} nicht lesen und hat deshalb angehalten, bevor etwas geändert wurde. Die Datei liegt unverändert an ihrem Platz. Prüfen Sie ihre Zugriffsrechte oder verschieben Sie sie an einen anderen Ort, und starten Sie DayNote dann neu.",
   "failure.startupStorage": "DayNote konnte seinen Speicherort nicht öffnen. Prüfen Sie, ob der Ort existiert und beschreibbar ist, und starten Sie DayNote dann neu.",
   "files.andMore": {
     "one": "{names} und {count} weitere",

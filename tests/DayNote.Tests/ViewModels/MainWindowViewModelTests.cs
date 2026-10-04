@@ -24,6 +24,7 @@ using DayNote.Logging;
 using DayNote.Services;
 using DayNote.ViewModels;
 using DayNote.Views;
+using DayNote.Tests.I18n;
 using DayNote.Tests.Storage;
 using Xunit;
 
@@ -259,6 +260,120 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.False(reset.HasBinder);
         Assert.False(File.Exists(configFile));
         await reset.ShutdownAsync();
+    }
+
+    // ----- Loading config.json and state.json, each on its own path ---------------------------------
+
+    private string ConfigPath => Path.Combine(_home, "config.json");
+
+    private string StatePath => Path.Combine(_home, "state.json");
+
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static void WriteUnreadable(string path, string content)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        File.SetUnixFileMode(path, UnixFileMode.None);
+    }
+
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static void MakeReadable(string path) =>
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+
+    private string[] SetAsideCopies() => Directory.GetFiles(_home, "*.invalid");
+
+    [AvaloniaFact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public async Task An_unreadable_state_file_keeps_the_settings_and_opens_on_the_default_view()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
+        QuarantineJournal.Drain();
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(ConfigPath, """{"theme":"dark"}""");
+        WriteUnreadable(StatePath, """{"bindersPaneWidth":333}""");
+        var log = new RecordingLogger();
+        try
+        {
+            var vm = new MainWindowViewModel(new AppPaths(), _dialogs, log);
+            await vm.InitializeAsync();
+
+            Assert.True(vm.IsReady);
+            Assert.Equal(ThemePreference.Dark, vm.Theme);
+            Assert.Equal(new AppState().BindersPaneWidth, vm.BindersPaneWidth);
+            Assert.Empty(_dialogs.Errors);
+            Assert.Single(log.Entries, entry => entry.Level == "warn");
+            Assert.DoesNotContain(log.Entries, entry => entry.Level == "error");
+            await vm.ShutdownAsync();
+        }
+        finally
+        {
+            MakeReadable(StatePath);
+        }
+    }
+
+    [AvaloniaFact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public async Task An_unreadable_settings_file_halts_names_its_path_and_is_left_in_place()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
+        QuarantineJournal.Drain();
+        const string content = """{"theme":"dark"}""";
+        WriteUnreadable(ConfigPath, content);
+        try
+        {
+            var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+            await vm.InitializeAsync();
+
+            Assert.False(vm.IsReady);
+            var (title, message) = Assert.Single(_dialogs.Errors);
+            Assert.Equal("failure.startupDataTitle", title.Key);
+            Assert.Contains(ConfigPath, English.Of(message), StringComparison.Ordinal);
+            Assert.Empty(SetAsideCopies());
+            await vm.ShutdownAsync();
+        }
+        finally
+        {
+            MakeReadable(ConfigPath);
+        }
+
+        Assert.Equal(content, File.ReadAllText(ConfigPath));
+    }
+
+    [AvaloniaFact]
+    public async Task A_corrupt_settings_file_is_set_aside_and_the_notice_names_the_copy()
+    {
+        QuarantineJournal.Drain();
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(ConfigPath, "{ not json");
+
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+        await vm.InitializeAsync();
+
+        Assert.True(vm.IsReady);
+        var copy = Assert.Single(SetAsideCopies());
+        Assert.StartsWith("config-", Path.GetFileName(copy), StringComparison.Ordinal);
+        var (title, message) = Assert.Single(_dialogs.Errors);
+        Assert.Equal("quarantine.settingsTitle", title.Key);
+        Assert.Contains(copy, English.Of(message), StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_corrupt_state_file_is_set_aside_without_a_notice()
+    {
+        QuarantineJournal.Drain();
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(StatePath, "{ not json");
+        var log = new RecordingLogger();
+
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, log);
+        await vm.InitializeAsync();
+
+        Assert.True(vm.IsReady);
+        Assert.StartsWith("state-", Path.GetFileName(Assert.Single(SetAsideCopies())), StringComparison.Ordinal);
+        Assert.Empty(_dialogs.Errors);
+        Assert.Contains(log.Entries, entry => entry == ("warn", "Unreadable file set aside"));
+        await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]
@@ -1597,7 +1712,12 @@ public sealed class MainWindowViewModelTests : IDisposable
             LastConfirmMessage = message;
             return Task.FromResult(ConfirmResult);
         }
-        public Task ShowErrorAsync(Message title, Message message) => Task.CompletedTask;
+        public List<(Message Title, Message Message)> Errors { get; } = [];
+        public Task ShowErrorAsync(Message title, Message message)
+        {
+            Errors.Add((title, message));
+            return Task.CompletedTask;
+        }
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
         public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)

@@ -82,8 +82,8 @@
   "failure.saveBinderGone": "你的更改仍在 DayNote 中，但笔记本所在位置已不可用。请恢复该位置，然后重试。",
   "failure.saveBinderPermission": "你的更改仍在 DayNote 中，但无法保存笔记本。请确认笔记本所在位置可写，然后重试。",
   "failure.settingsSave": "无法保存设置。你的更改仍然保留，请重试。",
-  "failure.startupData": "DayNote 无法读取其配置文件或状态文件，因此已停用保存，以免覆盖完好的数据。请查看会话日志，修复或移除受影响的数据文件，然后重新启动。",
   "failure.startupDataTitle": "载入失败",
+  "failure.startupSettings": "DayNote 无法读取位于 {path} 的设置文件，因此在做出任何更改之前就停止了。该文件仍留在原处。请检查它的访问权限，或将它移到别处，然后重新启动 DayNote。",
   "failure.startupStorage": "DayNote 无法打开其存储位置。请确认该位置存在且可写，然后重新启动 DayNote。",
   "files.andMore": {
     "other": "{names}，以及另外 {count} 个"

@@ -87,8 +87,8 @@
   "failure.saveBinderGone": "Your changes are still in DayNote, but the binder location is no longer available. Restore the location, then try again.",
   "failure.saveBinderPermission": "Your changes are still in DayNote, but the binder could not be saved. Check that the binder location is writable, then try again.",
   "failure.settingsSave": "Settings could not be saved. Your changes are still here; try again.",
-  "failure.startupData": "DayNote could not read its configuration or state files, so saving is disabled to avoid overwriting good data. Check the session log, repair or remove the affected data file, and restart.",
   "failure.startupDataTitle": "Load failed",
+  "failure.startupSettings": "DayNote couldn’t read its settings file at {path}, so it stopped before changing anything. The file was left in place. Check its permissions or move it aside, then restart DayNote.",
   "failure.startupStorage": "DayNote could not open its storage location. Check that the location exists and is writable, then restart DayNote.",
   "files.andMore": {
     "one": "{names}, and {count} more",

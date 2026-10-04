@@ -82,8 +82,8 @@
   "failure.saveBinderGone": "変更内容は DayNote に残っていますが、バインダーの保存場所が利用できなくなりました。保存場所を元に戻して、もう一度お試しください。",
   "failure.saveBinderPermission": "変更内容は DayNote に残っていますが、バインダーを保存できませんでした。バインダーの保存場所に書き込めることを確認して、もう一度お試しください。",
   "failure.settingsSave": "設定を保存できませんでした。変更内容はそのまま残っています。もう一度お試しください。",
-  "failure.startupData": "DayNote は設定ファイルまたは状態ファイルを読み込めなかったため、正常なデータを上書きしないように保存を無効にしています。セッションログを確認し、問題のあるデータファイルを修復するか削除してから、再起動してください。",
   "failure.startupDataTitle": "読み込みに失敗しました",
+  "failure.startupSettings": "DayNote は {path} にある設定ファイルを読み込めなかったため、何も変更せずに停止しました。ファイルはそのまま残してあります。ファイルのアクセス権を確認するか、別の場所に移してから、DayNote を再起動してください。",
   "failure.startupStorage": "DayNote はデータの保存場所を開けませんでした。保存場所が存在し、書き込めることを確認してから、DayNote を再起動してください。",
   "files.andMore": {
     "other": "{names}、ほか {count} 件"

@@ -22,6 +22,26 @@ public sealed class FailurePresentationTests
     }
 
     [Fact]
+    public void A_set_aside_config_from_another_folder_is_not_this_one()
+    {
+        var other = Path.Combine(Path.GetTempPath(), "another-home", "config-20261002-101500-000-utc.invalid");
+
+        Assert.Null(FailurePresentation.SetAsideConfig([other], Path.Combine(Path.GetTempPath(), "daynote-home", "config.json")));
+    }
+
+    [Fact]
+    public void The_load_failed_notice_names_the_settings_file_and_says_it_was_left_in_place()
+    {
+        var config = Path.Combine(Path.GetTempPath(), "daynote-home", "config.json");
+
+        var text = English.Of(FailurePresentation.StartupSettings(config));
+
+        Assert.Contains(config, text, StringComparison.Ordinal);
+        Assert.Contains("settings file", text, StringComparison.Ordinal);
+        Assert.Contains("left in place", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_settings_reset_notice_names_the_set_aside_copy()
     {
         var copy = Path.Combine(Path.GetTempPath(), "daynote-home", "config-20261002-101500-000-utc.invalid");
@@ -41,7 +61,7 @@ public sealed class FailurePresentationTests
         var attachmentPicker = English.Of(FailurePresentation.AttachmentPicker(error));
         var reload = English.Of(FailurePresentation.ReloadBinder(error));
         var link = English.Of(FailurePresentation.OpenExternalLink(error));
-        var startup = English.Of(FailurePresentation.StartupData());
+        var startup = English.Of(FailurePresentation.StartupSettings("config.json"));
         var startupStorage = English.Of(FailurePresentation.StartupStorage());
         var recovery = English.Of(FailurePresentation.SettingsReset("config.invalid"));
 
