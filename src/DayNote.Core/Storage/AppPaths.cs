@@ -19,7 +19,7 @@ public sealed class AppPaths
     /// <summary>Environment variable that relocates the entire storage root.</summary>
     public const string HomeEnvironmentVariable = "DAYNOTE_DATA_DIR";
 
-    public AppPaths() => Root = ResolveRoot();
+    public AppPaths() => Root = ResolveRoot(Environment.GetEnvironmentVariable(HomeEnvironmentVariable), HomeDirectory());
 
     public string Root { get; }
 
@@ -98,11 +98,13 @@ public sealed class AppPaths
         }
     }
 
-    private static string ResolveRoot()
+    /// <summary>
+    /// The storage root for a <c>DAYNOTE_DATA_DIR</c> value (null or blank when unset) and a home
+    /// directory: the override when one is given, otherwise <c>.daynote</c> under the home.
+    /// </summary>
+    public static string ResolveRoot(string? overrideValue, string home)
     {
-        var home = HomeDirectory();
-
-        var overrideValue = Environment.GetEnvironmentVariable(HomeEnvironmentVariable)?.Trim();
+        overrideValue = overrideValue?.Trim();
         if (!string.IsNullOrEmpty(overrideValue))
         {
             return ResolveOverride(overrideValue, home);

@@ -9,12 +9,14 @@ namespace DayNote.Tests.Storage;
 /// <summary>
 /// Storage-root resolution: <c>DAYNOTE_DATA_DIR</c> relocates the whole tree when set, the default
 /// <c>~/.daynote</c> is used when it is not, and a relative override resolves against the home
-/// directory (never the working directory) so no path can depend on how the app was launched.
+/// directory (never the working directory) so no path can depend on how the app was launched. Every
+/// case resolves against a throwaway home, never the real one.
 /// </summary>
 [Collection(AppPathsEnvironment.CollectionName)]
 public sealed class AppPathsTests : IDisposable
 {
     private readonly string? _previousHome;
+    private readonly string _home = Path.Combine(Path.GetTempPath(), "daynote-home-tests-" + IdGenerator.New());
 
     public AppPathsTests()
     {
@@ -29,12 +31,7 @@ public sealed class AppPathsTests : IDisposable
     [Fact]
     public void Root_Defaults_To_DotDaynote_When_Override_Unset()
     {
-        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, null);
-
-        var paths = new AppPaths();
-
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        Assert.Equal(Path.Combine(home, ".daynote"), paths.Root);
+        Assert.Equal(Path.Combine(_home, ".daynote"), AppPaths.ResolveRoot(null, _home));
     }
 
     [Fact]
@@ -55,48 +52,32 @@ public sealed class AppPathsTests : IDisposable
     [Fact]
     public void Empty_Override_Falls_Back_To_The_Default()
     {
-        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "   ");
-
-        var paths = new AppPaths();
-
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        Assert.Equal(Path.Combine(home, ".daynote"), paths.Root);
+        Assert.Equal(Path.Combine(_home, ".daynote"), AppPaths.ResolveRoot("   ", _home));
     }
 
     [Fact]
     public void Relative_Override_Resolves_Against_Home_Not_Working_Directory()
     {
         var relative = "daynote-relative-" + IdGenerator.New();
-        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, relative);
 
-        var paths = new AppPaths();
+        var root = AppPaths.ResolveRoot(relative, _home);
 
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        Assert.Equal(Path.GetFullPath(Path.Combine(home, relative)), paths.Root);
-        Assert.NotEqual(Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), relative)), paths.Root);
+        Assert.Equal(Path.GetFullPath(Path.Combine(_home, relative)), root);
+        Assert.NotEqual(Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), relative)), root);
     }
 
     [Fact]
     public void Bare_Tilde_Override_Expands_To_Home()
     {
-        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "~");
-
-        var paths = new AppPaths();
-
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        Assert.Equal(Path.GetFullPath(home), paths.Root);
+        Assert.Equal(Path.GetFullPath(_home), AppPaths.ResolveRoot("~", _home));
     }
 
     [Fact]
     public void Leading_Tilde_Override_Expands_Against_Home()
     {
         var leaf = "daynote-tilde-" + IdGenerator.New();
-        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "~/" + leaf);
 
-        var paths = new AppPaths();
-
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        Assert.Equal(Path.GetFullPath(Path.Combine(home, leaf)), paths.Root);
+        Assert.Equal(Path.GetFullPath(Path.Combine(_home, leaf)), AppPaths.ResolveRoot("~/" + leaf, _home));
     }
 
     [Fact]
@@ -113,11 +94,8 @@ public sealed class AppPathsTests : IDisposable
         try
         {
             Environment.SetEnvironmentVariable(variableName, expansion);
-            Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "%" + variableName + "%");
 
-            var paths = new AppPaths();
-
-            Assert.Equal(Path.GetFullPath(expansion), paths.Root);
+            Assert.Equal(Path.GetFullPath(expansion), AppPaths.ResolveRoot("%" + variableName + "%", _home));
         }
         finally
         {
@@ -136,11 +114,8 @@ public sealed class AppPathsTests : IDisposable
         {
             Environment.SetEnvironmentVariable(variableName, expansion);
 
-            Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "$" + variableName);
-            Assert.Equal(Path.GetFullPath(expansion), new AppPaths().Root);
-
-            Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "${" + variableName + "}");
-            Assert.Equal(Path.GetFullPath(expansion), new AppPaths().Root);
+            Assert.Equal(Path.GetFullPath(expansion), AppPaths.ResolveRoot("$" + variableName, _home));
+            Assert.Equal(Path.GetFullPath(expansion), AppPaths.ResolveRoot("${" + variableName + "}", _home));
         }
         finally
         {
@@ -156,8 +131,7 @@ public sealed class AppPathsTests : IDisposable
         // Same identifier-safety note: fold any hyphen so the name stays a valid $VAR reference.
         var unsetVariable = "DAYNOTE_UNSET_PROBE_" + IdGenerator.New().Replace('-', '_');
         Environment.SetEnvironmentVariable(unsetVariable, null);
-        Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, "$" + unsetVariable);
 
-        Assert.Throws<InvalidOperationException>(() => new AppPaths());
+        Assert.Throws<InvalidOperationException>(() => AppPaths.ResolveRoot("$" + unsetVariable, _home));
     }
 }

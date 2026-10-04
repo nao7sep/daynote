@@ -309,6 +309,7 @@ public sealed class BackupStoreTests : IDisposable
         finally
         {
             Environment.SetEnvironmentVariable(missingVariable, previousMissingValue);
+            Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _home);
         }
     }
 
