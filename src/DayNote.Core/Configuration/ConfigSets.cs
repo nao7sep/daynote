@@ -56,6 +56,7 @@ public static class ConfigSets
         "theme" => IsTheme(value),
         _ => HasShape(value, BuiltIns.GetProperty(key)) && key switch
         {
+            "language" => SettingsValidator.IsLanguageSetting(value.GetString()!),
             "timeZone" => SettingsValidator.IsTimeZoneSetting(value.GetString()!),
             "autosaveDelaySeconds" => SettingsValidator.IsAutosaveDelay(value.GetDouble()),
             "textStyles" => SettingsValidator.AreValidTextStyles(value.Deserialize<List<EditorTextStyle>>(DayNoteJson.Options)!),

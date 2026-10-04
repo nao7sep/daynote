@@ -26,6 +26,13 @@ public sealed class AppConfig
     public const string SystemLanguage = "system";
 
     /// <summary>
+    /// The BCP 47 tags of the interface languages, in the picker's order: the Latin-script languages
+    /// alphabetically by their own names, then Cyrillic, then Chinese, Japanese and Korean. The names
+    /// they are shown under belong to the interface (<c>I18n/Languages.cs</c>).
+    /// </summary>
+    public static IReadOnlyList<string> LanguageTags { get; } = ["de", "en", "es", "fr", "it", "pt-BR", "ru", "zh-Hans", "ja", "ko"];
+
+    /// <summary>
     /// The interface language: a BCP 47 tag from the set, or <see cref="SystemLanguage"/> to follow the
     /// computer's own languages at each launch. The app reads it straight out of the file before it is
     /// built (<c>I18n/LanguageBootstrap.cs</c>), so the first frame is already in it; a missing or

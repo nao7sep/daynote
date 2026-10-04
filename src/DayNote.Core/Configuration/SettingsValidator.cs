@@ -35,6 +35,10 @@ public static class SettingsValidator
             && AreValidTextStyles(draft.Styles, draft.HasDefault);
     }
 
+    /// <summary>Whether a language setting is exactly System or one of the offered tags, as Save writes it.</summary>
+    public static bool IsLanguageSetting(string setting) =>
+        setting == AppConfig.SystemLanguage || AppConfig.LanguageTags.Contains(setting);
+
     /// <summary>Whether a time-zone setting is System or a zone the platform knows.</summary>
     public static bool IsTimeZoneSetting(string setting) =>
         DayNoteTime.IsSystem(setting) || DayNoteTime.TryResolveTimeZone(setting.Trim(), out _);

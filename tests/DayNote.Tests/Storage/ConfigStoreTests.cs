@@ -60,6 +60,7 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("theme", "\"unknown\"")]
     [InlineData("theme", "4")]
     [InlineData("language", "null")]
+    [InlineData("language", "\"xx\"")]
     [InlineData("uiFontFamily", "[]")]
     [InlineData("autosaveDelaySeconds", "\"2\"")]
     [InlineData("timeZone", "false")]

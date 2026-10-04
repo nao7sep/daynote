@@ -21,25 +21,25 @@ internal static class Languages
     /// <summary>The source language, and the fallback for a computer outside the set.</summary>
     internal const string English = "en";
 
-    /// <summary>
-    /// The set, in the picker's order: the Latin-script languages alphabetically by their own names,
-    /// then Cyrillic, then Chinese, Japanese and Korean.
-    /// </summary>
-    internal static IReadOnlyList<(string Tag, string Name)> All { get; } =
-    [
-        ("de", "Deutsch"),
-        ("en", "English"),
-        ("es", "Español"),
-        ("fr", "Français"),
-        ("it", "Italiano"),
-        ("pt-BR", "Português"),
-        ("ru", "Русский"),
-        ("zh-Hans", "中文"),
-        ("ja", "日本語"),
-        ("ko", "한국어"),
-    ];
+    private static readonly Dictionary<string, string> Names = new()
+    {
+        ["de"] = "Deutsch",
+        ["en"] = "English",
+        ["es"] = "Español",
+        ["fr"] = "Français",
+        ["it"] = "Italiano",
+        ["pt-BR"] = "Português",
+        ["ru"] = "Русский",
+        ["zh-Hans"] = "中文",
+        ["ja"] = "日本語",
+        ["ko"] = "한국어",
+    };
 
-    internal static IReadOnlyList<string> Tags { get; } = All.Select(language => language.Tag).ToArray();
+    /// <summary>The set, in the picker's order, which <see cref="Core.Configuration.AppConfig.LanguageTags"/> owns.</summary>
+    internal static IReadOnlyList<(string Tag, string Name)> All { get; } =
+        Tags.Select(tag => (tag, Names[tag])).ToArray();
+
+    internal static IReadOnlyList<string> Tags => Core.Configuration.AppConfig.LanguageTags;
 
     /// <summary>The name <paramref name="tag"/> is shown under, or the tag itself if it is not in the set.</summary>
     internal static string NameOf(string tag) =>
