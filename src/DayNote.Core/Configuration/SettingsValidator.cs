@@ -35,9 +35,17 @@ public static class SettingsValidator
             && AreValidTextStyles(draft.Styles, draft.HasDefault);
     }
 
-    /// <summary>Whether a language setting is exactly System or one of the offered tags, as Save writes it.</summary>
-    public static bool IsLanguageSetting(string setting) =>
-        setting == AppConfig.SystemLanguage || AppConfig.LanguageTags.Contains(setting);
+    /// <summary>
+    /// A language setting as Save writes it: System or one of the offered tags, matched ignoring case
+    /// and surrounding spaces as BCP 47 tags are, or null when it is neither.
+    /// </summary>
+    public static string? CanonicalLanguage(string setting)
+    {
+        var trimmed = setting.Trim();
+        return string.Equals(trimmed, AppConfig.SystemLanguage, StringComparison.OrdinalIgnoreCase)
+            ? AppConfig.SystemLanguage
+            : AppConfig.LanguageTags.FirstOrDefault(tag => string.Equals(tag, trimmed, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>Whether a time-zone setting is System or a zone the platform knows.</summary>
     public static bool IsTimeZoneSetting(string setting) =>

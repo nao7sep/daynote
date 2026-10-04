@@ -50,16 +50,8 @@ internal static class Languages
     /// missing, blank or unrecognized value, so a hand-edited file can never leave the app without a
     /// language.
     /// </summary>
-    internal static string NormalizePreference(string? saved)
-    {
-        if (string.IsNullOrWhiteSpace(saved))
-            return System;
-        var trimmed = saved.Trim();
-        if (string.Equals(trimmed, System, StringComparison.OrdinalIgnoreCase))
-            return System;
-        return Tags.FirstOrDefault(tag => string.Equals(tag, trimmed, StringComparison.OrdinalIgnoreCase))
-            ?? System;
-    }
+    internal static string NormalizePreference(string? saved) =>
+        saved is null ? System : Core.Configuration.SettingsValidator.CanonicalLanguage(saved) ?? System;
 
     /// <summary>
     /// The language a preference resolves to, given the computer's preferred languages in order.

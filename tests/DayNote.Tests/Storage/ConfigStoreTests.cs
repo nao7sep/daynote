@@ -57,6 +57,28 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Theory]
+    [InlineData("JA", "ja")]
+    [InlineData("Ja", "ja")]
+    [InlineData(" pt-br ", "pt-BR")]
+    [InlineData("System", "system")]
+    public void A_language_matching_an_offered_tag_ignoring_case_reads_and_saves_as_that_tag(string stored, string canonical)
+    {
+        File.WriteAllText(ConfigPath, $$"""{"language":"{{stored}}","theme":"dark"}""");
+        var store = Store;
+
+        var config = store.Load();
+        store.Save(config);
+
+        Assert.Equal(canonical, config.Language);
+        Assert.Empty(_warnings);
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        if (canonical == AppConfig.SystemLanguage)
+            Assert.False(saved.RootElement.TryGetProperty("language", out _));
+        else
+            Assert.Equal(canonical, saved.RootElement.GetProperty("language").GetString());
+    }
+
+    [Theory]
     [InlineData("theme", "\"unknown\"")]
     [InlineData("theme", "4")]
     [InlineData("language", "null")]

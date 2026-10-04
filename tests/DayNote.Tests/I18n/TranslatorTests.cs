@@ -19,6 +19,8 @@ public class TranslatorTests
     [InlineData("klingon", Languages.System)]
     [InlineData("SYSTEM", Languages.System)]
     [InlineData("ja", "ja")]
+    [InlineData("JA", "ja")]
+    [InlineData("Ja", "ja")]
     [InlineData("pt-br", "pt-BR")]
     [InlineData(" zh-Hans ", "zh-Hans")]
     public void a_saved_preference_is_read_forgivingly(string? saved, string expected) =>

@@ -18,6 +18,8 @@ public sealed class LanguageBootstrapTests : System.IDisposable
     [Theory]
     [InlineData("""{ "language": "ja" }""", "ja")]
     [InlineData("""{ "language": "pt-br", "theme": "dark" }""", "pt-BR")]
+    [InlineData("""{ "language": "JA" }""", "ja")]
+    [InlineData("""{ "language": "Ja" }""", "ja")]
     [InlineData("""{ "language": "klingon" }""", Languages.System)]
     [InlineData("""{ "language": 3 }""", Languages.System)]
     [InlineData("""{ "theme": "dark" }""", Languages.System)]
@@ -29,6 +31,22 @@ public sealed class LanguageBootstrapTests : System.IDisposable
         File.WriteAllText(config, json);
 
         Assert.Equal(expected, LanguageBootstrap.SavedPreference(config));
+    }
+
+    [Theory]
+    [InlineData("JA")]
+    [InlineData("Ja")]
+    [InlineData(" zh-hans ")]
+    [InlineData("SYSTEM")]
+    [InlineData("xx")]
+    public void launch_and_the_settings_read_a_stored_language_the_same_way(string stored)
+    {
+        var config = Path.Combine(_directory, "config.json");
+        File.WriteAllText(config, $$"""{ "language": "{{stored}}" }""");
+
+        var settings = new DayNote.Core.Storage.ConfigStore(config, _ => { }).Load();
+
+        Assert.Equal(settings.Language, LanguageBootstrap.SavedPreference(config));
     }
 
     [Fact]

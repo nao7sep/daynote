@@ -21,7 +21,10 @@ public static class ConfigSets
 
             if (IsValid(key, value))
             {
-                effective[key] = value;
+                // A language reads as its canonical tag, so Settings shows it and the next save writes it.
+                effective[key] = key == "language"
+                    ? JsonSerializer.SerializeToElement(SettingsValidator.CanonicalLanguage(value.GetString()!))
+                    : value;
             }
             else
             {
@@ -56,7 +59,7 @@ public static class ConfigSets
         "theme" => IsTheme(value),
         _ => HasShape(value, BuiltIns.GetProperty(key)) && key switch
         {
-            "language" => SettingsValidator.IsLanguageSetting(value.GetString()!),
+            "language" => SettingsValidator.CanonicalLanguage(value.GetString()!) is not null,
             "timeZone" => SettingsValidator.IsTimeZoneSetting(value.GetString()!),
             "autosaveDelaySeconds" => SettingsValidator.IsAutosaveDelay(value.GetDouble()),
             "textStyles" => SettingsValidator.AreValidTextStyles(value.Deserialize<List<EditorTextStyle>>(DayNoteJson.Options)!),
