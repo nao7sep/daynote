@@ -178,6 +178,17 @@
                                                          FontFamily="{x:Static views:RecordsWindow.FieldsFont}"/>
                                 </Border>
                             </StackPanel>
+                            <StackPanel Spacing="6" IsVisible="{Binding Detail.HasError, FallbackValue=False}">
+                                <TextBlock Text="{Binding Detail.ErrorLabel, FallbackValue={x:Null}}" FontWeight="SemiBold"/>
+                                <Border Background="{DynamicResource ListBackgroundBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="{StaticResource ControlCornerRadius}" Padding="10,8">
+                                    <SelectableTextBlock x:Name="DetailError"
+                                                         Text="{Binding Detail.Error, FallbackValue={x:Null}}"
+                                                         TextWrapping="Wrap" FontSize="12"
+                                                         FontFamily="{x:Static views:RecordsWindow.FieldsFont}"/>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </DockPanel>

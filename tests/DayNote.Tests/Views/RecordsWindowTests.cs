@@ -140,6 +140,28 @@ public sealed class RecordsWindowTests : WindowTest
         Assert.Equal(shown, window.FindControl<SelectableTextBlock>("DetailFields")!.IsEffectivelyVisible);
     }
 
+    [AvaloniaTheory]
+    [InlineData("""{"path":"a"}""", false)]
+    [InlineData("""{"error":{"message":"denied"}}""", true)]
+    public void The_error_block_shows_only_when_an_error_is_attached(string fields, bool shown)
+    {
+        _source.Records.Add(new RecordDetail(
+            1, "2026-10-04T10:00:00.000Z", _source.Session, "error", "Save failed", null, fields));
+        var window = Show(Create());
+        var list = window.FindControl<ListBox>("RecordsList")!;
+
+        list.SelectedIndex = 0;
+        Dispatcher.UIThread.RunJobs();
+
+        var error = window.FindControl<SelectableTextBlock>("DetailError")!;
+        Assert.Equal(shown, error.IsEffectivelyVisible);
+        if (shown)
+        {
+            Assert.Contains("denied", error.Text);
+            Assert.False(window.FindControl<SelectableTextBlock>("DetailFields")!.IsEffectivelyVisible);
+        }
+    }
+
     [AvaloniaFact]
     public void Scrolling_to_the_end_of_the_list_reads_the_next_page()
     {

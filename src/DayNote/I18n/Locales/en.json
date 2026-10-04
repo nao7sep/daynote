@@ -153,6 +153,7 @@
   "records.detailFailed": "This record could not be read.",
   "records.details": "Details",
   "records.empty": "No records match these filters.",
+  "records.error": "Error",
   "records.launch": "Launch",
   "records.level": "Level",
   "records.levelAttention": "Needs attention",

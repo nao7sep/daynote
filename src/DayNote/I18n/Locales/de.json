@@ -153,6 +153,7 @@
   "records.detailFailed": "Dieser Eintrag konnte nicht gelesen werden.",
   "records.details": "Details",
   "records.empty": "Keine Einträge entsprechen diesen Filtern.",
+  "records.error": "Fehler",
   "records.launch": "Start",
   "records.level": "Stufe",
   "records.levelAttention": "Benötigt Aufmerksamkeit",

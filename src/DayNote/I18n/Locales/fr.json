@@ -160,6 +160,7 @@
   "records.detailFailed": "Cette entrée n’a pas pu être lue.",
   "records.details": "Détails",
   "records.empty": "Aucune entrée ne correspond à ces filtres.",
+  "records.error": "Erreur",
   "records.launch": "Lancement",
   "records.level": "Niveau",
   "records.levelAttention": "Attention requise",

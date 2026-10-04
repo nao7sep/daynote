@@ -54,11 +54,12 @@ public static class RecordFormat
     }
 
     /// <summary>
-    /// A record's stored fields as Details shows them: indented for reading, without the note id the
-    /// Note field already shows, and null when nothing is left to show. Text that is not JSON is shown
-    /// as it is.
+    /// A record's stored fields as the Details and Error blocks show them, each indented for reading
+    /// and null when it has nothing to show. The exception the logger attaches under <c>error</c> is
+    /// its own block; Details leaves it out, and leaves out the note id the Note field already shows.
+    /// Text that is not JSON is shown in Details as it is.
     /// </summary>
-    public static string? DetailsText(string fields, string? noteId)
+    public static (string? Details, string? Error) SplitFields(string fields, string? noteId)
     {
         JsonNode? node;
         try
@@ -67,20 +68,31 @@ public static class RecordFormat
         }
         catch (JsonException)
         {
-            return string.IsNullOrWhiteSpace(fields) ? null : fields;
+            return (string.IsNullOrWhiteSpace(fields) ? null : fields, null);
         }
 
-        if (node is JsonObject shown && noteId is not null
-            && shown["noteId"] is JsonValue id && id.TryGetValue<string>(out var stored) && stored == noteId)
+        JsonNode? error = null;
+        if (node is JsonObject shown)
         {
-            shown.Remove("noteId");
+            if (noteId is not null
+                && shown["noteId"] is JsonValue id && id.TryGetValue<string>(out var stored) && stored == noteId)
+            {
+                shown.Remove("noteId");
+            }
+
+            if (shown.Remove("error", out var attached))
+            {
+                error = attached;
+            }
         }
 
-        return node switch
-        {
-            null or JsonObject { Count: 0 } or JsonArray { Count: 0 } => null,
-            JsonValue text when text.TryGetValue<string>(out var words) && string.IsNullOrWhiteSpace(words) => null,
-            _ => node.ToJsonString(Indented),
-        };
+        return (Block(node), Block(error));
     }
+
+    private static string? Block(JsonNode? node) => node switch
+    {
+        null or JsonObject { Count: 0 } or JsonArray { Count: 0 } => null,
+        JsonValue text when text.TryGetValue<string>(out var words) && string.IsNullOrWhiteSpace(words) => null,
+        _ => node.ToJsonString(Indented),
+    };
 }

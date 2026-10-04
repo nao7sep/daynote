@@ -85,7 +85,8 @@ public sealed class RecordDetailViewModel
 
         Fields = fields;
         DetailsLabel = I18n.Localizer.T("records.details");
-        Details = RecordFormat.DetailsText(record.Fields, record.NoteId);
+        ErrorLabel = I18n.Localizer.T("records.error");
+        (Details, Error) = RecordFormat.SplitFields(record.Fields, record.NoteId);
     }
 
     public RecordDetail Record { get; }
@@ -106,4 +107,11 @@ public sealed class RecordDetailViewModel
     public string? Details { get; }
 
     public bool HasDetails => Details is not null;
+
+    public string ErrorLabel { get; }
+
+    /// <summary>The exception attached to the record, or null when there is none.</summary>
+    public string? Error { get; }
+
+    public bool HasError => Error is not null;
 }

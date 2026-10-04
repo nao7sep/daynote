@@ -31,7 +31,7 @@ public class CatalogueTests
             "common.ok", "records.details", "records.levelDebug", "records.levelInfo",
             "shortcuts.groupEditor", "shortcuts.groupNavigation"],
         // "Editor" and "Error" are Spanish words, and Apple's Spanish Window menu says "Zoom".
-        ["es"] = ["nativeMenu.zoom", "records.levelError", "shortcuts.groupEditor"],
+        ["es"] = ["nativeMenu.zoom", "records.error", "records.levelError", "shortcuts.groupEditor"],
         // French writes OK, Menu, Navigation, Note, Notes and "1 note" the same way, and Apple's French
         // app menu says "Services".
         ["fr"] = [

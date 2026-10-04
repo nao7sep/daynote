@@ -160,6 +160,7 @@
   "records.detailFailed": "Não foi possível ler este registro.",
   "records.details": "Detalhes",
   "records.empty": "Nenhum registro corresponde a estes filtros.",
+  "records.error": "Erro",
   "records.launch": "Inicialização",
   "records.level": "Nível",
   "records.levelAttention": "Requer atenção",

@@ -146,6 +146,7 @@
   "records.detailFailed": "无法读取此条目。",
   "records.details": "详情",
   "records.empty": "没有符合这些筛选条件的条目。",
+  "records.error": "错误",
   "records.launch": "启动",
   "records.level": "级别",
   "records.levelAttention": "需要关注",

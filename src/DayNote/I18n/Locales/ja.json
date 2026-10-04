@@ -146,6 +146,7 @@
   "records.detailFailed": "この項目を読み込めませんでした。",
   "records.details": "詳細",
   "records.empty": "条件に一致する項目はありません。",
+  "records.error": "エラー",
   "records.launch": "起動",
   "records.level": "レベル",
   "records.levelAttention": "要対応",

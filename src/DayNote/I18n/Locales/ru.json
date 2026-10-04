@@ -167,6 +167,7 @@
   "records.detailFailed": "Не удалось прочитать этот элемент журнала.",
   "records.details": "Подробности",
   "records.empty": "Нет элементов, подходящих под эти фильтры.",
+  "records.error": "Ошибка",
   "records.launch": "Запуск",
   "records.level": "Уровень",
   "records.levelAttention": "Требует внимания",

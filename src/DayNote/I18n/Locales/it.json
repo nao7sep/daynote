@@ -160,6 +160,7 @@
   "records.detailFailed": "Impossibile leggere questa voce.",
   "records.details": "Dettagli",
   "records.empty": "Nessuna voce corrisponde a questi filtri.",
+  "records.error": "Errore",
   "records.launch": "Avvio",
   "records.level": "Livello",
   "records.levelAttention": "Richiede attenzione",

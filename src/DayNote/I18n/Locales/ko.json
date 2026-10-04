@@ -146,6 +146,7 @@
   "records.detailFailed": "이 항목을 읽을 수 없습니다.",
   "records.details": "세부 정보",
   "records.empty": "이 필터와 일치하는 항목이 없습니다.",
+  "records.error": "오류",
   "records.launch": "실행",
   "records.level": "수준",
   "records.levelAttention": "확인 필요",
