@@ -64,7 +64,7 @@ public sealed class RecordFilterOption<T> : RecordFilterOption
 /// <summary>A labelled value in the record detail.</summary>
 public sealed record RecordField(string Label, string Value);
 
-/// <summary>The selected record whole: its message, level, every column, and its fields as JSON.</summary>
+/// <summary>The selected record whole: its message, level, every column, and the fields no column shows, as JSON.</summary>
 public sealed class RecordDetailViewModel
 {
     public RecordDetailViewModel(RecordDetail record, string currentSession, TimeZoneInfo displayZone)
@@ -85,7 +85,7 @@ public sealed class RecordDetailViewModel
 
         Fields = fields;
         DetailsLabel = I18n.Localizer.T("records.details");
-        Details = RecordFormat.PrettyJson(record.Fields);
+        Details = RecordFormat.DetailsText(record.Fields, record.NoteId);
     }
 
     public RecordDetail Record { get; }
@@ -102,5 +102,8 @@ public sealed class RecordDetailViewModel
 
     public string DetailsLabel { get; }
 
-    public string Details { get; }
+    /// <summary>The fields nothing else in the detail shows, or null when there are none.</summary>
+    public string? Details { get; }
+
+    public bool HasDetails => Details is not null;
 }

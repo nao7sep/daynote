@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using DayNote.Logging;
 using DayNote.Tests.ViewModels;
 using DayNote.ViewModels;
 using DayNote.Views;
@@ -120,6 +121,23 @@ public sealed class RecordsWindowTests : WindowTest
         Assert.Equal(2, vm.SelectedRecord!.Record.Id);
         Assert.Equal("Message 2", vm.Detail!.Title);
         Assert.Equal(1, list.SelectedIndex);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("{}", false)]
+    [InlineData("""{"noteId":"note_7"}""", false)]
+    [InlineData("""{"path":"a"}""", true)]
+    public void The_details_block_shows_only_when_a_field_is_left_to_show(string fields, bool shown)
+    {
+        _source.Records.Add(new RecordDetail(
+            1, "2026-10-04T10:00:00.000Z", _source.Session, "info", "Note opened", "note_7", fields));
+        var window = Show(Create());
+        var list = window.FindControl<ListBox>("RecordsList")!;
+
+        list.SelectedIndex = 0;
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(shown, window.FindControl<SelectableTextBlock>("DetailFields")!.IsEffectivelyVisible);
     }
 
     [AvaloniaFact]

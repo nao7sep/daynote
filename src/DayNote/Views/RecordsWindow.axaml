@@ -167,7 +167,7 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <StackPanel Spacing="6">
+                            <StackPanel Spacing="6" IsVisible="{Binding Detail.HasDetails, FallbackValue=False}">
                                 <TextBlock Text="{Binding Detail.DetailsLabel, FallbackValue={x:Null}}" FontWeight="SemiBold"/>
                                 <Border Background="{DynamicResource ListBackgroundBrush}"
                                         BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"

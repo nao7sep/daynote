@@ -53,16 +53,34 @@ public static class RecordFormat
         return session == currentSession ? Localizer.T("records.thisLaunch", ("time", time)) : time;
     }
 
-    /// <summary>Stored JSON, indented for reading; text that is not JSON is shown as it is.</summary>
-    public static string PrettyJson(string text)
+    /// <summary>
+    /// A record's stored fields as Details shows them: indented for reading, without the note id the
+    /// Note field already shows, and null when nothing is left to show. Text that is not JSON is shown
+    /// as it is.
+    /// </summary>
+    public static string? DetailsText(string fields, string? noteId)
     {
+        JsonNode? node;
         try
         {
-            return JsonNode.Parse(text)?.ToJsonString(Indented) ?? text;
+            node = JsonNode.Parse(fields);
         }
         catch (JsonException)
         {
-            return text;
+            return string.IsNullOrWhiteSpace(fields) ? null : fields;
         }
+
+        if (node is JsonObject shown && noteId is not null
+            && shown["noteId"] is JsonValue id && id.TryGetValue<string>(out var stored) && stored == noteId)
+        {
+            shown.Remove("noteId");
+        }
+
+        return node switch
+        {
+            null or JsonObject { Count: 0 } or JsonArray { Count: 0 } => null,
+            JsonValue text when text.TryGetValue<string>(out var words) && string.IsNullOrWhiteSpace(words) => null,
+            _ => node.ToJsonString(Indented),
+        };
     }
 }
