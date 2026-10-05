@@ -38,16 +38,19 @@ public static class BinderTomlReader
             throw new BinderFormatException("Binder is empty or not a TOML table.");
         }
 
-        // Timestamps that are absent or malformed (a hand-edit typo) fall back to load time rather
-        // than to default(DateTimeOffset), which would otherwise be written back as a bogus
-        // year-0001 date and corrupt chronological ordering.
-        var fallback = DateTimeOffset.UtcNow;
+        // A timestamp that is absent or malformed (a hand-edit typo) takes another time the same item
+        // recorded, then its binder's, and the load time only when the file records none at all, per
+        // the content-lifecycle-conventions. Never default(DateTimeOffset): it would be written back
+        // as a bogus year-0001 date and corrupt chronological ordering.
+        var binderCreated = ParseOptionalTimestamp(document.Created);
+        var binderModified = ParseOptionalTimestamp(document.Modified);
+        var fallback = binderCreated ?? binderModified ?? DateTimeOffset.UtcNow;
 
         var binder = new Binder
         {
-            Id = document.Id ?? string.Empty,
-            Created = ParseTimestamp(document.Created, fallback),
-            Modified = ParseTimestamp(document.Modified, fallback),
+            Id = string.IsNullOrEmpty(document.Id) ? IdGenerator.New() : document.Id,
+            Created = fallback,
+            Modified = binderModified ?? fallback,
         };
 
         if (document.Note is { } notes)
@@ -67,12 +70,14 @@ public static class BinderTomlReader
 
     private static Note MapNote(NoteDocument document, DateTimeOffset fallback, IReadOnlyCollection<string> existingIds)
     {
+        var created = ParseOptionalTimestamp(document.Created);
+        var modified = ParseOptionalTimestamp(document.Modified);
         var note = new Note
         {
             Id = SafeNoteId(document.Id, existingIds),
             Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
-            Created = ParseTimestamp(document.Created, fallback),
-            Modified = ParseTimestamp(document.Modified, fallback),
+            Created = created ?? modified ?? fallback,
+            Modified = modified ?? created ?? fallback,
             Status = NoteStatuses.Parse(document.Status),
             Locked = document.Locked ?? false,
             DiscardedAt = ParseOptionalTimestamp(document.DiscardedAt),
@@ -126,9 +131,6 @@ public static class BinderTomlReader
         IsBareFileName(id) && !existingIds.Contains(id!, StringComparer.OrdinalIgnoreCase)
             ? id!
             : IdGenerator.NewUnique(existingIds);
-
-    private static DateTimeOffset ParseTimestamp(string? text, DateTimeOffset fallback) =>
-        !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : fallback;
 
     private static DateTimeOffset? ParseOptionalTimestamp(string? text) =>
         !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : null;

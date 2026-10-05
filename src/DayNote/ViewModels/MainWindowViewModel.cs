@@ -55,10 +55,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private readonly List<BinderListItemViewModel> _allBinders = new();
     private readonly HashSet<string> _dirtyNoteIds = new();
 
-    // Each note's content as it was last loaded or saved. A save sets a note's Modified only when its
-    // content differs from this, so a status or lock change, or an edit undone before the save, leaves
-    // Modified alone (content-lifecycle-conventions).
-    private readonly Dictionary<string, NoteContent> _savedContent = new();
+    // Each note's content and Modified time as they were last loaded or saved. A change that leaves the
+    // content as saved keeps the saved Modified; one that changes it sets Modified to the moment of the
+    // edit, so status and lock changes, and edits undone before the save, leave Modified alone
+    // (content-lifecycle-conventions).
+    private readonly Dictionary<string, SavedNote> _saved = new();
+
+    // Each note's content as of its latest change, so a change that leaves the content as it was (a
+    // status or lock change) is told apart from an edit.
+    private readonly Dictionary<string, NoteContent> _lastContent = new();
     private string? _attachmentNoteId;
 
     private AppConfig _config = new();
@@ -614,7 +619,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         _current.Binder.Notes.Add(note);
         // The empty note is its own baseline: until something is typed, its Modified stays its Created.
-        _savedContent[note.Id] = NoteContent.Of(note);
+        _saved[note.Id] = SavedNote.Of(note);
+        _lastContent[note.Id] = NoteContent.Of(note);
         // A brand-new note is the newest, so it goes to the top of the newest-first list.
         _allNotes.Insert(0, new NoteListItemViewModel(note, _displayZone));
         NotesFilter = string.Empty;
@@ -1244,11 +1250,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 if (isNew)
                 {
+                    var now = DateTimeOffset.UtcNow;
                     var binder = new Binder
                     {
                         Id = IdGenerator.New(),
-                        Created = DateTimeOffset.UtcNow,
-                        Modified = DateTimeOffset.UtcNow,
+                        Created = now,
+                        Modified = now,
                     };
                     var saved = await Task.Run(() => _binderStore.Save(path, binder));
                     loaded = new LoadedBinder(binder, saved.Path, saved.ContentHash);
@@ -1326,7 +1333,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         HasBinder = false;
         _dirty = false;
         _dirtyNoteIds.Clear();
-        _savedContent.Clear();
+        _saved.Clear();
+        _lastContent.Clear();
         Editor.Load(null);
         _allNotes.Clear();
         Notes.Clear();
@@ -1388,9 +1396,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             var path = _current.Path;
             _log.Info("Saving binder", new { path, noteCount = binder.Notes.Count });
 
-            // A changed note's Modified moves only when its content differs from what was last saved;
-            // the content written here becomes the new baseline once the write succeeds.
-            var writtenContent = new Dictionary<string, NoteContent>();
+            // Each changed note's Modified was set when it was edited; one whose content is back to what
+            // was last saved keeps that save's Modified. What is written becomes the new baseline once the
+            // write succeeds.
+            var written = new Dictionary<string, SavedNote>();
             foreach (var id in _dirtyNoteIds)
             {
                 var note = binder.Notes.FirstOrDefault(n => n.Id == id);
@@ -1399,13 +1408,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     continue;
                 }
 
-                var content = NoteContent.Of(note);
-                if (!_savedContent.TryGetValue(id, out var saved) || saved != content)
-                {
-                    note.Modified = now;
-                }
-
-                writtenContent[id] = content;
+                ApplyContentModified(note, editTime: null);
+                written[id] = SavedNote.Of(note);
             }
 
             binder.Modified = now;
@@ -1421,9 +1425,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 var saved = await Task.Run(() => _binderStore.SaveText(path, text));
                 _baselineHash = saved.ContentHash;
-                foreach (var (id, content) in writtenContent)
+                foreach (var (id, savedNote) in written)
                 {
-                    _savedContent[id] = content;
+                    _saved[id] = savedNote;
                 }
 
                 _externalChangeAcknowledged = false;
@@ -1612,10 +1616,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _externalChangeAcknowledged = false;
         _dirty = false;
         _dirtyNoteIds.Clear();
-        _savedContent.Clear();
+        _saved.Clear();
+        _lastContent.Clear();
         foreach (var note in loaded.Binder.Notes)
         {
-            _savedContent[note.Id] = NoteContent.Of(note);
+            _saved[note.Id] = SavedNote.Of(note);
+            _lastContent[note.Id] = NoteContent.Of(note);
         }
 
         HasBinder = true;
@@ -1967,6 +1973,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         if (noteId is not null)
         {
             _dirtyNoteIds.Add(noteId);
+            if (_current.Binder.Notes.FirstOrDefault(n => n.Id == noteId) is { } note)
+            {
+                ApplyContentModified(note, DateTimeOffset.UtcNow);
+            }
         }
 
         SetSaveState(SaveState.Unsaved);
@@ -2246,7 +2256,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             ? path
             : path + ".daynote";
 
-    /// <summary>A note's content as the file stores it: what a save compares to decide whether Modified moves.</summary>
+    /// <summary>
+    /// Sets a changed note's Modified: the saved time when its content is back to what was last saved,
+    /// otherwise <paramref name="editTime"/> when this change altered the content. A change that leaves
+    /// the content as it was, and a save (no edit time), touch nothing else.
+    /// </summary>
+    private void ApplyContentModified(Note note, DateTimeOffset? editTime)
+    {
+        var content = NoteContent.Of(note);
+        if (_saved.TryGetValue(note.Id, out var saved) && saved.Content == content)
+        {
+            note.Modified = saved.Modified;
+        }
+        else if (editTime is { } time && (!_lastContent.TryGetValue(note.Id, out var last) || last != content))
+        {
+            note.Modified = time;
+        }
+
+        if (editTime is not null)
+        {
+            _lastContent[note.Id] = content;
+        }
+    }
+
+    /// <summary>A note's content as the file stores it: what decides whether Modified moves.</summary>
     private readonly record struct NoteContent(string Title, string Body, string Attachments)
     {
         // Attachment names are bare file names, so '/' cannot occur inside one.
@@ -2254,5 +2287,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             TextCleanup.SingleLine(note.Title),
             BodyCleanup.Normalize(note.Body),
             string.Join('/', note.Attachments));
+    }
+
+    /// <summary>A note's content and Modified time as last loaded or saved.</summary>
+    private readonly record struct SavedNote(NoteContent Content, DateTimeOffset Modified)
+    {
+        public static SavedNote Of(Note note) => new(NoteContent.Of(note), note.Modified);
     }
 }

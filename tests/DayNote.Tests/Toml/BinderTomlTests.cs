@@ -206,9 +206,9 @@ public sealed class BinderTomlTests
 
         Assert.Equal("nb1", binder.Id);
         Assert.Equal(new DateTimeOffset(2026, 6, 3, 14, 23, 5, 482, TimeSpan.Zero), binder.Created);
-        // No modified key: it must fall back to load time, never default(DateTimeOffset) (year 0001),
-        // which would corrupt chronological ordering.
-        Assert.True(binder.Modified.Year > 2000);
+        // No modified key: it takes the binder's recorded created time, never load time or
+        // default(DateTimeOffset) (year 0001), which would corrupt chronological ordering.
+        Assert.Equal(binder.Created, binder.Modified);
         Assert.Equal(string.Empty, binder.Notes[0].Title);
         Assert.Equal("hello", binder.Notes[0].Body);
     }
@@ -598,7 +598,7 @@ public sealed class BinderTomlTests
     public void Empty_string_reads_as_empty_binder()
     {
         var binder = BinderTomlReader.Read("");
-        Assert.Equal(string.Empty, binder.Id);
+        Assert.NotEqual(string.Empty, binder.Id);
         Assert.Empty(binder.Notes);
     }
 
@@ -606,7 +606,7 @@ public sealed class BinderTomlTests
     public void Whitespace_only_input_reads_as_empty_binder()
     {
         var binder = BinderTomlReader.Read("   \n\n  ");
-        Assert.Equal(string.Empty, binder.Id);
+        Assert.NotEqual(string.Empty, binder.Id);
         Assert.Empty(binder.Notes);
     }
 
@@ -652,11 +652,11 @@ public sealed class BinderTomlTests
     }
 
     [Fact]
-    public void Missing_binder_id_reads_as_empty()
+    public void A_missing_binder_id_gets_a_fresh_one()
     {
         const string text = "created = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-01T00:00:00.000Z\"\n";
         var binder = BinderTomlReader.Read(text);
-        Assert.Equal(string.Empty, binder.Id);
+        Assert.NotEqual(string.Empty, binder.Id);
     }
 
     [Fact]
@@ -792,6 +792,43 @@ public sealed class BinderTomlTests
     }
 
     // Timestamp edge cases
+
+    [Fact]
+    public void A_note_missing_one_time_takes_its_other_recorded_time()
+    {
+        const string text =
+            "id = \"nb1\"\ncreated = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-02T00:00:00.000Z\"\n\n" +
+            "[[note]]\nid = \"n1\"\nmodified = \"2026-03-01T00:00:00.000Z\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"n2\"\ncreated = \"2026-04-01T00:00:00.000Z\"\nmodified = \"bad\"\nbody = ''\n";
+
+        var notes = BinderTomlReader.Read(text).Notes;
+
+        Assert.Equal(new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), notes[0].Created);
+        Assert.Equal(new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero), notes[1].Modified);
+    }
+
+    [Fact]
+    public void A_note_with_no_recorded_time_takes_its_binders()
+    {
+        const string text =
+            "id = \"nb1\"\nmodified = \"2026-01-02T00:00:00.000Z\"\n\n" +
+            "[[note]]\nid = \"n1\"\nbody = ''\n";
+
+        var binder = BinderTomlReader.Read(text);
+
+        var recorded = new DateTimeOffset(2026, 1, 2, 0, 0, 0, TimeSpan.Zero);
+        Assert.Equal(recorded, binder.Created);
+        Assert.Equal(recorded, binder.Notes[0].Created);
+        Assert.Equal(recorded, binder.Notes[0].Modified);
+    }
+
+    [Fact]
+    public void An_empty_binder_id_gets_a_fresh_one()
+    {
+        const string text = "id = \"\"\n";
+
+        Assert.NotEqual(string.Empty, BinderTomlReader.Read(text).Id);
+    }
 
     [Fact]
     public void Malformed_binder_timestamps_fall_back_to_recent_time()

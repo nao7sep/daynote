@@ -1186,6 +1186,38 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_new_binder_records_one_instant_as_created_and_modified()
+    {
+        var vm = await OpenNewBinderAsync();
+
+        var binder = new BinderStore().Load(BinderPath).Binder;
+
+        Assert.Equal(binder.Created, binder.Modified);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Modified_is_the_time_of_the_edit_not_of_the_save()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var before = DateTimeOffset.UtcNow;
+        vm.Editor.Body = "words";
+        var after = DateTimeOffset.UtcNow;
+        await Task.Delay(30);
+
+        // A status change after the edit, still unsaved, leaves the edit's time in place.
+        vm.Editor.Status = NoteStatus.Verified;
+        var saving = DateTimeOffset.UtcNow;
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        var modified = SavedNote().Modified;
+        Assert.InRange(modified, before.AddMilliseconds(-1), after.AddMilliseconds(1));
+        Assert.True(modified < saving);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Status_changes_and_locking_leave_Modified_alone()
     {
         var vm = await OpenNewBinderAsync();
