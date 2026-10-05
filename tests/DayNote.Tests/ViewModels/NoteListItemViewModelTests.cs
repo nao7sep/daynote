@@ -49,9 +49,10 @@ public sealed class NoteListItemViewModelTests
 
     [Theory]
     [InlineData(NoteStatus.Draft, "Draft")]
-    [InlineData(NoteStatus.Ready, "Ready")]
+    [InlineData(NoteStatus.Discarded, "Discarded")]
+    [InlineData(NoteStatus.Verified, "Verified")]
     [InlineData(NoteStatus.Published, "Published")]
-    [InlineData(NoteStatus.Expired, "Expired")]
+    [InlineData(NoteStatus.Retired, "Retired")]
     public void StatusLabel_matches_the_lifecycle_state(NoteStatus status, string label)
     {
         var item = new NoteListItemViewModel(Note(status: status), TimeZoneInfo.Utc);

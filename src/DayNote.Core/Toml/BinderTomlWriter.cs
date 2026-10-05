@@ -43,9 +43,11 @@ public static class BinderTomlWriter
             AppendTimestamp(builder, "created", note.Created);
             AppendTimestamp(builder, "modified", note.Modified);
             AppendBasic(builder, "status", note.Status.ToToken());
-            AppendOptionalTimestamp(builder, "ready_at", note.ReadyAt);
+            AppendBoolean(builder, "locked", note.Locked);
+            AppendOptionalTimestamp(builder, "discarded_at", note.DiscardedAt);
+            AppendOptionalTimestamp(builder, "verified_at", note.VerifiedAt);
             AppendOptionalTimestamp(builder, "published_at", note.PublishedAt);
-            AppendOptionalTimestamp(builder, "expired_at", note.ExpiredAt);
+            AppendOptionalTimestamp(builder, "retired_at", note.RetiredAt);
             AppendAttachments(builder, note.Attachments);
             AppendBody(builder, note.Body);
         }
@@ -56,6 +58,11 @@ public static class BinderTomlWriter
     private static void AppendBasic(StringBuilder builder, string key, string value)
     {
         builder.Append(key).Append(" = \"").Append(EscapeBasicString(value)).Append("\"\n");
+    }
+
+    private static void AppendBoolean(StringBuilder builder, string key, bool value)
+    {
+        builder.Append(key).Append(" = ").Append(value ? "true" : "false").Append('\n');
     }
 
     private static void AppendTimestamp(StringBuilder builder, string key, DateTimeOffset value)

@@ -12,9 +12,10 @@ public static class NoteStatusText
     /// <summary>The catalogue key naming <paramref name="status"/>.</summary>
     public static string KeyOf(NoteStatus status) => status switch
     {
-        NoteStatus.Ready => "status.ready",
+        NoteStatus.Discarded => "status.discarded",
+        NoteStatus.Verified => "status.verified",
         NoteStatus.Published => "status.published",
-        NoteStatus.Expired => "status.expired",
+        NoteStatus.Retired => "status.retired",
         _ => "status.draft",
     };
 

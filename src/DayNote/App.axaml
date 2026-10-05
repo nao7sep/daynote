@@ -11,7 +11,7 @@
                  Dark is the twilight journal: soft plum surfaces with a cheerful lavender accent. Light
                  is the same journal by day: lavender-white paper, plum ink, and a deeper violet accent
                  that carries white text and still marks focus on a pale surface. Note lifecycle status:
-                 draft (muted) → ready (amber) → published (green); expired (red). -->
+                 draft (muted) → verified (amber) → published (green) → retired (red); discarded (slate). -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <!-- Light: the journal by day. -->
@@ -43,9 +43,10 @@
                     <SolidColorBrush x:Key="ListSelectionBrush" Color="#EDE5FA"/>
                     <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="#E4D9F6"/>
                     <SolidColorBrush x:Key="StatusDraftBrush" Color="#5F5669"/>
-                    <SolidColorBrush x:Key="StatusReadyBrush" Color="#87500B"/>
+                    <SolidColorBrush x:Key="StatusDiscardedBrush" Color="#4E6272"/>
+                    <SolidColorBrush x:Key="StatusVerifiedBrush" Color="#87500B"/>
                     <SolidColorBrush x:Key="StatusPublishedBrush" Color="#236A47"/>
-                    <SolidColorBrush x:Key="StatusExpiredBrush" Color="#A32C45"/>
+                    <SolidColorBrush x:Key="StatusRetiredBrush" Color="#A32C45"/>
                     <!-- App-shell result cards, tinted by severity (MainWindow pairs each with its edge). -->
                     <SolidColorBrush x:Key="ResultInfoBackgroundBrush" Color="#F3EEFE"/>
                     <SolidColorBrush x:Key="ResultWarningBackgroundBrush" Color="#FCF3E3"/>
@@ -90,9 +91,10 @@
                     <SolidColorBrush x:Key="ListSelectionBrush" Color="#3B2F51"/>
                     <SolidColorBrush x:Key="ListSelectionHoverBrush" Color="#413456"/>
                     <SolidColorBrush x:Key="StatusDraftBrush" Color="#AFA3B1"/>
-                    <SolidColorBrush x:Key="StatusReadyBrush" Color="#E0A14A"/>
+                    <SolidColorBrush x:Key="StatusDiscardedBrush" Color="#9FB3C2"/>
+                    <SolidColorBrush x:Key="StatusVerifiedBrush" Color="#E0A14A"/>
                     <SolidColorBrush x:Key="StatusPublishedBrush" Color="#5FB98B"/>
-                    <SolidColorBrush x:Key="StatusExpiredBrush" Color="#F08A9C"/>
+                    <SolidColorBrush x:Key="StatusRetiredBrush" Color="#F08A9C"/>
                     <!-- App-shell result cards, tinted by severity (MainWindow pairs each with its edge). -->
                     <SolidColorBrush x:Key="ResultInfoBackgroundBrush" Color="#2E2742"/>
                     <SolidColorBrush x:Key="ResultWarningBackgroundBrush" Color="#352A1A"/>
@@ -466,7 +468,7 @@
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 
-        <!-- A muted, neutral badge (e.g. the editor's "Read-only" hint). -->
+        <!-- A muted, neutral badge. -->
         <Style Selector="Border.badge">
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
             <Setter Property="CornerRadius" Value="9"/>

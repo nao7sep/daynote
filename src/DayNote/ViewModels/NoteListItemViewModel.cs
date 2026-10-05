@@ -29,16 +29,19 @@ public sealed partial class NoteListItemViewModel : ObservableObject
     [ObservableProperty]
     private string _statusLabel = string.Empty;
 
-    // The lifecycle state the row's stripe and label show; the view maps it to theme brushes.
-    // Draft is the absence of the other three.
+    // The lifecycle state the row's label shows; the view maps it to theme brushes.
+    // Draft is the absence of the other four.
     [ObservableProperty]
-    private bool _isStatusReady;
+    private bool _isStatusDiscarded;
+
+    [ObservableProperty]
+    private bool _isStatusVerified;
 
     [ObservableProperty]
     private bool _isStatusPublished;
 
     [ObservableProperty]
-    private bool _isStatusExpired;
+    private bool _isStatusRetired;
 
     /// <summary>
     /// Re-reads the title, status, and creation time from the underlying note, in the current language.
@@ -53,9 +56,10 @@ public sealed partial class NoteListItemViewModel : ObservableObject
         // and the displayed date agree, and a row does not jump its label as it is edited.
         Subtitle = DayNoteTime.ToDisplay(Note.Created, displayZone, Localizer.Current.Culture);
         StatusLabel = Localizer.T(NoteStatusText.KeyOf(Note.Status));
-        IsStatusReady = Note.Status == NoteStatus.Ready;
+        IsStatusDiscarded = Note.Status == NoteStatus.Discarded;
+        IsStatusVerified = Note.Status == NoteStatus.Verified;
         IsStatusPublished = Note.Status == NoteStatus.Published;
-        IsStatusExpired = Note.Status == NoteStatus.Expired;
+        IsStatusRetired = Note.Status == NoteStatus.Retired;
     }
 
     /// <summary>

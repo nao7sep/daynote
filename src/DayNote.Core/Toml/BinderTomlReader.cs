@@ -74,9 +74,11 @@ public static class BinderTomlReader
             Created = ParseTimestamp(document.Created, fallback),
             Modified = ParseTimestamp(document.Modified, fallback),
             Status = NoteStatuses.Parse(document.Status),
-            ReadyAt = ParseOptionalTimestamp(document.ReadyAt),
+            Locked = document.Locked ?? false,
+            DiscardedAt = ParseOptionalTimestamp(document.DiscardedAt),
+            VerifiedAt = ParseOptionalTimestamp(document.VerifiedAt),
             PublishedAt = ParseOptionalTimestamp(document.PublishedAt),
-            ExpiredAt = ParseOptionalTimestamp(document.ExpiredAt),
+            RetiredAt = ParseOptionalTimestamp(document.RetiredAt),
             Body = BodyCleanup.Normalize(document.Body ?? string.Empty),
         };
 
@@ -148,12 +150,15 @@ public static class BinderTomlReader
         public string? Created { get; set; }
         public string? Modified { get; set; }
         public string? Status { get; set; }
-        [TomlPropertyName("ready_at")]
-        public string? ReadyAt { get; set; }
+        public bool? Locked { get; set; }
+        [TomlPropertyName("discarded_at")]
+        public string? DiscardedAt { get; set; }
+        [TomlPropertyName("verified_at")]
+        public string? VerifiedAt { get; set; }
         [TomlPropertyName("published_at")]
         public string? PublishedAt { get; set; }
-        [TomlPropertyName("expired_at")]
-        public string? ExpiredAt { get; set; }
+        [TomlPropertyName("retired_at")]
+        public string? RetiredAt { get; set; }
         public List<string>? Attachments { get; set; }
         public string? Body { get; set; }
     }

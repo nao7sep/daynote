@@ -25,18 +25,18 @@ public sealed class EditorViewModelTests
     };
 
     [Fact]
-    public void Load_populates_fields_without_raising_Edited()
+    public void Load_populates_fields_without_raising_Changed()
     {
         var editor = NewEditor();
         var raised = false;
-        editor.Edited += (_, _) => raised = true;
+        editor.Changed += (_, _) => raised = true;
 
-        editor.Load(NewNote(title: "Hello", body: "world", status: NoteStatus.Ready));
+        editor.Load(NewNote(title: "Hello", body: "world", status: NoteStatus.Verified));
 
         Assert.True(editor.HasNote);
         Assert.Equal("Hello", editor.Title);
         Assert.Equal("world", editor.Body);
-        Assert.Equal(NoteStatus.Ready, editor.Status);
+        Assert.Equal(NoteStatus.Verified, editor.Status);
         Assert.False(raised);
     }
 
@@ -55,13 +55,13 @@ public sealed class EditorViewModelTests
     }
 
     [Fact]
-    public void Editing_the_title_writes_through_to_the_note_and_raises_Edited()
+    public void Editing_the_title_writes_through_to_the_note_and_raises_Changed()
     {
         var editor = NewEditor();
         var note = NewNote();
         editor.Load(note);
         var raised = 0;
-        editor.Edited += (_, _) => raised++;
+        editor.Changed += (_, _) => raised++;
 
         editor.Title = "New title";
 
@@ -83,32 +83,59 @@ public sealed class EditorViewModelTests
     }
 
     [Theory]
-    [InlineData(NoteStatus.Draft, true)]
-    [InlineData(NoteStatus.Ready, true)]
-    [InlineData(NoteStatus.Published, false)]
-    [InlineData(NoteStatus.Expired, false)]
-    public void Draft_and_ready_notes_are_editable(NoteStatus status, bool editable)
+    [InlineData(NoteStatus.Draft)]
+    [InlineData(NoteStatus.Discarded)]
+    [InlineData(NoteStatus.Verified)]
+    [InlineData(NoteStatus.Published)]
+    [InlineData(NoteStatus.Retired)]
+    public void Editability_follows_the_lock_never_the_status(NoteStatus status)
     {
         var editor = NewEditor();
 
         editor.Load(NewNote(status: status));
+        Assert.True(editor.IsEditable);
 
-        Assert.Equal(editable, editor.IsEditable);
+        var locked = NewNote(status: status);
+        locked.Locked = true;
+        editor.Load(locked);
+        Assert.False(editor.IsEditable);
     }
 
     [Fact]
-    public void Changing_status_updates_editability_and_writes_through()
+    public void Changing_status_writes_through_and_leaves_the_lock_alone()
     {
         var editor = NewEditor();
         var note = NewNote(status: NoteStatus.Draft);
         editor.Load(note);
         var raised = 0;
-        editor.Edited += (_, _) => raised++;
+        editor.Changed += (_, _) => raised++;
 
         editor.Status = NoteStatus.Published;
 
+        Assert.True(editor.IsEditable);
+        Assert.False(note.Locked);
+        Assert.Equal(NoteStatus.Published, note.Status);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void Locking_writes_through_and_leaves_the_status_and_times_alone()
+    {
+        var editor = NewEditor();
+        var note = NewNote(status: NoteStatus.Published);
+        note.PublishedAt = new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
+        var modified = note.Modified;
+        editor.Load(note);
+        var raised = 0;
+        editor.Changed += (_, _) => raised++;
+
+        editor.Locked = true;
+
+        Assert.True(note.Locked);
         Assert.False(editor.IsEditable);
         Assert.Equal(NoteStatus.Published, note.Status);
+        Assert.Equal(new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero), note.PublishedAt);
+        Assert.Equal(modified, note.Modified);
         Assert.Equal(1, raised);
     }
 
@@ -132,7 +159,7 @@ public sealed class EditorViewModelTests
         var editor = NewEditor();
         editor.Load(NewNote(title: "Clean"));
         var raised = 0;
-        editor.Edited += (_, _) => raised++;
+        editor.Changed += (_, _) => raised++;
 
         editor.NormalizeTitle();
 

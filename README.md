@@ -20,7 +20,7 @@ Prebuilt builds for **macOS (Apple Silicon)** and **Windows (x64)** are on the [
 
 - **Binders of plain-text notes** — many notes per `.daynote` file, each with a title and body.
 - **Attachments** — associate files with a note; add by drag-and-drop, reorder in place.
-- **Lifecycle status** — draft → ready → published → expired; published and expired notes are locked until moved back to draft or ready.
+- **Lifecycle status** — draft, discarded, verified, published or retired, each with the time the note reached it; a separate lock protects a note's content while its status stays free to change.
 - **Character counting** — live word/character counts plus an X/Twitter-weighted count against the 280 limit.
 - **Autosave** — debounced save as you type; flushes on close and quit.
 - **Light and dark themes** — a plum "Twilight" dark and a lavender light; follow the OS or pick one in Settings. Keyboard-driven throughout.

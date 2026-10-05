@@ -1,45 +1,42 @@
 namespace DayNote.Core.Models;
 
 /// <summary>
-/// A note's lifecycle state. Two editable (<see cref="Draft"/>, <see cref="Ready"/>) and two
-/// locked (<see cref="Published"/>, <see cref="Expired"/>). New notes start as <see cref="Draft"/>.
-/// Transitions are manual and any-to-any; nothing auto-transitions.
+/// A note's lifecycle state, declared in workflow order (the status picker follows it). New notes
+/// start as <see cref="Draft"/>. Transitions are manual and any-to-any; nothing auto-transitions.
+/// Whether a note can be edited is its <see cref="Note.Locked"/> flag, never its status.
 /// </summary>
 public enum NoteStatus
 {
     Draft,
-    Ready,
+    Discarded,
+    Verified,
     Published,
-    Expired,
+    Retired,
 }
 
 /// <summary>Serialization for <see cref="NoteStatus"/>: stable lowercase tokens in the stored file.</summary>
 public static class NoteStatuses
 {
-    /// <summary>The lowercase token written to the <c>.daynote</c> file (matches bigmouth's vocabulary).</summary>
+    /// <summary>The lowercase token written to the <c>.daynote</c> file.</summary>
     public static string ToToken(this NoteStatus status) => status switch
     {
-        NoteStatus.Ready => "ready",
+        NoteStatus.Discarded => "discarded",
+        NoteStatus.Verified => "verified",
         NoteStatus.Published => "published",
-        NoteStatus.Expired => "expired",
+        NoteStatus.Retired => "retired",
         _ => "draft",
     };
 
     /// <summary>
-    /// Parses a stored token back to a status, case-insensitively. Accepts the legacy token
-    /// <c>"checked"</c> as <see cref="NoteStatus.Ready"/> for backward compatibility with older files.
-    /// Anything missing or unrecognized falls back to <see cref="NoteStatus.Draft"/>.
+    /// Parses a stored token back to a status, case-insensitively. Anything missing or unrecognized
+    /// falls back to <see cref="NoteStatus.Draft"/>.
     /// </summary>
     public static NoteStatus Parse(string? token) => token?.Trim().ToLowerInvariant() switch
     {
-        "ready" => NoteStatus.Ready,
-        "checked" => NoteStatus.Ready,
+        "discarded" => NoteStatus.Discarded,
+        "verified" => NoteStatus.Verified,
         "published" => NoteStatus.Published,
-        "expired" => NoteStatus.Expired,
+        "retired" => NoteStatus.Retired,
         _ => NoteStatus.Draft,
     };
-
-    /// <summary>Whether the status is in the editable half of the lifecycle (draft or ready).</summary>
-    public static bool IsEditable(this NoteStatus status) =>
-        status is NoteStatus.Draft or NoteStatus.Ready;
 }

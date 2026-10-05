@@ -81,7 +81,7 @@ public sealed class ThemeResourcesTests
         foreach (var surface in new[] { "AppBackgroundBrush", "SurfaceBrush", "UtilityBrush" }.Concat(rows))
             Check("TextSecondaryBrush", surface, 4.5);
         // A note row's lifecycle label on the list, selected or not; error text wherever it appears.
-        foreach (var status in new[] { "StatusDraftBrush", "StatusReadyBrush", "StatusPublishedBrush", "StatusExpiredBrush" })
+        foreach (var status in new[] { "StatusDraftBrush", "StatusDiscardedBrush", "StatusVerifiedBrush", "StatusPublishedBrush", "StatusRetiredBrush" })
             foreach (var row in rows)
                 Check(status, row, 4.5);
         foreach (var surface in new[] { "AppBackgroundBrush", "SurfaceBrush" })

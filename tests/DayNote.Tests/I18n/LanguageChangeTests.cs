@@ -59,7 +59,7 @@ public class LanguageChangeTests : WindowTest
             Assert.Equal(Localizer.Of(gone.Result!.Message), gone.Result.Text);
             Assert.StartsWith(Localizer.T("meta.created", ("time", "")), vm.Editor.CreatedText);
             Assert.Contains(Localizer.T("counts.words", ("count", 4)), vm.Editor.WordsText);
-            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == Localizer.T("status.expired"));
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == Localizer.T("status.retired"));
             Assert.NotEqual(English.Of("binders.new"), newBinder.Content);
             Assert.NotEqual(saveState, vm.SaveStateText);
         }

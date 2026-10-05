@@ -66,15 +66,15 @@ internal sealed class PopulatedMainWindow : IDisposable
         await vm.NewBinderCommand.ExecuteAsync(null);
 
         // One note in each state, newest last so it ends up selected.
-        foreach (var status in new[] { NoteStatus.Draft, NoteStatus.Ready, NoteStatus.Published })
+        foreach (var status in new[] { NoteStatus.Draft, NoteStatus.Discarded, NoteStatus.Verified, NoteStatus.Published })
         {
             vm.NewNoteCommand.Execute(null);
             vm.Editor.Title = "Note " + status;
             vm.Editor.Status = status;
         }
 
-        // The selected note: attachments first, while it can still be edited, then every status in
-        // turn, so the status bar carries its widest line.
+        // The selected note: attachments first, then retired, so the status bar carries its widest line
+        // (verified, published and retired times together).
         vm.NewNoteCommand.Execute(null);
         vm.Editor.Title = "A note with everything";
         vm.Editor.Body = "Some words to count.";
@@ -90,7 +90,7 @@ internal sealed class PopulatedMainWindow : IDisposable
         vm.SelectedNote = vm.Notes.First(note => !ReferenceEquals(note, selected));
         vm.SelectedNote = selected;
         await vm.AddDroppedFiles([kept], unavailable: 2);
-        foreach (var status in new[] { NoteStatus.Ready, NoteStatus.Published, NoteStatus.Expired })
+        foreach (var status in new[] { NoteStatus.Verified, NoteStatus.Published, NoteStatus.Retired })
             vm.Editor.Status = status;
 
         // An app-shell result, and the text style just applied.

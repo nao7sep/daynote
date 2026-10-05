@@ -1108,7 +1108,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task A_published_note_keeps_the_attachments_it_was_published_with()
+    public async Task A_locked_note_keeps_its_attachments_while_its_status_stays_free()
     {
         var vm = await OpenNewBinderAsync();
         vm.NewNoteCommand.Execute(null);
@@ -1124,28 +1124,180 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.AttachmentPaths = [first, second];
         await vm.AddAttachmentCommand.ExecuteAsync(null);
         await vm.SaveNowCommand.ExecuteAsync(null);
-        var published = vm.Attachments.Select(attachment => attachment.FileName).ToArray();
-        Assert.Equal(2, published.Length);
+        var kept = vm.Attachments.Select(attachment => attachment.FileName).ToArray();
+        Assert.Equal(2, kept.Length);
 
+        // Publishing alone locks nothing.
         vm.Editor.Status = NoteStatus.Published;
-        Assert.False(vm.CanEditNote);
+        Assert.True(vm.CanEditNote);
 
-        // A published note's text is read-only, and so is the set of files it carries: nothing adds,
-        // removes, or reorders them until it goes back to a draft.
+        // A locked note's text cannot be edited, and neither can the set of files it carries: nothing adds,
+        // removes, or reorders them until it is unlocked. Its status still moves.
+        vm.Editor.Locked = true;
+        Assert.False(vm.CanEditNote);
         Assert.False(vm.MoveAttachment(vm.Attachments[1], 0));
         _dialogs.AttachmentPaths = [late];
         await vm.AddAttachmentCommand.ExecuteAsync(null);
         await vm.AddDroppedFiles([late]);
         await vm.RemoveAttachmentCommand.ExecuteAsync(vm.Attachments[0]);
-        Assert.Equal(published, vm.Attachments.Select(attachment => attachment.FileName));
+        Assert.Equal(kept, vm.Attachments.Select(attachment => attachment.FileName));
+        vm.Editor.Status = NoteStatus.Retired;
+        Assert.Equal(NoteStatus.Retired, vm.SelectedNote!.Note.Status);
 
-        // Back in a draft, all three work again.
-        vm.Editor.Status = NoteStatus.Draft;
+        // Unlocked, all three work again.
+        vm.Editor.Locked = false;
         Assert.True(vm.CanEditNote);
         Assert.True(vm.MoveAttachment(vm.Attachments[1], 0));
         await vm.AddDroppedFiles([late]);
         Assert.Equal(3, vm.Attachments.Count);
 
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_locked_note_can_still_be_deleted()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Locked = true;
+        _dialogs.ConfirmResult = true;
+
+        await vm.DeleteNoteCommand.ExecuteAsync(null);
+
+        Assert.Empty(vm.Notes);
+        await vm.ShutdownAsync();
+    }
+
+    // Modified moves on content edits and on nothing else (content-lifecycle-conventions).
+
+    private Note SavedNote() => new BinderStore().Load(BinderPath).Binder.Notes.Single();
+
+    [AvaloniaFact]
+    public async Task An_untouched_new_note_keeps_its_creation_time_as_Modified()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        var saved = SavedNote();
+        Assert.Equal(saved.Created, saved.Modified);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Status_changes_and_locking_leave_Modified_alone()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "words";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var modified = SavedNote().Modified;
+
+        foreach (var status in new[] { NoteStatus.Verified, NoteStatus.Published, NoteStatus.Retired, NoteStatus.Published })
+        {
+            await Task.Delay(5);
+            vm.Editor.Status = status;
+            await vm.SaveNowCommand.ExecuteAsync(null);
+            Assert.Equal(status, SavedNote().Status);
+            Assert.Equal(modified, SavedNote().Modified);
+        }
+
+        vm.Editor.Locked = true;
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.True(SavedNote().Locked);
+        Assert.Equal(modified, SavedNote().Modified);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Edits_that_leave_the_content_as_saved_leave_Modified_alone()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Title = "Title";
+        vm.Editor.Body = "body";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var modified = SavedNote().Modified;
+        await Task.Delay(5);
+
+        // Typed, then undone before the save.
+        vm.Editor.Title = "Title changed";
+        vm.Editor.Title = "Title";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(modified, SavedNote().Modified);
+
+        // Trailing whitespace the save's own cleanup removes.
+        vm.Editor.Body = "body   ";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(modified, SavedNote().Modified);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Any_content_edit_moves_Modified_whatever_the_status()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "words";
+        vm.Editor.Status = NoteStatus.Published;
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var before = SavedNote();
+        await Task.Delay(5);
+
+        vm.Editor.Body = "words.";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        var after = SavedNote();
+        Assert.True(after.Modified > before.Modified);
+        Assert.True(after.Modified > after.PublishedAt);
+        Assert.Equal(before.PublishedAt, after.PublishedAt);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Reordering_attachments_moves_Modified()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var first = Path.Combine(_home, "first.txt");
+        var second = Path.Combine(_home, "second.txt");
+        File.WriteAllText(first, "first");
+        File.WriteAllText(second, "second");
+        _dialogs.AttachmentPaths = [first, second];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var modified = SavedNote().Modified;
+        await Task.Delay(5);
+
+        Assert.True(vm.MoveAttachment(vm.Attachments[1], 0));
+        vm.CommitAttachmentOrder();
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.True(SavedNote().Modified > modified);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_change_landing_during_a_save_does_not_stamp_the_note_again()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "words";
+
+        // The status changes while the first save is writing, so the note stays marked for the next one.
+        var firstSave = vm.SaveNowCommand.ExecuteAsync(null);
+        vm.Editor.Status = NoteStatus.Verified;
+        await firstSave;
+        var modified = SavedNote().Modified;
+        await Task.Delay(5);
+
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.Equal(NoteStatus.Verified, SavedNote().Status);
+        Assert.Equal(modified, SavedNote().Modified);
         await vm.ShutdownAsync();
     }
 

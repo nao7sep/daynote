@@ -1,35 +1,58 @@
 namespace DayNote.Core.Models;
 
 /// <summary>
-/// Applies DayNote's lifecycle timestamp rules when a note's status changes.
-/// Timestamps are set-if-absent on forward moves and cleared only on return to draft.
+/// Moves a note to a new status and sets its status times by the transition table of the
+/// content-lifecycle-conventions. Retired implies published and published implies verified, so an
+/// implied time is set with the move when the source status cannot hold it, and kept when it can.
 /// </summary>
 public static class NoteLifecycle
 {
-    public static void ApplyTransition(Note note, NoteStatus newStatus, DateTimeOffset now)
+    public static void ApplyTransition(Note note, NoteStatus target, DateTimeOffset now)
     {
-        if (newStatus == NoteStatus.Draft)
+        var source = note.Status;
+        if (source == target)
         {
-            note.ReadyAt = null;
-            note.PublishedAt = null;
-            note.ExpiredAt = null;
-        }
-        else if (newStatus == NoteStatus.Ready)
-        {
-            note.ReadyAt ??= now;
-        }
-        else if (newStatus == NoteStatus.Published)
-        {
-            note.ReadyAt ??= now;
-            note.PublishedAt ??= now;
-        }
-        else if (newStatus == NoteStatus.Expired)
-        {
-            note.ReadyAt ??= now;
-            note.PublishedAt ??= now;
-            note.ExpiredAt ??= now;
+            return;
         }
 
-        note.Status = newStatus;
+        // Which times the source status holds, so each is kept rather than re-set.
+        var holdsVerified = source is NoteStatus.Verified or NoteStatus.Published or NoteStatus.Retired;
+        var holdsPublished = source is NoteStatus.Published or NoteStatus.Retired;
+
+        DateTimeOffset? discarded = null, verified = null, published = null, retired = null;
+        switch (target)
+        {
+            case NoteStatus.Discarded:
+                discarded = now;
+                break;
+            case NoteStatus.Verified:
+                verified = Keep(holdsVerified, note.VerifiedAt, now);
+                break;
+            case NoteStatus.Published:
+                verified = Keep(holdsVerified, note.VerifiedAt, now);
+                // Retired → published is an undelete: the original publication time comes back with it.
+                published = source == NoteStatus.Retired
+                    ? Keep(holdsPublished, note.PublishedAt, NotBefore(now, verified))
+                    : NotBefore(now, verified);
+                break;
+            case NoteStatus.Retired:
+                verified = Keep(holdsVerified, note.VerifiedAt, now);
+                published = Keep(holdsPublished, note.PublishedAt, NotBefore(now, verified));
+                retired = NotBefore(now, published);
+                break;
+        }
+
+        note.DiscardedAt = discarded;
+        note.VerifiedAt = verified;
+        note.PublishedAt = published;
+        note.RetiredAt = retired;
+        note.Status = target;
     }
+
+    private static DateTimeOffset Keep(bool holds, DateTimeOffset? existing, DateTimeOffset now) =>
+        holds && existing is { } value ? value : now;
+
+    // A new time never precedes a kept time it follows, even if the clock stepped back.
+    private static DateTimeOffset NotBefore(DateTimeOffset now, DateTimeOffset? earlier) =>
+        earlier is { } value && value > now ? value : now;
 }

@@ -34,9 +34,11 @@ public sealed class BinderTomlTests
             Assert.Equal(expected.Created, actual.Created);
             Assert.Equal(expected.Modified, actual.Modified);
             Assert.Equal(expected.Status, actual.Status);
-            Assert.Equal(expected.ReadyAt, actual.ReadyAt);
+            Assert.Equal(expected.Locked, actual.Locked);
+            Assert.Equal(expected.DiscardedAt, actual.DiscardedAt);
+            Assert.Equal(expected.VerifiedAt, actual.VerifiedAt);
             Assert.Equal(expected.PublishedAt, actual.PublishedAt);
-            Assert.Equal(expected.ExpiredAt, actual.ExpiredAt);
+            Assert.Equal(expected.RetiredAt, actual.RetiredAt);
             Assert.Equal(expected.Attachments, actual.Attachments);
             Assert.Equal(expected.Body, actual.Body);
         }
@@ -59,7 +61,7 @@ public sealed class BinderTomlTests
         // The binder has no title line (its title is local app state, not stored in the file).
         Assert.DoesNotContain("title =", text[..noteStart]);
         AssertInOrder(text[..noteStart], "id =", "created =", "modified =");
-        AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "status =", "ready_at =", "attachments =", "body =");
+        AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "status =", "locked =", "verified_at =", "attachments =", "body =");
     }
 
     [Fact]
@@ -297,9 +299,10 @@ public sealed class BinderTomlTests
 
     [Theory]
     [InlineData(NoteStatus.Draft, "draft")]
-    [InlineData(NoteStatus.Ready, "ready")]
+    [InlineData(NoteStatus.Discarded, "discarded")]
+    [InlineData(NoteStatus.Verified, "verified")]
     [InlineData(NoteStatus.Published, "published")]
-    [InlineData(NoteStatus.Expired, "expired")]
+    [InlineData(NoteStatus.Retired, "retired")]
     public void Status_round_trips_with_a_lowercase_token(NoteStatus status, string token)
     {
         var binder = OneNote();
@@ -330,31 +333,25 @@ public sealed class BinderTomlTests
     }
 
     [Fact]
-    public void Reader_accepts_legacy_checked_token_as_ready()
-    {
-        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"checked\"\nbody = ''\n";
-
-        Assert.Equal(NoteStatus.Ready, BinderTomlReader.Read(text).Notes[0].Status);
-    }
-
-    [Fact]
     public void Lifecycle_timestamps_round_trip()
     {
         var binder = OneNote();
         var note = binder.Notes[0];
         note.Status = NoteStatus.Published;
-        note.ReadyAt = new DateTimeOffset(2026, 6, 10, 12, 0, 0, 0, TimeSpan.Zero);
+        note.VerifiedAt = new DateTimeOffset(2026, 6, 10, 12, 0, 0, 0, TimeSpan.Zero);
         note.PublishedAt = new DateTimeOffset(2026, 6, 10, 13, 0, 0, 0, TimeSpan.Zero);
 
         var text = BinderTomlWriter.Write(binder);
-        Assert.Contains("ready_at =", text);
+        Assert.Contains("verified_at =", text);
         Assert.Contains("published_at =", text);
-        Assert.DoesNotContain("expired_at =", text);
+        Assert.DoesNotContain("discarded_at =", text);
+        Assert.DoesNotContain("retired_at =", text);
 
         var restored = BinderTomlReader.Read(text).Notes[0];
-        Assert.Equal(note.ReadyAt, restored.ReadyAt);
+        Assert.Equal(note.VerifiedAt, restored.VerifiedAt);
         Assert.Equal(note.PublishedAt, restored.PublishedAt);
-        Assert.Null(restored.ExpiredAt);
+        Assert.Null(restored.DiscardedAt);
+        Assert.Null(restored.RetiredAt);
     }
 
     [Fact]
@@ -363,9 +360,31 @@ public sealed class BinderTomlTests
         const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"draft\"\nbody = ''\n";
 
         var note = BinderTomlReader.Read(text).Notes[0];
-        Assert.Null(note.ReadyAt);
+        Assert.Null(note.DiscardedAt);
+        Assert.Null(note.VerifiedAt);
         Assert.Null(note.PublishedAt);
-        Assert.Null(note.ExpiredAt);
+        Assert.Null(note.RetiredAt);
+    }
+
+    [Theory]
+    [InlineData(true, "locked = true")]
+    [InlineData(false, "locked = false")]
+    public void Locked_round_trips_as_a_boolean(bool locked, string line)
+    {
+        var binder = OneNote();
+        binder.Notes[0].Locked = locked;
+
+        var text = BinderTomlWriter.Write(binder);
+        Assert.Contains(line, text);
+        Assert.Equal(locked, BinderTomlReader.Read(text).Notes[0].Locked);
+    }
+
+    [Fact]
+    public void A_missing_locked_key_reads_as_unlocked()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"published\"\nbody = ''\n";
+
+        Assert.False(BinderTomlReader.Read(text).Notes[0].Locked);
     }
 
     [Fact]
@@ -670,14 +689,14 @@ public sealed class BinderTomlTests
             "[[note]]\n" +
             "body = 'hello'\n" +
             "title = \"Reversed\"\n" +
-            "status = \"ready\"\n" +
+            "status = \"verified\"\n" +
             "id = \"n1\"\n";
 
         var binder = BinderTomlReader.Read(text);
         Assert.Equal("nb1", binder.Id);
         Assert.Equal("Reversed", binder.Notes[0].Title);
         Assert.Equal("hello", binder.Notes[0].Body);
-        Assert.Equal(NoteStatus.Ready, binder.Notes[0].Status);
+        Assert.Equal(NoteStatus.Verified, binder.Notes[0].Status);
     }
 
     // Hostile ID edge cases
@@ -807,13 +826,14 @@ public sealed class BinderTomlTests
         const string text =
             "id = \"nb1\"\n\n" +
             "[[note]]\nid = \"n1\"\nstatus = \"published\"\n" +
-            "ready_at = \"bad\"\npublished_at = \"nope\"\nexpired_at = \"\"\n" +
+            "discarded_at = \"x\"\nverified_at = \"bad\"\npublished_at = \"nope\"\nretired_at = \"\"\n" +
             "body = ''\n";
 
         var note = BinderTomlReader.Read(text).Notes[0];
-        Assert.Null(note.ReadyAt);
+        Assert.Null(note.DiscardedAt);
+        Assert.Null(note.VerifiedAt);
         Assert.Null(note.PublishedAt);
-        Assert.Null(note.ExpiredAt);
+        Assert.Null(note.RetiredAt);
     }
 
     [Fact]
@@ -847,15 +867,17 @@ public sealed class BinderTomlTests
     {
         var binder = OneNote();
         var note = binder.Notes[0];
-        note.Status = NoteStatus.Expired;
-        note.ReadyAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        note.Status = NoteStatus.Retired;
+        note.DiscardedAt = new DateTimeOffset(2025, 12, 1, 0, 0, 0, TimeSpan.Zero);
+        note.VerifiedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         note.PublishedAt = new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero);
-        note.ExpiredAt = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
+        note.RetiredAt = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
 
         var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder)).Notes[0];
-        Assert.Equal(note.ReadyAt, restored.ReadyAt);
+        Assert.Equal(note.DiscardedAt, restored.DiscardedAt);
+        Assert.Equal(note.VerifiedAt, restored.VerifiedAt);
         Assert.Equal(note.PublishedAt, restored.PublishedAt);
-        Assert.Equal(note.ExpiredAt, restored.ExpiredAt);
+        Assert.Equal(note.RetiredAt, restored.RetiredAt);
     }
 
     // Large / stress inputs
@@ -945,10 +967,11 @@ public sealed class BinderTomlTests
             Title = "Every field populated: \"quotes\" and 'apostrophes' \\ backslash",
             Created = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 15, 12, 30, 0, TimeSpan.Zero),
-            Status = NoteStatus.Expired,
-            ReadyAt = new DateTimeOffset(2026, 3, 2, 0, 0, 0, TimeSpan.Zero),
+            Status = NoteStatus.Retired,
+            Locked = true,
+            VerifiedAt = new DateTimeOffset(2026, 3, 2, 0, 0, 0, TimeSpan.Zero),
             PublishedAt = new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero),
-            ExpiredAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
+            RetiredAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
             Body = "Line 1\n\tindented\n\n\"\"\" triple doubles\n''' triple singles\n\\backslash at end\\",
         };
         note.Attachments.Add("photo (1).jpg");
@@ -961,9 +984,10 @@ public sealed class BinderTomlTests
         Assert.Equal(note.Created, restored.Created);
         Assert.Equal(note.Modified, restored.Modified);
         Assert.Equal(note.Status, restored.Status);
-        Assert.Equal(note.ReadyAt, restored.ReadyAt);
+        Assert.Equal(note.Locked, restored.Locked);
+        Assert.Equal(note.VerifiedAt, restored.VerifiedAt);
         Assert.Equal(note.PublishedAt, restored.PublishedAt);
-        Assert.Equal(note.ExpiredAt, restored.ExpiredAt);
+        Assert.Equal(note.RetiredAt, restored.RetiredAt);
         Assert.Equal(note.Body, restored.Body);
         Assert.Equal(note.Attachments, restored.Attachments);
     }
@@ -1031,8 +1055,8 @@ public sealed class BinderTomlTests
             Title = "First note",
             Created = new DateTimeOffset(2026, 6, 3, 14, 30, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 3, 14, 30, 0, 0, TimeSpan.Zero),
-            Status = NoteStatus.Ready,
-            ReadyAt = new DateTimeOffset(2026, 6, 3, 15, 0, 0, 0, TimeSpan.Zero),
+            Status = NoteStatus.Verified,
+            VerifiedAt = new DateTimeOffset(2026, 6, 3, 15, 0, 0, 0, TimeSpan.Zero),
             Body = "firstline\n\tsecondline\nthirdline",
         };
         first.Attachments.Add("diagram.png");
@@ -1046,7 +1070,8 @@ public sealed class BinderTomlTests
             Created = new DateTimeOffset(2026, 6, 3, 14, 40, 0, 0, TimeSpan.Zero),
             Modified = new DateTimeOffset(2026, 6, 3, 14, 41, 0, 0, TimeSpan.Zero),
             Status = NoteStatus.Published,
-            ReadyAt = new DateTimeOffset(2026, 6, 3, 14, 45, 0, 0, TimeSpan.Zero),
+            Locked = true,
+            VerifiedAt = new DateTimeOffset(2026, 6, 3, 14, 45, 0, 0, TimeSpan.Zero),
             PublishedAt = new DateTimeOffset(2026, 6, 3, 14, 50, 0, 0, TimeSpan.Zero),
             Body = "copies clean, indentation preserved exactly",
         };

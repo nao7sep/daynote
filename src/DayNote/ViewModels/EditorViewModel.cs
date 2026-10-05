@@ -8,8 +8,8 @@ namespace DayNote.ViewModels;
 
 /// <summary>
 /// The editor pane: the selected note's title, body, and metadata, plus live word, character, and
-/// X-weighted counts. Edits are written straight back to the underlying <see cref="Note"/>; the
-/// <see cref="Edited"/> event drives the main window's per-note dirty tracking and autosave debounce.
+/// X-weighted counts. Changes are written straight back to the underlying <see cref="Note"/>; the
+/// <see cref="Changed"/> event drives the main window's dirty tracking and autosave debounce.
 /// The body is plain text — markdown is not rendered.
 /// </summary>
 public sealed partial class EditorViewModel : ViewModelBase
@@ -24,8 +24,11 @@ public sealed partial class EditorViewModel : ViewModelBase
         UpdateCounts();
     }
 
-    /// <summary>Raised when the user edits the title or body of the loaded note.</summary>
-    public event EventHandler? Edited;
+    /// <summary>
+    /// Raised when the loaded note changes in a way that must be saved: its title, body, status or
+    /// lock. Whether its content changed, and so its Modified time, is decided by the save.
+    /// </summary>
+    public event EventHandler? Changed;
 
     public Note? Note => _note;
 
@@ -39,12 +42,15 @@ public sealed partial class EditorViewModel : ViewModelBase
     private NoteStatus _status = NoteStatus.Draft;
 
     /// <summary>
-    /// Whether the title and body may be edited. Draft and ready notes are editable; published and
-    /// expired notes are locked until moved back to an editable state (the status picker itself stays
-    /// enabled so that move is always possible).
+    /// Whether the note's content is locked. A locked note's title, body and attachments cannot be
+    /// edited; its status and deletion stay free, per the content-lifecycle-conventions.
     /// </summary>
     [ObservableProperty]
-    private bool _isEditable = true;
+    [NotifyPropertyChangedFor(nameof(IsEditable))]
+    private bool _locked;
+
+    /// <summary>Whether the title, body and attachments may be edited: the note is not locked.</summary>
+    public bool IsEditable => !Locked;
 
     [ObservableProperty]
     private string _title = string.Empty;
@@ -59,13 +65,16 @@ public sealed partial class EditorViewModel : ViewModelBase
     private string _modifiedText = string.Empty;
 
     [ObservableProperty]
-    private string _readyAtText = string.Empty;
+    private string _discardedAtText = string.Empty;
+
+    [ObservableProperty]
+    private string _verifiedAtText = string.Empty;
 
     [ObservableProperty]
     private string _publishedAtText = string.Empty;
 
     [ObservableProperty]
-    private string _expiredAtText = string.Empty;
+    private string _retiredAtText = string.Empty;
 
     [ObservableProperty]
     private string _wordsText = string.Empty;
@@ -93,6 +102,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         HasNote = note is not null;
         Title = note?.Title ?? string.Empty;
         Status = note?.Status ?? NoteStatus.Draft;
+        Locked = note?.Locked ?? false;
         Body = note?.Body ?? string.Empty;
         RefreshMetadata();
         UpdateCounts();
@@ -113,7 +123,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         var cleaned = TextCleanup.SingleLine(Title);
         if (!string.Equals(cleaned, Title, StringComparison.Ordinal))
         {
-            Title = cleaned; // setter raises OnTitleChanged → writes the note and marks dirty
+            Title = cleaned; // setter raises OnTitleChanged → writes the note and raises Changed
         }
     }
 
@@ -124,9 +134,10 @@ public sealed partial class EditorViewModel : ViewModelBase
         {
             CreatedText = string.Empty;
             ModifiedText = string.Empty;
-            ReadyAtText = string.Empty;
+            DiscardedAtText = string.Empty;
+            VerifiedAtText = string.Empty;
             PublishedAtText = string.Empty;
-            ExpiredAtText = string.Empty;
+            RetiredAtText = string.Empty;
             return;
         }
 
@@ -137,9 +148,10 @@ public sealed partial class EditorViewModel : ViewModelBase
 
         CreatedText = At("meta.created", _note.Created);
         ModifiedText = At("meta.modified", _note.Modified);
-        ReadyAtText = At("meta.ready", _note.ReadyAt);
+        DiscardedAtText = At("meta.discarded", _note.DiscardedAt);
+        VerifiedAtText = At("meta.verified", _note.VerifiedAt);
         PublishedAtText = At("meta.published", _note.PublishedAt);
-        ExpiredAtText = At("meta.expired", _note.ExpiredAt);
+        RetiredAtText = At("meta.retired", _note.RetiredAt);
     }
 
     /// <summary>
@@ -160,13 +172,11 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
 
         _note.Title = value;
-        Edited?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     partial void OnStatusChanged(NoteStatus value)
     {
-        IsEditable = value.IsEditable();
-
         if (_suppress || _note is null)
         {
             return;
@@ -174,7 +184,18 @@ public sealed partial class EditorViewModel : ViewModelBase
 
         NoteLifecycle.ApplyTransition(_note, value, DateTimeOffset.UtcNow);
         RefreshMetadata();
-        Edited?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    partial void OnLockedChanged(bool value)
+    {
+        if (_suppress || _note is null)
+        {
+            return;
+        }
+
+        _note.Locked = value;
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     partial void OnBodyChanged(string value)
@@ -186,7 +207,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
 
         _note.Body = value;
-        Edited?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void UpdateCounts()

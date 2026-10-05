@@ -10,19 +10,20 @@ public sealed class Note
     public string Id { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public DateTimeOffset Created { get; set; }
+
+    /// <summary>When the note's content (title, body, attachments) last changed, per the content-lifecycle-conventions.</summary>
     public DateTimeOffset Modified { get; set; }
 
-    /// <summary>Lifecycle state (draft / ready / published / expired). New notes start as draft.</summary>
+    /// <summary>Lifecycle state. New notes start as draft; <see cref="NoteLifecycle"/> owns the moves.</summary>
     public NoteStatus Status { get; set; } = NoteStatus.Draft;
 
-    /// <summary>Set when the note first reaches ready; cleared only on return to draft.</summary>
-    public DateTimeOffset? ReadyAt { get; set; }
+    /// <summary>Whether the content is locked against edits. The status and deletion stay free.</summary>
+    public bool Locked { get; set; }
 
-    /// <summary>Set on first publish; cleared only on return to draft.</summary>
+    public DateTimeOffset? DiscardedAt { get; set; }
+    public DateTimeOffset? VerifiedAt { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
-
-    /// <summary>Set when the note first reaches expired; cleared only on return to draft.</summary>
-    public DateTimeOffset? ExpiredAt { get; set; }
+    public DateTimeOffset? RetiredAt { get; set; }
 
     /// <summary>Bare attachment filenames, in the order written to the file.</summary>
     public List<string> Attachments { get; } = new();

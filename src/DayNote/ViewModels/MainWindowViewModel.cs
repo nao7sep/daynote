@@ -54,6 +54,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private readonly List<NoteListItemViewModel> _allNotes = new();
     private readonly List<BinderListItemViewModel> _allBinders = new();
     private readonly HashSet<string> _dirtyNoteIds = new();
+
+    // Each note's content as it was last loaded or saved. A save sets a note's Modified only when its
+    // content differs from this, so a status or lock change, or an edit undone before the save, leaves
+    // Modified alone (content-lifecycle-conventions).
+    private readonly Dictionary<string, NoteContent> _savedContent = new();
     private string? _attachmentNoteId;
 
     private AppConfig _config = new();
@@ -116,7 +121,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
 
         Editor = new EditorViewModel(_displayZone);
-        Editor.Edited += OnEditorEdited;
+        Editor.Changed += OnEditorChanged;
         Editor.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(EditorViewModel.IsEditable))
@@ -222,9 +227,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     public ObservableCollection<AttachmentItemViewModel> Attachments { get; } = new();
 
     /// <summary>
-    /// Whether the selected note may be changed. A published or expired note is read-only, and its
+    /// Whether the selected note's content may be changed. A locked note's content is locked, and its
     /// attachments are part of the note rather than a list beside it, so adding, removing, and
-    /// reordering them answer to the same rule as its title and body.
+    /// reordering them answer to the same rule as its title and body. Its status and deletion stay free.
     /// </summary>
     public bool CanEditNote => SelectedNote is not null && Editor.IsEditable;
 
@@ -608,6 +613,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         };
 
         _current.Binder.Notes.Add(note);
+        // The empty note is its own baseline: until something is typed, its Modified stays its Created.
+        _savedContent[note.Id] = NoteContent.Of(note);
         // A brand-new note is the newest, so it goes to the top of the newest-first list.
         _allNotes.Insert(0, new NoteListItemViewModel(note, _displayZone));
         NotesFilter = string.Empty;
@@ -1319,6 +1326,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         HasBinder = false;
         _dirty = false;
         _dirtyNoteIds.Clear();
+        _savedContent.Clear();
         Editor.Load(null);
         _allNotes.Clear();
         Notes.Clear();
@@ -1380,13 +1388,24 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             var path = _current.Path;
             _log.Info("Saving binder", new { path, noteCount = binder.Notes.Count });
 
+            // A changed note's Modified moves only when its content differs from what was last saved;
+            // the content written here becomes the new baseline once the write succeeds.
+            var writtenContent = new Dictionary<string, NoteContent>();
             foreach (var id in _dirtyNoteIds)
             {
                 var note = binder.Notes.FirstOrDefault(n => n.Id == id);
-                if (note is not null)
+                if (note is null)
+                {
+                    continue;
+                }
+
+                var content = NoteContent.Of(note);
+                if (!_savedContent.TryGetValue(id, out var saved) || saved != content)
                 {
                     note.Modified = now;
                 }
+
+                writtenContent[id] = content;
             }
 
             binder.Modified = now;
@@ -1402,11 +1421,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 var saved = await Task.Run(() => _binderStore.SaveText(path, text));
                 _baselineHash = saved.ContentHash;
+                foreach (var (id, content) in writtenContent)
+                {
+                    _savedContent[id] = content;
+                }
+
                 _externalChangeAcknowledged = false;
 
                 // Only clear the dirty flags when nothing edited the binder while this save's background
                 // write was in flight. A newer edit already re-set them (MarkDirty), possibly re-adding a
-                // note this save just stamped Modified for — redundant on the next save, never lost. The
+                // note this save just wrote; the next save stamps it again only if its content changed. The
                 // save-state dot follows the same check: a newer, still-unsaved edit means the true state
                 // is Unsaved, not Saved, even though this write itself succeeded.
                 var settled = _dirtyGeneration == generationAtSnapshot;
@@ -1588,6 +1612,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _externalChangeAcknowledged = false;
         _dirty = false;
         _dirtyNoteIds.Clear();
+        _savedContent.Clear();
+        foreach (var note in loaded.Binder.Notes)
+        {
+            _savedContent[note.Id] = NoteContent.Of(note);
+        }
 
         HasBinder = true;
         BuildNotes(loaded.Binder, selectNoteId);
@@ -1920,7 +1949,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private bool IsLiveNote(Note note) =>
         _current is not null && _current.Binder.Notes.Contains(note);
 
-    private void OnEditorEdited(object? sender, EventArgs e)
+    private void OnEditorChanged(object? sender, EventArgs e)
     {
         RefreshSelectedListItem();
         MarkDirty(Editor.Note?.Id);
@@ -2217,4 +2246,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             ? path
             : path + ".daynote";
 
+    /// <summary>A note's content as the file stores it: what a save compares to decide whether Modified moves.</summary>
+    private readonly record struct NoteContent(string Title, string Body, string Attachments)
+    {
+        // Attachment names are bare file names, so '/' cannot occur inside one.
+        public static NoteContent Of(Note note) => new(
+            TextCleanup.SingleLine(note.Title),
+            BodyCleanup.Normalize(note.Body),
+            string.Join('/', note.Attachments));
+    }
 }
