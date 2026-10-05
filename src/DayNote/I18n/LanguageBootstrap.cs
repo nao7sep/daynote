@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DayNote.Core.Storage;
 using static DayNote.Views.ObjC;
 
 namespace DayNote.I18n;
@@ -32,7 +33,10 @@ internal static class LanguageBootstrap
         return computerLanguages;
     }
 
-    /// <summary>The language preference in <c>config.json</c>, or System when there is none to read.</summary>
+    /// <summary>
+    /// The language preference in <c>config.json</c>, or System when there is none to read, including when
+    /// the file records no format version this build reads (store-recovery-conventions).
+    /// </summary>
     internal static string SavedPreference(string? configFile)
     {
         try
@@ -42,6 +46,8 @@ internal static class LanguageBootstrap
 
             using var document = JsonDocument.Parse(File.ReadAllText(configFile));
             return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("formatVersion", out var version)
+                && version.TryGetInt64(out var number) && number is >= 1 and <= FormatVersions.Config
                 && document.RootElement.TryGetProperty("language", out var language)
                 && language.ValueKind == JsonValueKind.String
                 ? Languages.NormalizePreference(language.GetString())

@@ -2,8 +2,8 @@ namespace DayNote.Core.Storage;
 
 /// <summary>
 /// The format version of each store DayNote writes: one integer per format, independent of the app's
-/// version and of the other formats, per the store-recovery-conventions. A file recording no version
-/// reads as 1; a file recording a higher version than these is newer than this build and is left alone.
+/// version and of the other formats, per the store-recovery-conventions. A file recording no version is
+/// unreadable; a file recording a higher version than these is newer than this build and is left alone.
 /// </summary>
 public static class FormatVersions
 {

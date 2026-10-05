@@ -38,9 +38,19 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_config_without_a_format_version_is_set_aside_and_reads_as_built_ins()
+    {
+        File.WriteAllText(ConfigPath, """{ "theme": "dark" }""");
+
+        Assert.Equal(ThemePreference.System, Store.Load().Theme);
+        Assert.False(File.Exists(ConfigPath));
+        Assert.Single(Directory.GetFiles(_directory, "*.invalid"));
+    }
+
+    [Fact]
     public void One_set_uses_built_ins_for_every_absent_set_and_drops_unknown_keys_on_write()
     {
-        File.WriteAllText(ConfigPath, """{ "theme": "dark", "version": 2, "future": true }""");
+        File.WriteAllText(ConfigPath, """{ "formatVersion": 1, "theme": "dark", "version": 2, "future": true }""");
         var config = Store.Load();
         var builtIns = new AppConfig();
         Assert.Equal(ThemePreference.Dark, config.Theme);
@@ -63,7 +73,7 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("System", "system")]
     public void A_language_matching_an_offered_tag_ignoring_case_reads_and_saves_as_that_tag(string stored, string canonical)
     {
-        File.WriteAllText(ConfigPath, $$"""{"language":"{{stored}}","theme":"dark"}""");
+        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"language":"{{stored}}","theme":"dark"}""");
         var store = Store;
 
         var config = store.Load();
@@ -97,7 +107,7 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("binders", "[null]")]
     public void A_set_that_fails_its_check_falls_back_only_for_that_set_and_warns(string key, string value)
     {
-        File.WriteAllText(ConfigPath, $"{{\"{key}\":{value}}}");
+        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"{key}\":{value}}}");
         var config = Store.Load();
         Assert.Empty(ConfigSets.UserSets(config));
         Assert.Equal(key, Assert.Single(_warnings));
@@ -112,7 +122,7 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("sepia", false)]
     public void The_reader_and_the_converter_accept_the_same_themes(string name, bool accepted)
     {
-        File.WriteAllText(ConfigPath, $"{{\"theme\":\"{name}\"}}");
+        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"theme\":\"{name}\"}}");
         Assert.Equal(accepted, ThemePreferenceJsonConverter.TryParse(name, out var parsed));
         Assert.Equal(accepted ? parsed : ThemePreference.System, Store.Load().Theme);
         Assert.Equal(accepted ? 0 : 1, _warnings.Count);
@@ -150,10 +160,10 @@ public sealed class ConfigStoreTests : IDisposable
         store.Save(store.Load());
         Assert.False(File.Exists(ConfigPath));
 
-        File.WriteAllText(ConfigPath, "{ }");
+        File.WriteAllText(ConfigPath, """{ "formatVersion": 1 }""");
         store = Store;
         store.Save(store.Load());
-        Assert.Equal("{ }", File.ReadAllText(ConfigPath));
+        Assert.Equal("""{ "formatVersion": 1 }""", File.ReadAllText(ConfigPath));
     }
 
     [Fact]
@@ -172,7 +182,7 @@ public sealed class ConfigStoreTests : IDisposable
     [Fact]
     public void Save_heals_every_set_from_memory()
     {
-        File.WriteAllText(ConfigPath, """{ "timeZone": "Mars/Phobos", "theme": "system", "uiFontFamily": "Menlo" }""");
+        File.WriteAllText(ConfigPath, """{ "formatVersion": 1, "timeZone": "Mars/Phobos", "theme": "system", "uiFontFamily": "Menlo" }""");
         var store = Store;
         store.Save(store.Load());
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));

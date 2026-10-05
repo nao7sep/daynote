@@ -66,13 +66,13 @@ public sealed class BinderTomlTests
         AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "status =", "locked =", "verified_at =", "attachments =", "body =");
     }
 
-    [Fact]
-    public void A_binder_without_a_format_version_reads_as_version_1()
+    [Theory]
+    [InlineData("id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'kept'\n")]
+    [InlineData("")]
+    [InlineData("   \n\n  ")]
+    public void A_binder_without_a_format_version_is_malformed(string text)
     {
-        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'kept'\n";
-
-        Assert.Equal(1, BinderTomlReader.FormatVersion(text));
-        Assert.Equal("kept", BinderTomlReader.Read(text).Notes[0].Body);
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(text));
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public sealed class BinderTomlTests
     public void Reader_tolerates_missing_keys_and_falls_back_for_bad_timestamps()
     {
         const string text =
-            "id = \"nb1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n" +
             "title = \"Hand edited\"\n" +
             "created = \"2026-06-03T14:23:05.482Z\"\n" +
             "\n" +
@@ -258,7 +258,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void Reader_matches_keys_case_insensitively()
     {
-        const string text = "ID = \"nb1\"\n\n[[NOTE]]\nID = \"n1\"\nTITLE = \"Caps\"\nBODY = ''\n";
+        const string text = "format_version = 1\nID = \"nb1\"\n\n[[NOTE]]\nID = \"n1\"\nTITLE = \"Caps\"\nBODY = ''\n";
 
         var binder = BinderTomlReader.Read(text);
 
@@ -271,7 +271,7 @@ public sealed class BinderTomlTests
     public void Reader_drops_empty_attachment_names()
     {
         const string text =
-            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nattachments = [\"a.png\", \"\", \"b.png\"]\nbody = ''\n";
+            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nattachments = [\"a.png\", \"\", \"b.png\"]\nbody = ''\n";
 
         var binder = BinderTomlReader.Read(text);
 
@@ -285,7 +285,7 @@ public sealed class BinderTomlTests
         // note's assets directory; only the bare filename "a.png" survives. (POSIX separators; on
         // any platform a forward slash, "." and ".." are rejected.)
         const string text =
-            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
             "attachments = [\"a.png\", \"../escape.txt\", \"sub/dir.png\", \"..\", \".\", \"/etc/passwd\"]\n" +
             "body = ''\n";
 
@@ -301,7 +301,7 @@ public sealed class BinderTomlTests
         // traversal id from a hostile or hand-edited binder must never reach the storage layer. A valid
         // bare id is preserved; unsafe ids ("..", "a/b", "/x", empty) are replaced with fresh bare ids.
         const string text =
-            "id = \"nb1\"\n\n" +
+            "format_version = 1\nid = \"nb1\"\n\n" +
             "[[note]]\nid = \"good1\"\nbody = ''\n\n" +
             "[[note]]\nid = \"..\"\nbody = ''\n\n" +
             "[[note]]\nid = \"../escape\"\nbody = ''\n\n" +
@@ -328,7 +328,7 @@ public sealed class BinderTomlTests
         // in case on the fleet's default macOS/Windows filesystems — would make two notes share files
         // and would also make selection and dirty tracking ambiguous.
         const string text =
-            "id = \"nb1\"\n\n" +
+            "format_version = 1\nid = \"nb1\"\n\n" +
             "[[note]]\nid = \"same-id\"\nbody = ''\n\n" +
             "[[note]]\nid = \"same-id\"\nbody = ''\n\n" +
             "[[note]]\nid = \"SAME-ID\"\nbody = ''\n";
@@ -359,8 +359,8 @@ public sealed class BinderTomlTests
     public void Reader_defaults_missing_or_unknown_status_to_draft()
     {
         // An older file with no status key, and a hand-edit typo, both fall back to Draft.
-        const string missing = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
-        const string unknown = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"archived\"\nbody = ''\n";
+        const string missing = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
+        const string unknown = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"archived\"\nbody = ''\n";
 
         Assert.Equal(NoteStatus.Draft, BinderTomlReader.Read(missing).Notes[0].Status);
         Assert.Equal(NoteStatus.Draft, BinderTomlReader.Read(unknown).Notes[0].Status);
@@ -369,7 +369,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void Reader_parses_status_case_insensitively()
     {
-        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"Published\"\nbody = ''\n";
+        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"Published\"\nbody = ''\n";
 
         Assert.Equal(NoteStatus.Published, BinderTomlReader.Read(text).Notes[0].Status);
     }
@@ -399,7 +399,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void Absent_lifecycle_timestamps_read_as_null()
     {
-        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"draft\"\nbody = ''\n";
+        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"draft\"\nbody = ''\n";
 
         var note = BinderTomlReader.Read(text).Notes[0];
         Assert.Null(note.DiscardedAt);
@@ -424,7 +424,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void A_missing_locked_key_reads_as_unlocked()
     {
-        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"published\"\nbody = ''\n";
+        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"published\"\nbody = ''\n";
 
         Assert.False(BinderTomlReader.Read(text).Notes[0].Locked);
     }
@@ -637,22 +637,6 @@ public sealed class BinderTomlTests
     // Structural edge cases
 
     [Fact]
-    public void Empty_string_reads_as_empty_binder()
-    {
-        var binder = BinderTomlReader.Read("");
-        Assert.NotEqual(string.Empty, binder.Id);
-        Assert.Empty(binder.Notes);
-    }
-
-    [Fact]
-    public void Whitespace_only_input_reads_as_empty_binder()
-    {
-        var binder = BinderTomlReader.Read("   \n\n  ");
-        Assert.NotEqual(string.Empty, binder.Id);
-        Assert.Empty(binder.Notes);
-    }
-
-    [Fact]
     public void Binder_with_no_notes_round_trips()
     {
         var binder = new Binder
@@ -696,7 +680,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void A_missing_binder_id_gets_a_fresh_one()
     {
-        const string text = "created = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-01T00:00:00.000Z\"\n";
+        const string text = "format_version = 1\ncreated = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-01T00:00:00.000Z\"\n";
         var binder = BinderTomlReader.Read(text);
         Assert.NotEqual(string.Empty, binder.Id);
     }
@@ -705,7 +689,7 @@ public sealed class BinderTomlTests
     public void Reader_ignores_unknown_keys()
     {
         const string text =
-            "id = \"nb1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n" +
             "unknown_key = \"should be ignored\"\n" +
             "created = \"2026-01-01T00:00:00.000Z\"\n" +
             "modified = \"2026-01-01T00:00:00.000Z\"\n" +
@@ -725,7 +709,7 @@ public sealed class BinderTomlTests
     {
         const string text =
             "modified = \"2026-01-01T00:00:00.000Z\"\n" +
-            "id = \"nb1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n" +
             "created = \"2026-01-01T00:00:00.000Z\"\n" +
             "\n" +
             "[[note]]\n" +
@@ -746,7 +730,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void Note_id_with_forward_slash_is_regenerated()
     {
-        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"a/b\"\nbody = ''\n";
+        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"a/b\"\nbody = ''\n";
         var note = BinderTomlReader.Read(text).Notes[0];
         Assert.NotEqual("a/b", note.Id);
         Assert.Equal(note.Id, Path.GetFileName(note.Id));
@@ -755,7 +739,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void Note_with_empty_id_gets_a_generated_one()
     {
-        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"\"\nbody = ''\n";
+        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"\"\nbody = ''\n";
         var note = BinderTomlReader.Read(text).Notes[0];
         Assert.False(string.IsNullOrEmpty(note.Id));
     }
@@ -763,7 +747,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void Note_with_missing_id_gets_a_generated_one()
     {
-        const string text = "id = \"nb1\"\n\n[[note]]\nbody = ''\n";
+        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nbody = ''\n";
         var note = BinderTomlReader.Read(text).Notes[0];
         Assert.False(string.IsNullOrEmpty(note.Id));
     }
@@ -772,7 +756,7 @@ public sealed class BinderTomlTests
     public void Multiple_notes_with_hostile_ids_all_get_unique_regenerated_ids()
     {
         const string text =
-            "id = \"nb1\"\n\n" +
+            "format_version = 1\nid = \"nb1\"\n\n" +
             "[[note]]\nid = \"..\"\nbody = ''\n\n" +
             "[[note]]\nid = \"..\"\nbody = ''\n\n" +
             "[[note]]\nid = \"\"\nbody = ''\n\n" +
@@ -795,7 +779,7 @@ public sealed class BinderTomlTests
     public void Attachment_with_forward_slash_in_name_is_dropped()
     {
         const string text =
-            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
             "attachments = [\"ok.png\", \"sub/dir.png\", \"other/path/file.txt\"]\n" +
             "body = ''\n";
 
@@ -807,7 +791,7 @@ public sealed class BinderTomlTests
     public void Attachment_deeply_nested_traversal_is_dropped()
     {
         const string text =
-            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
             "attachments = [\"../../../etc/passwd\", \"a.png\"]\n" +
             "body = ''\n";
 
@@ -819,7 +803,7 @@ public sealed class BinderTomlTests
     public void All_attachments_hostile_leaves_empty_list()
     {
         const string text =
-            "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
             "attachments = [\"..\", \".\", \"../x\", \"a/b\", \"\", \"/root\"]\n" +
             "body = ''\n";
 
@@ -829,7 +813,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void Missing_attachments_key_reads_as_empty_list()
     {
-        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
+        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
         Assert.Empty(BinderTomlReader.Read(text).Notes[0].Attachments);
     }
 
@@ -839,7 +823,7 @@ public sealed class BinderTomlTests
     public void A_note_missing_one_time_takes_its_other_recorded_time()
     {
         const string text =
-            "id = \"nb1\"\ncreated = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-02T00:00:00.000Z\"\n\n" +
+            "format_version = 1\nid = \"nb1\"\ncreated = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-02T00:00:00.000Z\"\n\n" +
             "[[note]]\nid = \"n1\"\nmodified = \"2026-03-01T00:00:00.000Z\"\nbody = ''\n\n" +
             "[[note]]\nid = \"n2\"\ncreated = \"2026-04-01T00:00:00.000Z\"\nmodified = \"bad\"\nbody = ''\n";
 
@@ -853,7 +837,7 @@ public sealed class BinderTomlTests
     public void A_note_with_no_recorded_time_takes_its_binders()
     {
         const string text =
-            "id = \"nb1\"\nmodified = \"2026-01-02T00:00:00.000Z\"\n\n" +
+            "format_version = 1\nid = \"nb1\"\nmodified = \"2026-01-02T00:00:00.000Z\"\n\n" +
             "[[note]]\nid = \"n1\"\nbody = ''\n";
 
         var binder = BinderTomlReader.Read(text);
@@ -867,7 +851,7 @@ public sealed class BinderTomlTests
     [Fact]
     public void An_empty_binder_id_gets_a_fresh_one()
     {
-        const string text = "id = \"\"\n";
+        const string text = "format_version = 1\nid = \"\"\n";
 
         Assert.NotEqual(string.Empty, BinderTomlReader.Read(text).Id);
     }
@@ -876,7 +860,7 @@ public sealed class BinderTomlTests
     public void Malformed_binder_timestamps_fall_back_to_recent_time()
     {
         const string text =
-            "id = \"nb1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n" +
             "created = \"not-a-date\"\n" +
             "modified = \"also bad\"\n";
 
@@ -889,7 +873,7 @@ public sealed class BinderTomlTests
     public void Malformed_note_timestamps_fall_back_to_recent_time()
     {
         const string text =
-            "id = \"nb1\"\n\n" +
+            "format_version = 1\nid = \"nb1\"\n\n" +
             "[[note]]\nid = \"n1\"\n" +
             "created = \"garbage\"\nmodified = \"also garbage\"\n" +
             "body = ''\n";
@@ -903,7 +887,7 @@ public sealed class BinderTomlTests
     public void Malformed_lifecycle_timestamps_read_as_null()
     {
         const string text =
-            "id = \"nb1\"\n\n" +
+            "format_version = 1\nid = \"nb1\"\n\n" +
             "[[note]]\nid = \"n1\"\nstatus = \"published\"\n" +
             "discarded_at = \"x\"\nverified_at = \"bad\"\npublished_at = \"nope\"\nretired_at = \"\"\n" +
             "body = ''\n";
@@ -919,7 +903,7 @@ public sealed class BinderTomlTests
     public void Timestamp_with_timezone_offset_instead_of_Z_round_trips()
     {
         const string text =
-            "id = \"nb1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n" +
             "created = \"2026-06-11T09:00:00.000+09:00\"\n" +
             "modified = \"2026-06-11T00:00:00.000Z\"\n" +
             "\n[[note]]\nid = \"n1\"\nbody = ''\n";
@@ -932,7 +916,7 @@ public sealed class BinderTomlTests
     public void Timestamp_without_milliseconds_is_accepted()
     {
         const string text =
-            "id = \"nb1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n" +
             "created = \"2026-06-11T00:00:00Z\"\n" +
             "modified = \"2026-06-11T00:00:00Z\"\n" +
             "\n[[note]]\nid = \"n1\"\nbody = ''\n";
@@ -1075,7 +1059,7 @@ public sealed class BinderTomlTests
     public void Mix_of_valid_and_hostile_notes_reads_correctly()
     {
         const string text =
-            "id = \"nb1\"\n" +
+            "format_version = 1\nid = \"nb1\"\n" +
             "created = \"2026-01-01T00:00:00.000Z\"\n" +
             "modified = \"2026-01-01T00:00:00.000Z\"\n" +
             "\n" +
@@ -1101,7 +1085,7 @@ public sealed class BinderTomlTests
     {
         // Someone might try to hand-edit and use an inline note instead of [[note]].
         // This should either throw or produce zero notes (no notes matched [[note]]).
-        const string text = "id = \"nb1\"\nnote = [{id = \"n1\", body = \"hi\"}]\n";
+        const string text = "format_version = 1\nid = \"nb1\"\nnote = [{id = \"n1\", body = \"hi\"}]\n";
 
         // Tomlyn may parse this as a different structure; we just need it not to crash.
         var binder = BinderTomlReader.Read(text);

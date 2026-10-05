@@ -344,36 +344,12 @@ public sealed class RecordsLoggerTests : IDisposable
         Assert.Single(ReadRows());
     }
 
-    [Fact]
-    public void An_unversioned_database_reads_as_version_1_and_is_stamped()
+    [Theory]
+    [InlineData(0)] // tables but no version: unreadable
+    [InlineData(FormatVersions.Records + 1)]
+    public void An_unversioned_or_newer_database_is_left_byte_identical_and_the_session_falls_back_with_one_warning(long userVersion)
     {
-        using (var log = Open())
-        {
-            log.Info("before versioning");
-        }
-
-        // A database written before the version was recorded.
-        using (var connection = new SqliteConnection($"Data Source={RecordsFile};Pooling=False"))
-        {
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA user_version = 0;";
-            command.ExecuteNonQuery();
-        }
-
-        using (var log = Open())
-        {
-            log.Info("after versioning");
-        }
-
-        Assert.Equal(FormatVersions.Records, UserVersion());
-        Assert.Equal(new[] { "before versioning", "after versioning" }, ReadRows().Select(row => row.Message));
-    }
-
-    [Fact]
-    public void A_newer_database_is_left_byte_identical_and_the_session_falls_back_with_one_warning()
-    {
-        CreateDatabase(FormatVersions.Records + 1);
+        CreateDatabase(userVersion);
         var before = File.ReadAllBytes(RecordsFile);
 
         using (var log = Open())

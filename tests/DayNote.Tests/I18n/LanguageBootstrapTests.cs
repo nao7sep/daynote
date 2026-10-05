@@ -17,13 +17,16 @@ public sealed class LanguageBootstrapTests : System.IDisposable
     public LanguageBootstrapTests() => Directory.CreateDirectory(_directory);
 
     [Theory]
-    [InlineData("""{ "language": "ja" }""", "ja")]
-    [InlineData("""{ "language": "pt-br", "theme": "dark" }""", "pt-BR")]
-    [InlineData("""{ "language": "JA" }""", "ja")]
-    [InlineData("""{ "language": "Ja" }""", "ja")]
-    [InlineData("""{ "language": "klingon" }""", Languages.System)]
-    [InlineData("""{ "language": 3 }""", Languages.System)]
-    [InlineData("""{ "theme": "dark" }""", Languages.System)]
+    [InlineData("""{ "formatVersion": 1, "language": "ja" }""", "ja")]
+    [InlineData("""{ "formatVersion": 1, "language": "pt-br", "theme": "dark" }""", "pt-BR")]
+    [InlineData("""{ "formatVersion": 1, "language": "JA" }""", "ja")]
+    [InlineData("""{ "formatVersion": 1, "language": "Ja" }""", "ja")]
+    [InlineData("""{ "formatVersion": 1, "language": "klingon" }""", Languages.System)]
+    [InlineData("""{ "formatVersion": 1, "language": 3 }""", Languages.System)]
+    [InlineData("""{ "formatVersion": 1, "theme": "dark" }""", Languages.System)]
+    [InlineData("""{ "language": "ja" }""", Languages.System)]
+    [InlineData("""{ "formatVersion": 2, "language": "ja" }""", Languages.System)]
+    [InlineData("""{ "formatVersion": "1", "language": "ja" }""", Languages.System)]
     [InlineData("""[ "ja" ]""", Languages.System)]
     [InlineData("""{ "language": """, Languages.System)]
     public void the_saved_preference_is_read_forgivingly(string json, string expected)
@@ -43,7 +46,7 @@ public sealed class LanguageBootstrapTests : System.IDisposable
     public void launch_and_the_settings_read_a_stored_language_the_same_way(string stored)
     {
         var config = Path.Combine(_directory, "config.json");
-        File.WriteAllText(config, $$"""{ "language": "{{stored}}" }""");
+        File.WriteAllText(config, $$"""{ "formatVersion": 1, "language": "{{stored}}" }""");
 
         var settings = new DayNote.Core.Storage.ConfigStore(config, _ => { }).Load();
 
@@ -61,8 +64,9 @@ public sealed class LanguageBootstrapTests : System.IDisposable
     public void the_setting_the_app_writes_is_the_one_the_bootstrap_reads()
     {
         var config = Path.Combine(_directory, "config.json");
-        File.WriteAllText(config, System.Text.Json.JsonSerializer.Serialize(
-            new DayNote.Core.Configuration.AppConfig { Language = "ko" }, DayNote.Core.Configuration.DayNoteJson.Options));
+        new DayNote.Core.Storage.JsonStore<DayNote.Core.Configuration.AppConfig>(
+            config, DayNote.Core.Storage.FormatVersions.Config, recordBackup: false).Save(
+            new DayNote.Core.Configuration.AppConfig { Language = "ko" });
 
         Assert.Equal("ko", LanguageBootstrap.SavedPreference(config));
     }

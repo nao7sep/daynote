@@ -11,7 +11,8 @@ namespace DayNote.Core.Toml;
 /// <summary>
 /// Parses <c>.daynote</c> TOML text into a <see cref="Binder"/>. Field order is irrelevant on
 /// read; only the canonical writer enforces order. Reading is case-insensitive and tolerant of
-/// missing keys so hand-edited files still load. Bodies are run through <see cref="BodyCleanup"/>
+/// missing keys so hand-edited files still load, except <c>format_version</c>: a binder without it is
+/// malformed (store-recovery-conventions). Bodies are run through <see cref="BodyCleanup"/>
 /// so the in-memory body equals the canonical stored form (this also removes the trailing newline
 /// that TOML multiline strings retain). The format version is read before anything else, so a binder
 /// written by a newer DayNote is reported as newer, never as malformed, whatever its shape.
@@ -65,15 +66,12 @@ public static class BinderTomlReader
         return binder;
     }
 
-    /// <summary>The format version the binder text records: its <c>format_version</c>, or 1 when absent.</summary>
-    /// <exception cref="BinderFormatException">The text is not a TOML table, or the version is not a positive integer.</exception>
+    /// <summary>The format version the binder text records in its <c>format_version</c>.</summary>
+    /// <exception cref="BinderFormatException">The text is not a TOML table, or records no positive integer version.</exception>
     public static long FormatVersion(string text) =>
-        Deserialize<VersionDocument>(text).FormatVersion switch
-        {
-            null => 1,
-            >= 1 and var version => version,
-            _ => throw new BinderFormatException("Binder format_version is not a positive integer."),
-        };
+        Deserialize<VersionDocument>(text).FormatVersion is long version and >= 1
+            ? version
+            : throw new BinderFormatException("Binder format_version is missing or not a positive integer.");
 
     private static T Deserialize<T>(string text)
         where T : class

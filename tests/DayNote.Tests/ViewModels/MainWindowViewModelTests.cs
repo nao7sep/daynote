@@ -289,7 +289,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
         QuarantineJournal.Drain();
         Directory.CreateDirectory(_home);
-        File.WriteAllText(ConfigPath, """{"theme":"dark"}""");
+        File.WriteAllText(ConfigPath, """{"formatVersion":1,"theme":"dark"}""");
         WriteUnreadable(StatePath, """{"bindersPaneWidth":333}""");
         var log = new RecordingLogger();
         try
@@ -317,7 +317,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
         QuarantineJournal.Drain();
-        const string content = """{"theme":"dark"}""";
+        const string content = """{"formatVersion":1,"theme":"dark"}""";
         WriteUnreadable(ConfigPath, content);
         try
         {

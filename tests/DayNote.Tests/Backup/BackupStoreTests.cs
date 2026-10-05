@@ -324,33 +324,16 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Equal(1, RowCount(TargetPath));
     }
 
-    [Fact]
-    public void An_unversioned_store_reads_as_version_1_is_stamped_and_keeps_recording()
-    {
-        AtomicFile.WriteAllText(TargetPath, "before versioning");
-        BackupStore.Close();
-        using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
-        {
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA user_version = 0;";
-            command.ExecuteNonQuery();
-        }
-
-        AtomicFile.WriteAllText(TargetPath, "after versioning");
-
-        Assert.Equal(FormatVersions.Backups, UserVersion());
-        Assert.Equal(2, RowCount(TargetPath));
-    }
-
-    [Fact]
-    public void A_newer_store_is_left_byte_identical_with_one_warn_and_the_save_still_lands()
+    [Theory]
+    [InlineData(0)] // tables but no version: unreadable
+    [InlineData(FormatVersions.Backups + 1)]
+    public void An_unversioned_or_newer_store_is_left_byte_identical_with_one_warn_and_the_save_still_lands(long userVersion)
     {
         using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
         {
             connection.Open();
             using var command = connection.CreateCommand();
-            command.CommandText = $"CREATE TABLE backups (id INTEGER PRIMARY KEY); PRAGMA user_version = {FormatVersions.Backups + 1};";
+            command.CommandText = $"CREATE TABLE backups (id INTEGER PRIMARY KEY); PRAGMA user_version = {userVersion};";
             command.ExecuteNonQuery();
         }
 

@@ -6,8 +6,8 @@ namespace DayNote.Core.Storage;
 
 /// <summary>
 /// A typed JSON store for one file, the configuration or the state, per the store-recovery-conventions.
-/// The file's top-level <c>formatVersion</c> is this store's own: a missing one reads as 1, and every
-/// save writes it first. A file that cannot be parsed, or does not fit the shape, is set aside under its
+/// The file's top-level <c>formatVersion</c> is this store's own, and every save writes it first. A file
+/// that cannot be parsed, records no format version, or does not fit the shape, is set aside under its
 /// <c>.invalid</c> name and the load returns <c>null</c>; a failed move throws, so the next save never
 /// writes over the bytes. A read error is not a parse failure and throws. A file recording a newer format
 /// throws <see cref="NewerFormatException"/>, and is then never written by this store, whose saves do
@@ -99,14 +99,10 @@ public sealed class JsonStore<T>
 
     private static long ReadFormatVersion(JsonObject root)
     {
-        if (!root.TryGetPropertyValue(FormatVersionKey, out var node))
-        {
-            return 1;
-        }
-
-        return node is JsonValue value && value.TryGetValue<long>(out var version) && version >= 1
+        return root.TryGetPropertyValue(FormatVersionKey, out var node)
+            && node is JsonValue value && value.TryGetValue<long>(out var version) && version >= 1
             ? version
-            : throw new JsonException($"{FormatVersionKey} is not a positive integer.");
+            : throw new JsonException($"{FormatVersionKey} is missing or not a positive integer.");
     }
 
     private T? Quarantine()
