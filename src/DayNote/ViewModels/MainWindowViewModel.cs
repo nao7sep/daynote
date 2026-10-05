@@ -81,7 +81,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private string _baselineHash = string.Empty;
     private bool _dirty;
     private bool _externalChangeAcknowledged;
-    private bool _externalCheckInProgress;
     private SaveState _saveState = SaveState.Saved;
 
     // The one owner of the open binder's file and its baseline hash. A save holds it from its snapshot
@@ -89,7 +88,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // reload or re-baseline is applied, so neither ever acts on the file or the baseline while the
     // other is between its I/O and its result: two saves never overlap on the file, a check never
     // mistakes the app's own in-flight write for an external edit, and a save never lands on top of
-    // content the check just reloaded. The UI thread stays the only place that takes or releases it.
+    // content the check just reloaded. A save that arrives during a check, conflict question included,
+    // waits its turn, so a quit or a switch is never refused for it. The UI thread stays the only place
+    // that takes or releases it.
     private readonly SemaphoreSlim _binderFileLock = new(1, 1);
 
     // Bumped by every MarkDirty call. A save snapshots this right before it hands its text to the
@@ -167,8 +168,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             await SaveCurrentAsync();
             if (_dirty)
             {
-                // The save failed or was deferred (e.g. while an external-change conflict dialog
-                // is open); reschedule so the edits are retried rather than stranded.
+                // The save failed, or an edit landed while it was writing; reschedule so the edits
+                // are retried rather than stranded.
                 _autosaveTimer.Start();
             }
         };
@@ -1378,18 +1379,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     /// <summary>
     /// Flushes pending edits to disk. Returns true when there is nothing to save or the save succeeds,
-    /// and false when a save was attempted and failed — or is deferred because an external-change
-    /// conflict is being resolved. Callers that tear down or quit rely on this to avoid discarding edits
-    /// that never reached disk.
+    /// and false when a save was attempted and failed. Callers that tear down or quit rely on this to
+    /// avoid discarding edits that never reached disk.
     /// </summary>
     private async Task<bool> SaveCurrentAsync()
     {
-        if (_externalCheckInProgress)
-        {
-            // A conflict is being resolved; don't save now. Edits stay dirty and the autosave retries.
-            return false;
-        }
-
         if (!IsReady || _current is null || !_dirty)
         {
             return true;
@@ -1494,20 +1488,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     internal async Task CheckExternalChangeAsync()
     {
-        if (!IsReady || _current is null || _externalChangeAcknowledged
-            || _externalCheckInProgress)
+        if (!IsReady || _current is null || _externalChangeAcknowledged)
         {
             return;
         }
 
         // A save is writing this file and has not yet recorded its new baseline, so the file would read
-        // as changed by someone else. Skip this tick; the next one compares against the save's baseline.
+        // as changed by someone else; or an earlier check is still running. Skip this tick; the next one
+        // compares against the baseline the holder leaves.
         if (!_binderFileLock.Wait(0))
         {
             return;
         }
 
-        _externalCheckInProgress = true;
         var checkedBinder = _current;
         try
         {
@@ -1588,7 +1581,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
         finally
         {
-            _externalCheckInProgress = false;
             _binderFileLock.Release();
         }
     }

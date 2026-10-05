@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Quitting, closing a binder or opening another one while DayNote was checking the open binder for outside changes, or asking about one, could do nothing. It now waits for the check, saves, and goes ahead.
 - A note's modified time changes only when its title, text or attachments change. Changing its status, locking it, an edit undone before the save, and whitespace the save removes no longer move it.
 - A note's modified time is the time of its last edit, not the time the edit was saved.
 - A note or binder whose created or modified time is missing from the file takes another time the file records, rather than the time the file was opened.

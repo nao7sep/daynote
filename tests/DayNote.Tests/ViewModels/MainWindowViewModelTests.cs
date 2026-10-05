@@ -584,6 +584,23 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Quitting_while_an_external_check_reads_the_file_waits_for_it_and_saves()
+    {
+        // The poll's read is still in flight when the quit arrives. The quit waits its turn for the file
+        // and flushes the edit, rather than refusing and leaving the window open.
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "typed just before quitting";
+
+        var check = vm.CheckExternalChangeAsync();
+        Assert.True(await vm.ShutdownAsync());
+        await check;
+
+        Assert.False(vm.HasBinder);
+        Assert.Equal("typed just before quitting", new BinderStore().Load(BinderPath).Binder.Notes[0].Body);
+    }
+
+    [AvaloniaFact]
     public async Task Closing_a_binder_flushes_pending_edits_before_forgetting_it()
     {
         var vm = await OpenNewBinderAsync();
