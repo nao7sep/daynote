@@ -1,5 +1,6 @@
 using DayNote.Core.Identity;
 using DayNote.Core.Models;
+using DayNote.Core.Storage;
 using DayNote.Core.Text;
 using DayNote.Core.Time;
 using Tomlyn;
@@ -12,7 +13,8 @@ namespace DayNote.Core.Toml;
 /// read; only the canonical writer enforces order. Reading is case-insensitive and tolerant of
 /// missing keys so hand-edited files still load. Bodies are run through <see cref="BodyCleanup"/>
 /// so the in-memory body equals the canonical stored form (this also removes the trailing newline
-/// that TOML multiline strings retain).
+/// that TOML multiline strings retain). The format version is read before anything else, so a binder
+/// written by a newer DayNote is reported as newer, never as malformed, whatever its shape.
 /// </summary>
 public static class BinderTomlReader
 {
@@ -21,22 +23,17 @@ public static class BinderTomlReader
         PropertyNameCaseInsensitive = true,
     };
 
+    /// <exception cref="NewerFormatException">The binder records a newer format than this build reads.</exception>
+    /// <exception cref="BinderFormatException">The text is not a binder.</exception>
     public static Binder Read(string text)
     {
-        BinderDocument? document;
-        try
+        var version = FormatVersion(text);
+        if (version > FormatVersions.Binder)
         {
-            document = TomlSerializer.Deserialize<BinderDocument>(text, Options);
-        }
-        catch (TomlException ex)
-        {
-            throw new BinderFormatException($"Binder is not valid TOML: {ex.Message}", ex);
+            throw new NewerFormatException("binder", version, FormatVersions.Binder);
         }
 
-        if (document is null)
-        {
-            throw new BinderFormatException("Binder is empty or not a TOML table.");
-        }
+        var document = Deserialize<BinderDocument>(text);
 
         // A timestamp that is absent or malformed (a hand-edit typo) takes another time the same item
         // recorded, then its binder's, and the load time only when the file records none at all, per
@@ -66,6 +63,32 @@ public static class BinderTomlReader
         }
 
         return binder;
+    }
+
+    /// <summary>The format version the binder text records: its <c>format_version</c>, or 1 when absent.</summary>
+    /// <exception cref="BinderFormatException">The text is not a TOML table, or the version is not a positive integer.</exception>
+    public static long FormatVersion(string text) =>
+        Deserialize<VersionDocument>(text).FormatVersion switch
+        {
+            null => 1,
+            >= 1 and var version => version,
+            _ => throw new BinderFormatException("Binder format_version is not a positive integer."),
+        };
+
+    private static T Deserialize<T>(string text)
+        where T : class
+    {
+        T? document;
+        try
+        {
+            document = TomlSerializer.Deserialize<T>(text, Options);
+        }
+        catch (TomlException ex)
+        {
+            throw new BinderFormatException($"Binder is not valid TOML: {ex.Message}", ex);
+        }
+
+        return document ?? throw new BinderFormatException("Binder is empty or not a TOML table.");
     }
 
     private static Note MapNote(NoteDocument document, DateTimeOffset fallback, IReadOnlyCollection<string> existingIds)
@@ -137,6 +160,12 @@ public static class BinderTomlReader
 
     // Internal DTOs mirroring the on-disk shape. Timestamps are read as strings because the format
     // stores them as quoted ISO-8601 values rather than TOML-native datetimes.
+    private sealed class VersionDocument
+    {
+        [TomlPropertyName("format_version")]
+        public long? FormatVersion { get; set; }
+    }
+
     private sealed class BinderDocument
     {
         public string? Id { get; set; }

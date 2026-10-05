@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using DayNote.Core.Storage;
 using DayNote.Core.Time;
 using Microsoft.Data.Sqlite;
 
@@ -88,7 +89,9 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         }
         catch (Exception ex)
         {
-            return new RecordsLogger(null, ex, sessionStart, fallbackDirectory, debugEnabled);
+            var logger = new RecordsLogger(null, ex, sessionStart, fallbackDirectory, debugEnabled);
+            logger.Warn("Records database could not be opened; this session's records go to the fallback file", new { file = recordsFile }, ex);
+            return logger;
         }
     }
 
@@ -105,6 +108,9 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         try
         {
             connection.Open();
+            // First, before WAL or the schema can change the file: a database written by a newer DayNote
+            // is left exactly as it is, and this session's records go to the fallback file.
+            SqliteFormatVersion.Claim(connection, FormatVersions.Records, "records.sqlite3");
             using var command = connection.CreateCommand();
             // WAL with synchronous=NORMAL keeps every committed row through an app crash.
             command.CommandText = "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;" + Schema;

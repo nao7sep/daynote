@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using DayNote.Core.Models;
+using DayNote.Core.Storage;
 using DayNote.Core.Toml;
 using Xunit;
 
@@ -56,12 +57,53 @@ public sealed class BinderTomlTests
     {
         var text = BinderTomlWriter.Write(SampleBinder());
 
-        Assert.StartsWith("id = ", text);
+        Assert.StartsWith("format_version = 1\nid = ", text);
         var noteStart = text.IndexOf("[[note]]", StringComparison.Ordinal);
         // The binder has no title line (its title is local app state, not stored in the file).
         Assert.DoesNotContain("title =", text[..noteStart]);
-        AssertInOrder(text[..noteStart], "id =", "created =", "modified =");
+        AssertInOrder(text[..noteStart], "format_version =", "id =", "created =", "modified =");
+        Assert.DoesNotContain("format_version =", text[noteStart..]);
         AssertInOrder(text[noteStart..], "id =", "title =", "created =", "modified =", "status =", "locked =", "verified_at =", "attachments =", "body =");
+    }
+
+    [Fact]
+    public void A_binder_without_a_format_version_reads_as_version_1()
+    {
+        const string text = "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'kept'\n";
+
+        Assert.Equal(1, BinderTomlReader.FormatVersion(text));
+        Assert.Equal("kept", BinderTomlReader.Read(text).Notes[0].Body);
+    }
+
+    [Fact]
+    public void A_binder_recording_the_current_format_version_round_trips()
+    {
+        var text = BinderTomlWriter.Write(SampleBinder());
+
+        Assert.Equal(FormatVersions.Binder, BinderTomlReader.FormatVersion(text));
+        Assert.Equal(text, BinderTomlWriter.Write(BinderTomlReader.Read(text)));
+    }
+
+    [Fact]
+    public void A_binder_recording_a_newer_format_version_is_refused_as_newer_not_malformed()
+    {
+        // A newer format may change any shape, and is still reported as newer rather than as corrupt.
+        var text = $"format_version = {FormatVersions.Binder + 1}\nid = \"nb1\"\nnote = \"a shape this build does not know\"\n";
+
+        var error = Assert.Throws<NewerFormatException>(() => BinderTomlReader.Read(text));
+
+        Assert.Equal(FormatVersions.Binder + 1, error.Found);
+        Assert.Equal(FormatVersions.Binder, error.Supported);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("\"1\"")]
+    [InlineData("1.5")]
+    public void A_format_version_that_is_not_a_positive_integer_is_malformed(string version)
+    {
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read($"format_version = {version}\nid = \"nb1\"\n"));
     }
 
     [Fact]

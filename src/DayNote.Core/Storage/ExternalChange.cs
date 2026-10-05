@@ -14,4 +14,10 @@ public enum ExternalChange
 
     /// <summary>The file no longer exists.</summary>
     Deleted,
+
+    /// <summary>
+    /// The file content differs and now records a format newer than this build reads, so it must be
+    /// neither reloaded nor written (store-recovery-conventions).
+    /// </summary>
+    Newer,
 }

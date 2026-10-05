@@ -1,3 +1,4 @@
+using DayNote.Core.Storage;
 using DayNote.Core.Toml;
 using DayNote.I18n;
 
@@ -12,8 +13,9 @@ public static class FailurePresentation
 {
     public static Message StartupStorage() => Message.Of("failure.startupStorage");
 
-    public static Message StartupSettings(string configFile) =>
-        Message.Of("failure.startupSettings", ("path", configFile));
+    public static Message StartupSettings(string configFile, Exception error) => error is NewerFormatException
+        ? Message.Of("failure.startupSettingsNewer", ("path", configFile))
+        : Message.Of("failure.startupSettings", ("path", configFile));
 
     /// <summary>
     /// The set-aside copy of the config file among <paramref name="quarantined"/>, if any; only that
@@ -30,13 +32,17 @@ public static class FailurePresentation
     public static Message SettingsReset(string setAsidePath) =>
         Message.Of("quarantine.settingsBody", ("path", setAsidePath));
 
-    public static Message OpenBinder(Exception error) => Message.Of(error switch
+    public static Message OpenBinder(Exception error, string binderTitle) => error switch
     {
-        BinderFormatException => "failure.openBinderFormat",
-        UnauthorizedAccessException => "failure.openBinderPermission",
-        FileNotFoundException or DirectoryNotFoundException => "failure.openBinderGone",
-        _ => "failure.openBinder",
-    });
+        NewerFormatException => NewerBinder(binderTitle),
+        BinderFormatException => Message.Of("failure.openBinderFormat"),
+        UnauthorizedAccessException => Message.Of("failure.openBinderPermission"),
+        FileNotFoundException or DirectoryNotFoundException => Message.Of("failure.openBinderGone"),
+        _ => Message.Of("failure.openBinder"),
+    };
+
+    /// <summary>A binder written by a newer DayNote, which this build neither opens nor writes.</summary>
+    public static Message NewerBinder(string binderTitle) => Message.Of("failure.openBinderNewer", ("name", binderTitle));
 
     public static Message SaveBinder(Exception error) => Message.Of(error switch
     {

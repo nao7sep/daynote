@@ -52,7 +52,7 @@ public sealed class ConfigStoreTests : IDisposable
         config.UiFontFamily = "Inter";
         Store.Save(config);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "uiFontFamily", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "formatVersion", "uiFontFamily", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.Equal("Inter", Store.Load().UiFontFamily);
     }
 
@@ -140,7 +140,7 @@ public sealed class ConfigStoreTests : IDisposable
         config.TextStyles = AppConfig.DefaultTextStyles();
         Store.Save(config);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal("theme", Assert.Single(saved.RootElement.EnumerateObject()).Name);
+        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public sealed class ConfigStoreTests : IDisposable
         store.Save(config);
         Assert.Empty(Directory.GetFiles(_directory, "*.invalid"));
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal("theme", Assert.Single(saved.RootElement.EnumerateObject()).Name);
+        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public sealed class ConfigStoreTests : IDisposable
         var store = Store;
         store.Save(store.Load());
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal("uiFontFamily", Assert.Single(saved.RootElement.EnumerateObject()).Name);
+        Assert.Equal(new[] { "formatVersion", "uiFontFamily" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     public void Dispose()

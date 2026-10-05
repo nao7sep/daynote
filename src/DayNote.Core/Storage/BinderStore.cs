@@ -14,6 +14,7 @@ namespace DayNote.Core.Storage;
 public sealed class BinderStore
 {
     /// <summary>Loads a binder and records the content-hash baseline for external-change detection.</summary>
+    /// <exception cref="NewerFormatException">The binder was written by a newer DayNote; it is left untouched.</exception>
     public LoadedBinder Load(string path)
     {
         var fullPath = Path.GetFullPath(path);
@@ -55,7 +56,26 @@ public sealed class BinderStore
             return ExternalChange.Deleted;
         }
 
-        return ComputeHash(fullPath) == loadedHash ? ExternalChange.None : ExternalChange.Modified;
+        var raw = File.ReadAllText(fullPath, Encoding.UTF8);
+        if (ContentHash.Sha256Hex(raw) == loadedHash)
+        {
+            return ExternalChange.None;
+        }
+
+        return IsNewer(raw) ? ExternalChange.Newer : ExternalChange.Modified;
+    }
+
+    // A file that is not a binder at all is merely modified; the reload reports it.
+    private static bool IsNewer(string raw)
+    {
+        try
+        {
+            return BinderTomlReader.FormatVersion(raw) > FormatVersions.Binder;
+        }
+        catch (BinderFormatException)
+        {
+            return false;
+        }
     }
 
     /// <summary>The content hash of the file on disk, used to (re)establish an external-change baseline.</summary>

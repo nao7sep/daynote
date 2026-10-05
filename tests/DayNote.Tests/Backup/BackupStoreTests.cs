@@ -313,6 +313,71 @@ public sealed class BackupStoreTests : IDisposable
         }
     }
 
+    // ----- Format version (PRAGMA user_version) --------------------------------------------------
+
+    [Fact]
+    public void A_new_store_records_the_current_format_version()
+    {
+        AtomicFile.WriteAllText(TargetPath, "first");
+
+        Assert.Equal(FormatVersions.Backups, UserVersion());
+        Assert.Equal(1, RowCount(TargetPath));
+    }
+
+    [Fact]
+    public void An_unversioned_store_reads_as_version_1_is_stamped_and_keeps_recording()
+    {
+        AtomicFile.WriteAllText(TargetPath, "before versioning");
+        BackupStore.Close();
+        using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA user_version = 0;";
+            command.ExecuteNonQuery();
+        }
+
+        AtomicFile.WriteAllText(TargetPath, "after versioning");
+
+        Assert.Equal(FormatVersions.Backups, UserVersion());
+        Assert.Equal(2, RowCount(TargetPath));
+    }
+
+    [Fact]
+    public void A_newer_store_is_left_byte_identical_with_one_warn_and_the_save_still_lands()
+    {
+        using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = $"CREATE TABLE backups (id INTEGER PRIMARY KEY); PRAGMA user_version = {FormatVersions.Backups + 1};";
+            command.ExecuteNonQuery();
+        }
+
+        var before = File.ReadAllBytes(_paths.BackupStoreFile);
+        var warnings = new List<string>();
+        BackupStore.ConfigureWarn((message, _, _) => warnings.Add(message));
+
+        AtomicFile.WriteAllText(TargetPath, "the save must survive");
+        AtomicFile.WriteAllText(TargetPath, "and a second save too");
+        BackupStore.Close();
+
+        Assert.Equal("and a second save too", File.ReadAllText(TargetPath));
+        Assert.Contains("recording disabled", Assert.Single(warnings));
+        Assert.Equal(before, File.ReadAllBytes(_paths.BackupStoreFile));
+        Assert.False(File.Exists(_paths.BackupStoreFile + "-wal"));
+    }
+
+    private long UserVersion()
+    {
+        BackupStore.Close();
+        using var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Mode=ReadOnly;Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version;";
+        return (long)command.ExecuteScalar()!;
+    }
+
     // ----- Reading the store ---------------------------------------------------------------------
 
     private sealed record BackupRow(string Path, byte[] Content, string ContentSha256, long ByteSize, string WrittenAtUtc);

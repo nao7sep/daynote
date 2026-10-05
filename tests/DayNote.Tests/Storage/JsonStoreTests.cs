@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
@@ -33,7 +34,7 @@ public sealed class JsonStoreTests : IDisposable
         _directory = Path.Combine(Path.GetTempPath(), "daynote-json-tests-" + IdGenerator.New());
         Directory.CreateDirectory(_directory);
         _path = Path.Combine(_directory, "config.json");
-        _store = new JsonStore<AppConfig>(_path);
+        _store = new JsonStore<AppConfig>(_path, FormatVersions.Config);
 
         _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _directory);
@@ -104,6 +105,66 @@ public sealed class JsonStoreTests : IDisposable
         Assert.Single(quarantined);
         Assert.Equal("{ this is not valid json", File.ReadAllText(quarantined[0]));
         Assert.Equal(quarantined[0], Assert.Single(QuarantineJournal.Drain()));
+    }
+
+    [Fact]
+    public void Save_writes_the_format_version_as_the_first_key()
+    {
+        _store.Save(new AppConfig());
+
+        using var document = JsonDocument.Parse(File.ReadAllText(_path));
+        var first = Assert.Single(document.RootElement.EnumerateObject().Take(1));
+        Assert.Equal("formatVersion", first.Name);
+        Assert.Equal(FormatVersions.Config, first.Value.GetInt32());
+    }
+
+    [Fact]
+    public void A_file_without_a_format_version_reads_as_version_1()
+    {
+        File.WriteAllText(_path, """{"timeZone":"Europe/London"}""");
+
+        Assert.Equal("Europe/London", _store.Load()!.TimeZone);
+    }
+
+    [Fact]
+    public void A_file_recording_the_current_format_version_round_trips()
+    {
+        File.WriteAllText(_path, $$"""{"formatVersion":{{FormatVersions.Config}},"timeZone":"Europe/London"}""");
+
+        Assert.Equal("Europe/London", _store.Load()!.TimeZone);
+    }
+
+    [Fact]
+    public void A_newer_file_is_refused_never_set_aside_and_never_written()
+    {
+        var newer = $$"""{"formatVersion":{{FormatVersions.Config + 1}},"timeZone":["Europe/London"]}""";
+        File.WriteAllText(_path, newer);
+        var before = File.ReadAllBytes(_path);
+        QuarantineJournal.Drain();
+
+        var error = Assert.Throws<NewerFormatException>(() => _store.Load());
+        _store.Save(new AppConfig { TimeZone = "Asia/Tokyo" });
+
+        Assert.Equal(FormatVersions.Config + 1, error.Found);
+        Assert.Equal(before, File.ReadAllBytes(_path));
+        Assert.Empty(Directory.GetFiles(_directory, "*.invalid"));
+        Assert.Empty(QuarantineJournal.Drain());
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("1.5")]
+    [InlineData("\"1\"")]
+    public void A_format_version_that_is_not_a_positive_integer_is_set_aside(string version)
+    {
+        File.WriteAllText(_path, $$"""{"formatVersion":{{version}}}""");
+        QuarantineJournal.Drain();
+
+        Assert.Null(_store.Load());
+
+        Assert.False(File.Exists(_path));
+        Assert.Single(QuarantineJournal.Drain());
     }
 
     public void Dispose()

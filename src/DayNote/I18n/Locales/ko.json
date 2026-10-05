@@ -74,6 +74,7 @@
   "failure.openBinder": "이 바인더를 열 수 없습니다. 바인더를 사용할 수 있는지 확인한 후 다시 시도하십시오.",
   "failure.openBinderFormat": "이 바인더의 내용이 올바른 DayNote 데이터가 아니어서 열 수 없습니다. 바인더를 복구하거나 정상적인 사본을 복원한 후 다시 시도하십시오.",
   "failure.openBinderGone": "이 바인더는 선택한 위치에 더 이상 없습니다.",
+  "failure.openBinderNewer": "“{name}”은(는) 더 새로운 버전의 DayNote로 저장되어 이 버전에서는 열 수 없습니다. 파일은 변경하지 않았습니다. 더 새로운 버전의 DayNote에서 여십시오.",
   "failure.openBinderPermission": "이 바인더를 열 수 없습니다. 읽기 권한이 있는지 확인한 후 다시 시도하십시오.",
   "failure.openBinderPicker": "바인더 선택 창을 열 수 없습니다. 바인더를 다시 여십시오.",
   "failure.openExternalLink": "브라우저에서 링크를 열 수 없습니다. 다시 시도하십시오.",
@@ -84,6 +85,7 @@
   "failure.settingsSave": "설정을 저장하지 못했습니다. 변경한 내용은 그대로 남아 있습니다. 다시 시도하십시오.",
   "failure.startupDataTitle": "불러오기 실패",
   "failure.startupSettings": "DayNote가 {path}에 있는 설정 파일을 읽지 못해 아무것도 변경하지 않고 실행을 중단했습니다. 파일은 원래 자리에 그대로 두었습니다. 파일 권한을 확인하거나 파일을 다른 곳으로 옮긴 후 DayNote를 다시 시작하십시오.",
+  "failure.startupSettingsNewer": "{path}에 있는 설정 파일은 더 새로운 버전의 DayNote가 작성한 것이어서 이 버전은 아무것도 변경하지 않고 실행을 중단했습니다. 파일은 원래 자리에 그대로 두었습니다. 더 새로운 버전의 DayNote를 사용하거나 파일을 다른 곳으로 옮긴 후 DayNote를 다시 시작하십시오.",
   "failure.startupStorage": "DayNote가 저장 위치를 열 수 없습니다. 위치가 존재하고 쓸 수 있는지 확인한 후 DayNote를 다시 시작하십시오.",
   "files.andMore": {
     "other": "{names} 외 {count}개"

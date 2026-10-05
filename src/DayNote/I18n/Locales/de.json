@@ -79,6 +79,7 @@
   "failure.openBinder": "Diese Mappe konnte nicht geöffnet werden. Prüfen Sie, ob sie verfügbar ist, und versuchen Sie es dann erneut.",
   "failure.openBinderFormat": "Diese Mappe konnte nicht geöffnet werden, weil ihr Inhalt keine gültigen DayNote-Daten sind. Reparieren Sie die Mappe oder stellen Sie eine intakte Kopie wieder her, und versuchen Sie es dann erneut.",
   "failure.openBinderGone": "Diese Mappe ist am ausgewählten Ort nicht mehr vorhanden.",
+  "failure.openBinderNewer": "„{name}“ wurde mit einer neueren Version von DayNote gespeichert und kann mit dieser Version nicht geöffnet werden. Die Datei bleibt unverändert; öffnen Sie sie mit der neueren Version von DayNote.",
   "failure.openBinderPermission": "Diese Mappe konnte nicht geöffnet werden. Prüfen Sie, ob Sie sie lesen dürfen, und versuchen Sie es dann erneut.",
   "failure.openBinderPicker": "Die Auswahl für Mappen konnte nicht geöffnet werden. Versuchen Sie erneut, die Mappe zu öffnen.",
   "failure.openExternalLink": "Der Link konnte nicht im Browser geöffnet werden. Versuchen Sie es erneut.",
@@ -89,6 +90,7 @@
   "failure.settingsSave": "Die Einstellungen konnten nicht gespeichert werden. Ihre Änderungen sind noch vorhanden; versuchen Sie es erneut.",
   "failure.startupDataTitle": "Laden fehlgeschlagen",
   "failure.startupSettings": "DayNote konnte seine Einstellungsdatei unter {path} nicht lesen und hat deshalb angehalten, bevor etwas geändert wurde. Die Datei liegt unverändert an ihrem Platz. Prüfen Sie ihre Zugriffsrechte oder verschieben Sie sie an einen anderen Ort, und starten Sie DayNote dann neu.",
+  "failure.startupSettingsNewer": "Die Einstellungsdatei unter {path} wurde von einer neueren Version von DayNote geschrieben; diese Version hat deshalb angehalten, bevor etwas geändert wurde. Die Datei liegt unverändert an ihrem Platz. Verwenden Sie die neuere Version von DayNote, oder verschieben Sie die Datei an einen anderen Ort, und starten Sie DayNote dann neu.",
   "failure.startupStorage": "DayNote konnte seinen Speicherort nicht öffnen. Prüfen Sie, ob der Ort existiert und beschreibbar ist, und starten Sie DayNote dann neu.",
   "files.andMore": {
     "one": "{names} und {count} weitere",

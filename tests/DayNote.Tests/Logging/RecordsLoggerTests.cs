@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using DayNote.Core.Identity;
+using DayNote.Core.Storage;
 using DayNote.Logging;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -291,12 +292,100 @@ public sealed class RecordsLoggerTests : IDisposable
         Assert.Matches(@"^\d{8}-\d{6}-\d{3}-utc\.log$", Path.GetFileName(file));
 
         var lines = File.ReadAllLines(file).Select(line => JsonNode.Parse(line)!).ToArray();
-        Assert.Equal(2, lines.Length);
-        Assert.Equal("first", (string?)lines[0]["message"]);
-        Assert.Equal("n1", (string?)lines[0]["fields"]!["noteId"]);
-        Assert.Equal((string?)lines[0]["session"], (string?)lines[1]["session"]);
-        Assert.Equal("boom", (string?)lines[1]["fields"]!["error"]!["message"]);
-        Assert.False(string.IsNullOrEmpty((string?)lines[1]["recordsError"]));
+        Assert.Equal(3, lines.Length);
+        // The session says once, first, why its records are here.
+        Assert.Equal("warn", (string?)lines[0]["level"]);
+        Assert.StartsWith("Records database could not be opened", (string?)lines[0]["message"]);
+        Assert.Equal("first", (string?)lines[1]["message"]);
+        Assert.Equal("n1", (string?)lines[1]["fields"]!["noteId"]);
+        Assert.Equal((string?)lines[1]["session"], (string?)lines[2]["session"]);
+        Assert.Equal("boom", (string?)lines[2]["fields"]!["error"]!["message"]);
+        Assert.False(string.IsNullOrEmpty((string?)lines[2]["recordsError"]));
+    }
+
+    // ----- Format version (PRAGMA user_version) --------------------------------------------------
+
+    private long UserVersion()
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = RecordsFile,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version;";
+        return (long)command.ExecuteScalar()!;
+    }
+
+    private void CreateDatabase(long userVersion)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = RecordsFile,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"CREATE TABLE logs (id INTEGER PRIMARY KEY); PRAGMA user_version = {userVersion};";
+        command.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public void A_new_database_records_the_current_format_version()
+    {
+        using (var log = Open())
+        {
+            log.Info("first");
+        }
+
+        Assert.Equal(FormatVersions.Records, UserVersion());
+        Assert.Single(ReadRows());
+    }
+
+    [Fact]
+    public void An_unversioned_database_reads_as_version_1_and_is_stamped()
+    {
+        using (var log = Open())
+        {
+            log.Info("before versioning");
+        }
+
+        // A database written before the version was recorded.
+        using (var connection = new SqliteConnection($"Data Source={RecordsFile};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA user_version = 0;";
+            command.ExecuteNonQuery();
+        }
+
+        using (var log = Open())
+        {
+            log.Info("after versioning");
+        }
+
+        Assert.Equal(FormatVersions.Records, UserVersion());
+        Assert.Equal(new[] { "before versioning", "after versioning" }, ReadRows().Select(row => row.Message));
+    }
+
+    [Fact]
+    public void A_newer_database_is_left_byte_identical_and_the_session_falls_back_with_one_warning()
+    {
+        CreateDatabase(FormatVersions.Records + 1);
+        var before = File.ReadAllBytes(RecordsFile);
+
+        using (var log = Open())
+        {
+            log.Info("kept elsewhere");
+        }
+
+        Assert.Equal(before, File.ReadAllBytes(RecordsFile));
+        Assert.Equal(new[] { "records.sqlite3" }, Directory.GetFiles(_root).Select(Path.GetFileName));
+        var lines = File.ReadAllLines(Assert.Single(Directory.GetFiles(LogsDirectory))).Select(line => JsonNode.Parse(line)!).ToArray();
+        Assert.Single(lines, line => (string?)line["level"] == "warn");
+        Assert.Equal("kept elsewhere", (string?)lines[1]["message"]);
     }
 
     [Fact]

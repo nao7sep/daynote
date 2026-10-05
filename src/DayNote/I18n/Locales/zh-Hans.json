@@ -74,6 +74,7 @@
   "failure.openBinder": "无法打开此笔记本。请确认它可用，然后重试。",
   "failure.openBinderFormat": "此笔记本的内容不是有效的 DayNote 数据，因此无法打开。请修复该笔记本或恢复一份完好的副本，然后重试。",
   "failure.openBinderGone": "此笔记本已不在所选位置。",
+  "failure.openBinderNewer": "“{name}”是由较新版本的 DayNote 保存的，因此此版本无法打开它。该文件未被更改；请使用较新版本的 DayNote 打开它。",
   "failure.openBinderPermission": "无法打开此笔记本。请确认你有读取权限，然后重试。",
   "failure.openBinderPicker": "无法打开笔记本选择器。请重新打开笔记本。",
   "failure.openExternalLink": "无法在浏览器中打开链接。请重试。",
@@ -84,6 +85,7 @@
   "failure.settingsSave": "无法保存设置。你的更改仍然保留，请重试。",
   "failure.startupDataTitle": "载入失败",
   "failure.startupSettings": "DayNote 无法读取位于 {path} 的设置文件，因此在做出任何更改之前就停止了。该文件仍留在原处。请检查它的访问权限，或将它移到别处，然后重新启动 DayNote。",
+  "failure.startupSettingsNewer": "位于 {path} 的设置文件是由较新版本的 DayNote 写入的，因此此版本在做出任何更改之前就停止了。该文件仍留在原处。请使用较新版本的 DayNote，或将该文件移到别处，然后重新启动 DayNote。",
   "failure.startupStorage": "DayNote 无法打开其存储位置。请确认该位置存在且可写，然后重新启动 DayNote。",
   "files.andMore": {
     "other": "{names}，以及另外 {count} 个"

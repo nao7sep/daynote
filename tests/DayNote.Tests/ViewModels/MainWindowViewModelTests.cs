@@ -199,7 +199,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.SettingsEdit = config => config.Theme = ThemePreference.Dark;
         await vm.OpenSettingsCommand.ExecuteAsync(null);
         using var saved = JsonDocument.Parse(File.ReadAllText(configFile));
-        Assert.Equal("theme", Assert.Single(saved.RootElement.EnumerateObject()).Name);
+        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.Equal("dark", saved.RootElement.GetProperty("theme").GetString());
         BackupStore.Close();
         Assert.Equal(1, RowCountFor(new AppPaths().BackupStoreFile, configFile));
@@ -221,7 +221,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Equal(0, draftBinders);
         using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "config.json")));
-        Assert.Equal(new[] { "theme", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "formatVersion", "theme", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.Single(vm.Binders);
         await vm.ShutdownAsync();
     }
@@ -236,7 +236,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var configFile = Path.Combine(_home, "config.json");
         using (var saved = JsonDocument.Parse(File.ReadAllText(configFile)))
         {
-            Assert.Equal("binders", Assert.Single(saved.RootElement.EnumerateObject()).Name);
+            Assert.Equal(new[] { "formatVersion", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
             Assert.Equal("My binder", saved.RootElement.GetProperty("binders")[0].GetProperty("title").GetString());
         }
         using (var state = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "state.json"))))
@@ -374,6 +374,106 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(_dialogs.Errors);
         Assert.Contains(log.Entries, entry => entry == ("warn", "Unreadable file set aside"));
         await vm.ShutdownAsync();
+    }
+
+    // ----- Stores written by a newer DayNote are reported and never written ------------------------
+
+    [AvaloniaFact]
+    public async Task A_newer_settings_file_halts_names_its_path_and_is_left_byte_identical()
+    {
+        QuarantineJournal.Drain();
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(ConfigPath, $$"""{"formatVersion":{{FormatVersions.Config + 1}},"theme":"dark"}""");
+        var before = File.ReadAllBytes(ConfigPath);
+
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+        await vm.InitializeAsync();
+
+        Assert.False(vm.IsReady);
+        var (title, message) = Assert.Single(_dialogs.Errors);
+        Assert.Equal("failure.startupDataTitle", title.Key);
+        Assert.Equal("failure.startupSettingsNewer", message.Key);
+        Assert.Contains(ConfigPath, English.Of(message), StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+
+        Assert.Empty(SetAsideCopies());
+        Assert.Equal(before, File.ReadAllBytes(ConfigPath));
+    }
+
+    [AvaloniaFact]
+    public async Task A_newer_state_file_opens_on_the_default_view_with_one_warning_and_is_never_written()
+    {
+        QuarantineJournal.Drain();
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(StatePath, $$"""{"formatVersion":{{FormatVersions.State + 1}},"bindersPaneWidth":333}""");
+        var before = File.ReadAllBytes(StatePath);
+        var log = new RecordingLogger();
+
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, log);
+        await vm.InitializeAsync();
+        Assert.True(vm.IsReady);
+        Assert.Equal(new AppState().BindersPaneWidth, vm.BindersPaneWidth);
+
+        // Every path that persists the view state leaves the newer file alone.
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        await vm.ShutdownAsync();
+
+        Assert.Empty(_dialogs.Errors);
+        Assert.Single(log.Entries, entry => entry.Level == "warn");
+        Assert.Empty(SetAsideCopies());
+        Assert.Equal(before, File.ReadAllBytes(StatePath));
+    }
+
+    private string NewerBinderText =>
+        $"format_version = {FormatVersions.Binder + 1}\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'from the future'\n";
+
+    [AvaloniaFact]
+    public async Task A_newer_binder_is_not_opened_is_named_and_is_left_byte_identical()
+    {
+        var vm = NewViewModel();
+        File.WriteAllText(BinderPath, NewerBinderText);
+        var before = File.ReadAllBytes(BinderPath);
+
+        _dialogs.BinderToOpen = BinderPath;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+
+        Assert.False(vm.HasBinder);
+        var (title, message) = Assert.Single(_dialogs.Errors);
+        Assert.Equal("binder.openFailedTitle", title.Key);
+        Assert.Equal("failure.openBinderNewer", message.Key);
+        Assert.Contains("“test”", English.Of(message), StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+
+        Assert.Equal(before, File.ReadAllBytes(BinderPath));
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task An_open_binder_rewritten_by_a_newer_DayNote_is_closed_and_never_written(bool unsavedEdits)
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        File.WriteAllText(BinderPath, NewerBinderText);
+        var before = File.ReadAllBytes(BinderPath);
+        if (unsavedEdits)
+        {
+            vm.Editor.Body = "typed before the check";
+        }
+
+        await vm.CheckExternalChangeAsync();
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.False(vm.HasBinder);
+        Assert.Equal(0, _dialogs.ExternalChangeQuestions);
+        var result = Assert.Single(vm.Results);
+        Assert.Equal(OperationResultKind.Error, result.Kind);
+        Assert.Contains("newer version of DayNote", result.Text, StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+
+        Assert.Equal(before, File.ReadAllBytes(BinderPath));
     }
 
     [AvaloniaFact]
@@ -904,7 +1004,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
         Assert.Equal(new[] { false, true }, saved.TextStyles.Select(style => style.IsDefault));
         using var sets = JsonDocument.Parse(File.ReadAllText(configPath));
-        Assert.Equal("textStyles", Assert.Single(sets.RootElement.EnumerateObject()).Name);
+        Assert.Equal(new[] { "formatVersion", "textStyles" }, sets.RootElement.EnumerateObject().Select(property => property.Name));
 
         vm.CycleTextStyleCommand.Execute(null);
 

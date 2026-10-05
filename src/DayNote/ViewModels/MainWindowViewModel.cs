@@ -73,8 +73,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private TimeZoneInfo _displayZone = TimeZoneInfo.Local;
     private AppState _state = new();
 
-    // The settings file that could not be read or set aside at launch; while set, nothing is saved.
-    private string? _unreadableConfig;
+    // Why the settings file could not be used at launch: it could not be read or set aside, or a newer
+    // DayNote wrote it. While set, nothing is saved.
+    private Exception? _configLoadError;
 
     private LoadedBinder? _current;
     private string _baselineHash = string.Empty;
@@ -116,7 +117,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _deleteFile = deleteFile ?? File.Delete;
         _deleteDirectory = deleteDirectory ?? (path => Directory.Delete(path, recursive: true));
         _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
-        _stateStore = new JsonStore<AppState>(paths.StateFile, recordBackup: false);
+        _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
 
         // All startup I/O (directory creation, reading config/state) is gated here, rather than
         // crashing before any UI exists: a settings file that cannot be read halts with saving
@@ -179,7 +180,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             await CheckExternalChangeAsync();
         };
 
-        if (_unreadableConfig is null)
+        if (_configLoadError is null)
         {
             ApplyConfig();
             RestorePaneWidths();
@@ -418,11 +419,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             _log.Warn("Unreadable file set aside", new { path });
         }
 
-        if (_unreadableConfig is { } unreadable)
+        if (_configLoadError is { } configError)
         {
             await _dialogs.ShowErrorAsync(
                 Message.Of("failure.startupDataTitle"),
-                FailurePresentation.StartupSettings(unreadable));
+                FailurePresentation.StartupSettings(_paths.ConfigFile, configError));
             return;
         }
 
@@ -1277,7 +1278,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 // Only report the failure if the user is still waiting on this open; a later open
                 // already superseded it, so this error is no longer about anything they're looking at.
-                await _dialogs.ShowErrorAsync(Message.Of("binder.openFailedTitle"), FailurePresentation.OpenBinder(ex));
+                await _dialogs.ShowErrorAsync(Message.Of("binder.openFailedTitle"), FailurePresentation.OpenBinder(ex, TitleFor(path)));
             }
 
             return;
@@ -1329,6 +1330,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return false;
         }
 
+        TearDownCurrent(clearSelection);
+        return true;
+    }
+
+    /// <summary>Forgets the open binder as it stands, writing nothing to its file.</summary>
+    private void TearDownCurrent(bool clearSelection)
+    {
+        _autosaveTimer.Stop();
         _current = null;
         HasBinder = false;
         _dirty = false;
@@ -1352,8 +1361,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             _state.CurrentNoteId = null;
             PersistState();
         }
+    }
 
-        return true;
+    /// <summary>
+    /// The open binder's file now records a newer format than this build reads. It is intact data this
+    /// build cannot read, so the binder is closed without saving and its file is never written
+    /// (store-recovery-conventions); edits not yet saved cannot go anywhere else.
+    /// </summary>
+    private void CloseNewerBinder(string path, Exception? error = null)
+    {
+        _log.Warn("Binder on disk is newer than this build; closed without saving", new { path, unsavedEdits = _dirty }, error);
+        TearDownCurrent(clearSelection: false);
+        ApplyBinderFilter();
+        ShowResult(OperationResultKind.Error, FailurePresentation.NewerBinder(TitleFor(path)), resultKey: BinderFileResultKey);
     }
 
     /// <summary>
@@ -1517,6 +1537,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                         resultKey: BinderFileResultKey);
                     return;
 
+                case ExternalChange.Newer:
+                    CloseNewerBinder(path);
+                    return;
+
                 case ExternalChange.Modified when !_dirty:
                     _log.Info("Binder changed on disk; reloading", new { path });
                     if (await ReloadFromDiskAsync(checkedBinder, yieldToNewEdits: true))
@@ -1582,6 +1606,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         try
         {
             loaded = await Task.Run(() => _binderStore.Load(path));
+        }
+        catch (NewerFormatException ex)
+        {
+            // Rewritten by a newer DayNote since the check read it.
+            if (ReferenceEquals(_current, reloading))
+            {
+                CloseNewerBinder(path, ex);
+            }
+
+            return false;
         }
         catch (Exception ex)
         {
@@ -2111,7 +2145,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     // Each store recovers on its own path (store-recovery-conventions): the settings halt, the
-    // disposable view state is logged and replaced.
+    // disposable view state is logged and replaced. A newer file of either is never written this session.
     private void LoadConfigAndState()
     {
         try
@@ -2121,7 +2155,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
         catch (Exception ex)
         {
-            _unreadableConfig = _paths.ConfigFile;
+            _configLoadError = ex;
             _config = new AppConfig();
             _log.Error("Failed to load configuration; saving disabled", new { path = _paths.ConfigFile }, ex);
             return;

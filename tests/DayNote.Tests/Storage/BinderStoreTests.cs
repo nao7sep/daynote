@@ -72,6 +72,30 @@ public sealed class BinderStoreTests : IDisposable
     }
 
     [Fact]
+    public void CheckExternalChange_reports_newer_when_a_newer_DayNote_rewrote_the_file()
+    {
+        var saved = _store.Save(_path, Sample());
+        File.WriteAllText(_path, NewerBinderText);
+
+        Assert.Equal(ExternalChange.Newer, _store.CheckExternalChange(_path, saved.ContentHash));
+    }
+
+    [Fact]
+    public void A_newer_binder_is_refused_and_left_byte_identical()
+    {
+        File.WriteAllText(_path, NewerBinderText);
+        var before = File.ReadAllBytes(_path);
+
+        Assert.Throws<NewerFormatException>(() => _store.Load(_path));
+
+        Assert.Equal(before, File.ReadAllBytes(_path));
+        Assert.Equal(new[] { _path }, Directory.GetFiles(_directory, "*.daynote"));
+    }
+
+    private static string NewerBinderText =>
+        $"format_version = {FormatVersions.Binder + 1}\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
+
+    [Fact]
     public void CheckExternalChange_reports_deleted_when_the_file_is_gone()
     {
         var saved = _store.Save(_path, Sample());

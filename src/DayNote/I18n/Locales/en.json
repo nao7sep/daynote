@@ -79,6 +79,7 @@
   "failure.openBinder": "This binder could not be opened. Check that it is available, then try again.",
   "failure.openBinderFormat": "This binder could not be opened because its contents are not valid DayNote data. Repair the binder or restore a known-good copy, then try again.",
   "failure.openBinderGone": "This binder is no longer available at the selected location.",
+  "failure.openBinderNewer": "“{name}” was written by a newer version of DayNote, so this version can’t open it. The file was left untouched; open it with the newer version of DayNote.",
   "failure.openBinderPermission": "This binder could not be opened. Check that you have permission to read it, then try again.",
   "failure.openBinderPicker": "The binder picker could not be opened. Try opening the binder again.",
   "failure.openExternalLink": "The link could not be opened in your browser. Try again.",
@@ -89,6 +90,7 @@
   "failure.settingsSave": "Settings could not be saved. Your changes are still here; try again.",
   "failure.startupDataTitle": "Load failed",
   "failure.startupSettings": "DayNote couldn’t read its settings file at {path}, so it stopped before changing anything. The file was left in place. Check its permissions or move it aside, then restart DayNote.",
+  "failure.startupSettingsNewer": "DayNote’s settings file at {path} was written by a newer version of DayNote, so this version stopped before changing anything. The file was left in place. Use the newer version of DayNote, or move the file aside, then restart DayNote.",
   "failure.startupStorage": "DayNote could not open its storage location. Check that the location exists and is writable, then restart DayNote.",
   "files.andMore": {
     "one": "{names}, and {count} more",

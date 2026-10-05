@@ -84,6 +84,7 @@
   "failure.openBinder": "Não foi possível abrir este fichário. Verifique se ele está disponível e tente novamente.",
   "failure.openBinderFormat": "Não foi possível abrir este fichário porque o conteúdo dele não contém dados válidos do DayNote. Repare o fichário ou restaure uma cópia íntegra e tente novamente.",
   "failure.openBinderGone": "Este fichário não está mais disponível no local selecionado.",
+  "failure.openBinderNewer": "“{name}” foi salvo por uma versão mais recente do DayNote, então esta versão não pode abri-lo. O arquivo não foi alterado; abra-o com a versão mais recente do DayNote.",
   "failure.openBinderPermission": "Não foi possível abrir este fichário. Verifique se você tem permissão para lê-lo e tente novamente.",
   "failure.openBinderPicker": "Não foi possível abrir o seletor de fichários. Tente abrir o fichário novamente.",
   "failure.openExternalLink": "Não foi possível abrir o link no navegador. Tente novamente.",
@@ -94,6 +95,7 @@
   "failure.settingsSave": "Não foi possível salvar as configurações. Suas alterações continuam aqui; tente novamente.",
   "failure.startupDataTitle": "Falha ao carregar",
   "failure.startupSettings": "O DayNote não conseguiu ler seu arquivo de configurações em {path}, então parou antes de alterar qualquer coisa. O arquivo continua onde estava. Verifique as permissões dele ou mova-o para outro lugar e reinicie o DayNote.",
+  "failure.startupSettingsNewer": "O arquivo de configurações em {path} foi gravado por uma versão mais recente do DayNote, então esta versão parou antes de alterar qualquer coisa. O arquivo continua onde estava. Use a versão mais recente do DayNote ou mova o arquivo para outro lugar e reinicie o DayNote.",
   "failure.startupStorage": "O DayNote não conseguiu abrir seu local de armazenamento. Verifique se o local existe e permite gravação e reinicie o DayNote.",
   "files.andMore": {
     "one": "{names} e mais {count}",

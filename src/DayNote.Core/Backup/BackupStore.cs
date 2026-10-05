@@ -143,7 +143,8 @@ public static class BackupStore
     }
 
     /// <summary>
-    /// Open and initialize the store once (create the table if absent, switch on WAL and a busy timeout).
+    /// Open and initialize the store once (check its format version, create the table if absent, switch on
+    /// WAL and a busy timeout).
     /// Best-effort: on any failure it logs ONE warn, leaves recording disabled for the session, and never
     /// throws. WAL plus the immediate record transaction let the tolerated two-instance case (two DayNote
     /// windows writing at once) serialize without a separate cross-process lock; the busy timeout makes a
@@ -158,6 +159,7 @@ public static class BackupStore
 
         _initialized = true;
         var file = "(unresolved)";
+        SqliteConnection? connection = null;
         try
         {
             var paths = new AppPaths();
@@ -172,8 +174,12 @@ public static class BackupStore
             // no special case (data-backup conventions: "A binary store, excluded from itself").
             paths.EnsureCreated();
 
-            var connection = new SqliteConnection($"Data Source={file}");
+            connection = new SqliteConnection($"Data Source={file}");
             connection.Open();
+
+            // First, before WAL or the schema can change the file: a store written by a newer DayNote is
+            // left exactly as it is, and recording stays disabled for the session.
+            SqliteFormatVersion.Claim(connection, FormatVersions.Backups, "backups.sqlite3");
 
             using (var pragma = connection.CreateCommand())
             {
@@ -197,6 +203,7 @@ public static class BackupStore
         catch (Exception ex)
         {
             WarnSafely("backup store: could not open; recording disabled for this session", file, ex);
+            connection?.Dispose();
             _connection = null;
         }
 

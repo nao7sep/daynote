@@ -84,6 +84,7 @@
   "failure.openBinder": "Impossibile aprire questo raccoglitore. Verifica che sia disponibile, quindi riprova.",
   "failure.openBinderFormat": "Impossibile aprire questo raccoglitore perché il suo contenuto non è costituito da dati DayNote validi. Ripara il raccoglitore o ripristina una copia integra, quindi riprova.",
   "failure.openBinderGone": "Questo raccoglitore non è più disponibile nella posizione selezionata.",
+  "failure.openBinderNewer": "«{name}» è stato salvato con una versione più recente di DayNote, quindi questa versione non può aprirlo. Il file non è stato modificato; aprilo con la versione più recente di DayNote.",
   "failure.openBinderPermission": "Impossibile aprire questo raccoglitore. Verifica di avere il permesso di leggerlo, quindi riprova.",
   "failure.openBinderPicker": "Impossibile aprire la selezione del raccoglitore. Riprova ad aprirlo.",
   "failure.openExternalLink": "Impossibile aprire il link nel browser. Riprova.",
@@ -94,6 +95,7 @@
   "failure.settingsSave": "Impossibile salvare le impostazioni. Le tue modifiche sono ancora qui; riprova.",
   "failure.startupDataTitle": "Caricamento non riuscito",
   "failure.startupSettings": "DayNote non è riuscito a leggere il suo file di impostazioni in {path}, quindi si è fermato prima di modificare qualsiasi cosa. Il file è rimasto dov’era. Controlla i suoi permessi o spostalo altrove, poi riavvia DayNote.",
+  "failure.startupSettingsNewer": "Il file di impostazioni in {path} è stato scritto da una versione più recente di DayNote, quindi questa versione si è fermata prima di modificare qualsiasi cosa. Il file è rimasto dov’era. Usa la versione più recente di DayNote, oppure sposta il file altrove, poi riavvia DayNote.",
   "failure.startupStorage": "DayNote non è riuscito ad aprire la sua posizione di archiviazione. Verifica che esista e sia scrivibile, quindi riavvia DayNote.",
   "files.andMore": {
     "one": "{names} e {count} altro",

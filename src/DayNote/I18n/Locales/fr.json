@@ -84,6 +84,7 @@
   "failure.openBinder": "Ce classeur n’a pas pu être ouvert. Vérifiez qu’il est disponible, puis réessayez.",
   "failure.openBinderFormat": "Ce classeur n’a pas pu être ouvert, car son contenu n’est pas composé de données DayNote valides. Réparez le classeur ou restaurez une copie saine, puis réessayez.",
   "failure.openBinderGone": "Ce classeur n’est plus disponible à l’emplacement choisi.",
+  "failure.openBinderNewer": "«\u00a0{name}\u00a0» a été enregistré par une version plus récente de DayNote\u00a0; cette version ne peut donc pas l’ouvrir. Le fichier n’a pas été modifié\u00a0; ouvrez-le avec la version plus récente de DayNote.",
   "failure.openBinderPermission": "Ce classeur n’a pas pu être ouvert. Vérifiez que vous avez l’autorisation de le lire, puis réessayez.",
   "failure.openBinderPicker": "Le sélecteur de classeur n’a pas pu s’ouvrir. Réessayez d’ouvrir le classeur.",
   "failure.openExternalLink": "Le lien n’a pas pu s’ouvrir dans votre navigateur. Réessayez.",
@@ -94,6 +95,7 @@
   "failure.settingsSave": "Les paramètres n’ont pas pu être enregistrés. Vos modifications sont toujours là\u00a0; réessayez.",
   "failure.startupDataTitle": "Échec du chargement",
   "failure.startupSettings": "DayNote n’a pas pu lire son fichier de paramètres situé à {path}\u00a0; il s’est donc arrêté avant de modifier quoi que ce soit. Le fichier a été laissé en place. Vérifiez ses autorisations ou déplacez-le ailleurs, puis redémarrez DayNote.",
+  "failure.startupSettingsNewer": "Le fichier de paramètres situé à {path} a été écrit par une version plus récente de DayNote\u00a0; cette version s’est donc arrêtée avant de modifier quoi que ce soit. Le fichier a été laissé en place. Utilisez la version plus récente de DayNote, ou déplacez le fichier ailleurs, puis redémarrez DayNote.",
   "failure.startupStorage": "DayNote n’a pas pu ouvrir son emplacement de stockage. Vérifiez qu’il existe et qu’il est accessible en écriture, puis redémarrez DayNote.",
   "files.andMore": {
     "one": "{names} et {count} autre",
