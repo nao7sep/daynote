@@ -60,10 +60,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         Action<string>? deleteFile = null,
         Action<string>? deleteDirectory = null,
         BinderStore? binderStore = null,
-        Action<string, string>? copyFile = null)
+        Action<string, string>? copyFile = null,
+        IAppLogger? log = null)
     {
         var vm = new MainWindowViewModel(
-            new AppPaths(), _dialogs, new NullLogger(), deleteFile, deleteDirectory, _clock, binderStore, copyFile);
+            new AppPaths(), _dialogs, log ?? new NullLogger(), deleteFile, deleteDirectory, _clock, binderStore, copyFile);
         Assert.True(vm.IsReady);
         return vm;
     }
@@ -95,9 +96,9 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
     }
 
-    private async Task<MainWindowViewModel> OpenNewBinderAsync(BinderStore? binderStore = null)
+    private async Task<MainWindowViewModel> OpenNewBinderAsync(BinderStore? binderStore = null, IAppLogger? log = null)
     {
-        var vm = NewViewModel(binderStore: binderStore);
+        var vm = NewViewModel(binderStore: binderStore, log: log);
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         Assert.True(vm.HasBinder);
@@ -672,6 +673,166 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.False(vm.HasBinder);
         Assert.Equal("typed just before quitting", new BinderStore().Load(BinderPath).Binder.Notes[0].Body);
+    }
+
+    // ----- Quitting (unsaved-edits-conventions, Quitting) -----
+
+    private string SavedBody() => new BinderStore().Load(BinderPath).Binder.Notes[0].Body;
+
+    private async Task<(MainWindowViewModel Vm, GatedBinderStore Store, ListLogger Log)> OpenWithUnsavedEditAsync(string body)
+    {
+        var store = new GatedBinderStore();
+        var log = new ListLogger();
+        var vm = await OpenNewBinderAsync(store, log);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        vm.Editor.Body = body;
+        return (vm, store, log);
+    }
+
+    [AvaloniaFact]
+    public async Task A_quit_saves_the_pending_edit_and_asks_nothing()
+    {
+        var (vm, _, _) = await OpenWithUnsavedEditAsync("typed before quitting");
+
+        Assert.True(await vm.QuitAsync());
+
+        Assert.Empty(_dialogs.QuitQuestions);
+        Assert.Equal("typed before quitting", SavedBody());
+    }
+
+    [AvaloniaFact]
+    public async Task A_quit_whose_save_fails_stops_and_Retry_saves_and_quits()
+    {
+        var (vm, store, _) = await OpenWithUnsavedEditAsync("kept through a retry");
+        store.SaveFailure = new IOException("No space left on device");
+        _dialogs.QuitAnswer = () =>
+        {
+            // The user frees some space before choosing Retry.
+            store.SaveFailure = null;
+            return UnsavedQuitChoice.Retry;
+        };
+
+        Assert.True(await vm.QuitAsync());
+
+        Assert.Equal(new[] { "test" }, _dialogs.QuitQuestions);
+        Assert.Equal("kept through a retry", SavedBody());
+    }
+
+    [AvaloniaFact]
+    public async Task Quit_anyway_after_a_failed_save_exits_without_the_edit_and_logs_it()
+    {
+        var (vm, store, log) = await OpenWithUnsavedEditAsync("lost by choice");
+        store.SaveFailure = new IOException("No space left on device");
+        _dialogs.QuitAnswer = () => UnsavedQuitChoice.QuitAnyway;
+
+        Assert.True(await vm.QuitAsync());
+
+        Assert.Single(_dialogs.QuitQuestions);
+        Assert.Equal(string.Empty, SavedBody());
+        Assert.Contains(("warn", "Quitting with the binder's edits unsaved"), log.Entries);
+    }
+
+    [AvaloniaFact]
+    public async Task Dismissing_the_quit_question_keeps_the_app_open_with_the_edit_unsaved()
+    {
+        var (vm, store, _) = await OpenWithUnsavedEditAsync("still here");
+        store.SaveFailure = new IOException("No space left on device");
+
+        Assert.False(await vm.QuitAsync());
+
+        Assert.Single(_dialogs.QuitQuestions);
+        Assert.True(vm.HasBinder);
+        Assert.Equal("still here", vm.Editor.Body);
+        Assert.True(vm.IsSaveStateError);
+
+        // Once the location can be written again, the next quit saves and goes ahead.
+        store.SaveFailure = null;
+        Assert.True(await vm.QuitAsync());
+        Assert.Equal("still here", SavedBody());
+    }
+
+    [AvaloniaFact]
+    public async Task A_quit_whose_save_stalls_stops_at_its_bound_and_asks()
+    {
+        var (vm, store, log) = await OpenWithUnsavedEditAsync("written once the volume answers");
+        var stalled = store.HoldNextSave();
+        _dialogs.QuitAnswer = () =>
+        {
+            // The volume answers again before the user chooses Retry.
+            stalled.Release();
+            return UnsavedQuitChoice.Retry;
+        };
+
+        var quit = vm.QuitAsync();
+        await stalled.Entered.Task;
+        _clock.Advance(MainWindowViewModel.QuitBinderSaveBound - TimeSpan.FromTicks(1));
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(quit.IsCompleted);
+        Assert.Empty(_dialogs.QuitQuestions);
+
+        _clock.Advance(TimeSpan.FromTicks(1));
+        Assert.True(await quit);
+
+        Assert.Single(_dialogs.QuitQuestions);
+        Assert.Contains(("error", "Binder save did not finish within the quit's bound"), log.Entries);
+        Assert.Equal("written once the volume answers", SavedBody());
+    }
+
+    [AvaloniaFact]
+    public async Task A_state_file_the_quit_cannot_write_is_logged_and_the_quit_goes_ahead()
+    {
+        var (vm, _, log) = await OpenWithUnsavedEditAsync("saved although the state is not");
+        // A folder where state.json belongs: the write cannot replace it.
+        var statePath = new AppPaths().StateFile;
+        File.Delete(statePath);
+        Directory.CreateDirectory(statePath);
+        log.Entries.Clear();
+
+        Assert.True(await vm.QuitAsync());
+
+        Assert.Empty(_dialogs.QuitQuestions);
+        Assert.Contains(("error", "Failed to save state"), log.Entries);
+        Assert.Equal("saved although the state is not", SavedBody());
+    }
+
+    [AvaloniaFact]
+    public async Task A_quit_writes_the_state_once_with_what_changed_after_it_began()
+    {
+        var vm = await OpenNewBinderAsync();
+        var statePath = new AppPaths().StateFile;
+        var before = File.ReadAllText(statePath);
+
+        // The Records window closes after the quit begins; its placement waits for the quit's write.
+        vm.BeginShutdown();
+        vm.SaveRecordsWindowPlacement(new WindowPlacement(40, 50, 700, 500, false));
+        Assert.Equal(before, File.ReadAllText(statePath));
+
+        Assert.True(await vm.ShutdownAsync());
+        var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(statePath), DayNoteJson.Options)!;
+        Assert.Equal(700, state.RecordsWindowWidth);
+        Assert.Equal(BinderPath, state.CurrentBinderPath);
+    }
+
+    [AvaloniaFact]
+    public async Task Closing_the_main_window_runs_the_same_quit_and_stays_open_when_the_user_keeps_it()
+    {
+        var (vm, store, _) = await OpenWithUnsavedEditAsync("kept by closing the question");
+        store.SaveFailure = new IOException("No space left on device");
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        window.Close();
+        await PumpUntilAsync(() => _dialogs.QuitQuestions.Count == 1);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.IsVisible);
+        Assert.True(vm.HasBinder);
+
+        store.SaveFailure = null;
+        window.Close();
+        await PumpUntilAsync(() => !window.IsVisible);
+        Assert.Equal("kept by closing the question", SavedBody());
     }
 
     [AvaloniaFact]
@@ -2321,6 +2482,18 @@ public sealed class MainWindowViewModelTests : IDisposable
             ExternalChangeQuestions++;
             return Task.FromResult(ExternalChoice);
         }
+        /// <summary>The binder named by each quit question, in order.</summary>
+        public List<string> QuitQuestions { get; } = [];
+
+        /// <summary>How each quit question is answered; it may also change the world before answering.</summary>
+        public Func<UnsavedQuitChoice> QuitAnswer { get; set; } = () => UnsavedQuitChoice.Stay;
+
+        public Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName)
+        {
+            QuitQuestions.Add(binderName);
+            return Task.FromResult(QuitAnswer());
+        }
+
         public Task OpenPathExternallyAsync(string path)
         {
             LastOpenedPath = path;
@@ -2343,9 +2516,17 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         public Hold HoldNextCheck() => _nextCheck = new Hold();
 
+        /// <summary>While set, every write fails with it, as a full disk or a vanished volume would.</summary>
+        public Exception? SaveFailure { get; set; }
+
         public override SavedBinder SaveText(string path, string text)
         {
             Interlocked.Exchange(ref _nextSave, null)?.Wait();
+            if (SaveFailure is { } failure)
+            {
+                throw failure;
+            }
+
             return base.SaveText(path, text);
         }
 
@@ -2369,6 +2550,17 @@ public sealed class MainWindowViewModelTests : IDisposable
                 _released.Wait();
             }
         }
+    }
+
+    /// <summary>Keeps what was logged, so a test can see that a failure the user is not shown is recorded.</summary>
+    private sealed class ListLogger : IAppLogger
+    {
+        public List<(string Level, string Message)> Entries { get; } = [];
+
+        public void Debug(string message, object? data = null, Exception? error = null) => Entries.Add(("debug", message));
+        public void Info(string message, object? data = null, Exception? error = null) => Entries.Add(("info", message));
+        public void Warn(string message, object? data = null, Exception? error = null) => Entries.Add(("warn", message));
+        public void Error(string message, object? data = null, Exception? error = null) => Entries.Add(("error", message));
     }
 
     private sealed class NullLogger : IAppLogger

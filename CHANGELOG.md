@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Locking is a separate switch beside the status. A locked note's title, text and attachments cannot be edited; its status can still change and it can still be deleted. Publishing no longer locks a note, and editing no longer needs a move back to an earlier status.
 - The `.daynote` file stores `verified_at` and `retired_at` in place of `ready_at` and `expired_at`, adds `discarded_at` and `locked`, and no longer reads the `ready`, `expired` or `checked` statuses.
 - A binder with a missing, malformed or repeated id, an attachment that is not a plain file name, an unknown status, a time that is not a time, or status times its status contradicts no longer opens with those values replaced or dropped. The message names the binder, and the file is left as it is.
+- When a quit cannot save the open binder, DayNote stays open and asks whether to retry the save or quit anyway, instead of only showing the error. Closing the question keeps DayNote open with the changes.
 
 ### Fixed
 
@@ -34,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deleting a note or removing an attachment deletes the files only after the binder is saved without them, so a failed save no longer leaves the binder pointing at deleted files.
 - An attachment is copied under a temporary name first, so a copy that fails part-way no longer leaves a partial file in the binder's assets folder.
 - Locking a note while files are still being added to it no longer adds them.
+- A quit no longer waits without end for a binder location that stops responding: after two seconds it asks whether to retry or quit anyway.
 
 ## [0.1.0] - 2026-07-08
 

@@ -40,6 +40,12 @@ public interface IDialogService
     /// <summary>Asks how to handle an external modification detected against unsaved edits.</summary>
     Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName);
 
+    /// <summary>
+    /// Asks, after a quit could not save the binder's edits, whether to retry the save or quit without
+    /// them. Dismissing it answers <see cref="UnsavedQuitChoice.Stay"/>.
+    /// </summary>
+    Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName);
+
     /// <summary>Opens a file with the operating system's default handler.</summary>
     Task OpenPathExternallyAsync(string path);
 }

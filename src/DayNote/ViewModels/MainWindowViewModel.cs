@@ -49,7 +49,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private readonly Action<string> _deleteDirectory;
     private readonly Action<string, string> _copyFile;
 
-    // The clock every recorded time is read from: created, modified and status times.
+    // The clock every recorded time is read from: created, modified and status times. The quit's bounds
+    // run on it too.
     private readonly TimeProvider _clock;
 
     private readonly DispatcherTimer _autosaveTimer;
@@ -116,6 +117,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // another binder while this one's file was still being read — and this call's result is discarded
     // instead of adopting a binder the user is no longer looking at.
     private long _openGeneration;
+
+    // Set from the start of a quit until it finishes or gives the app back: nothing new starts, and the
+    // state is written once, by the quit, within its bound.
+    private bool _shuttingDown;
 
     public MainWindowViewModel(
         AppPaths paths,
@@ -463,31 +468,132 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _externalTimer.Start();
     }
 
-    /// <summary>Flushes pending work on shutdown. Pane widths are captured first by the view.</summary>
+    // How long each step of a quit may take (unsaved-edits-conventions, Quitting).
+    internal static readonly TimeSpan QuitBinderSaveBound = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan QuitStateWriteBound = TimeSpan.FromMilliseconds(500);
+
     /// <summary>
-    /// Flushes and closes the open binder on quit. Returns false when the final flush failed — the
-    /// binder stays open (autosave still retrying) so the caller can keep the window open rather than
-    /// let unsaved edits vanish on quit.
+    /// Starts a quit. An open still reading its file is superseded, as a later open would supersede it,
+    /// so it cannot adopt a binder or write state after the app has shut down; the autosave and the
+    /// external-change check stop; and state changes wait for the quit's own write. The view calls it
+    /// before closing the windows whose placement that write records.
+    /// </summary>
+    public void BeginShutdown()
+    {
+        if (_shuttingDown)
+        {
+            return;
+        }
+
+        _shuttingDown = true;
+        _openGeneration++;
+        _autosaveTimer.Stop();
+        _externalTimer.Stop();
+    }
+
+    /// <summary>
+    /// The save every quit path runs: the state, then the open binder's pending edits, each within its
+    /// bound. It never asks anything. Returns false when the binder's edits were not saved; the binder
+    /// then stays open with the autosave retrying, so nothing is lost unless the caller chooses to quit.
     /// </summary>
     public async Task<bool> ShutdownAsync()
     {
+        BeginShutdown();
         _log.Info("Application shutting down", new { path = _current?.Path });
 
-        // An open still reading its file is superseded, as a later open would supersede it: its
-        // result must not adopt a binder or write state after the app has shut down.
-        _openGeneration++;
-
-        // Persist state (including the current note id) while the binder is still open;
-        // CloseCurrentAsync clears the selection, which would otherwise null out CurrentNoteId.
-        PersistState();
-        if (!await CloseCurrentAsync(clearSelection: false))
+        // The state goes first, while the binder is still open: tearing it down clears the selection,
+        // which would otherwise null out CurrentNoteId.
+        await WriteStateForQuitAsync();
+        if (!await SaveBinderForQuitAsync())
         {
+            _shuttingDown = false;
+            _autosaveTimer.Start();
+            _externalTimer.Start();
             return false;
         }
 
-        _externalTimer.Stop();
-        _autosaveTimer.Stop();
+        if (_current is not null)
+        {
+            _log.Info("Closing binder", new { path = _current.Path });
+            TearDownCurrent(clearSelection: false);
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// The quit the user started: menu Quit, Cmd+Q, Dock Quit, or closing the main window. When the
+    /// binder's edits could not be saved, the quit stops and the user chooses Retry or Quit anyway;
+    /// dismissing that question keeps the app open. Returns true when the app may exit.
+    /// </summary>
+    public async Task<bool> QuitAsync()
+    {
+        while (!await ShutdownAsync())
+        {
+            // A binder a newer DayNote rewrote was closed instead of saved; its notice is showing and
+            // nothing is left to save, so the quit stops once for it to be seen.
+            if (_current is not { } binder)
+            {
+                return false;
+            }
+
+            switch (await _dialogs.AskQuitWithUnsavedBinderAsync(TitleFor(binder.Path)))
+            {
+                case UnsavedQuitChoice.Retry:
+                    continue;
+                case UnsavedQuitChoice.QuitAnyway:
+                    _log.Warn("Quitting with the binder's edits unsaved", new { path = binder.Path });
+                    BeginShutdown();
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    // The binder's pending edits, within the quit's bound. A save still running at the bound carries on
+    // and settles as any save does; the quit treats its outcome as unknown, so the edits count as unsaved.
+    private async Task<bool> SaveBinderForQuitAsync()
+    {
+        try
+        {
+            return await SaveCurrentAsync().WaitAsync(QuitBinderSaveBound, _clock);
+        }
+        catch (TimeoutException)
+        {
+            _log.Error("Binder save did not finish within the quit's bound", new
+            {
+                path = _current?.Path,
+                boundMs = QuitBinderSaveBound.TotalMilliseconds,
+            });
+            return false;
+        }
+    }
+
+    // The quit's one state write, off the UI thread and within its bound. A failure is logged only: the
+    // state is placement and selection, never the user's work.
+    private async Task WriteStateForQuitAsync()
+    {
+        if (!IsReady)
+        {
+            return;
+        }
+
+        var state = CaptureState().Copy();
+        try
+        {
+            await Task.Run(() => _stateStore.Save(state)).WaitAsync(QuitStateWriteBound, _clock);
+        }
+        catch (TimeoutException)
+        {
+            _log.Warn("State write did not finish within the quit's bound", new { boundMs = QuitStateWriteBound.TotalMilliseconds });
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to save state", error: ex);
+        }
     }
 
     /// <summary>
@@ -1393,7 +1499,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// <summary>
     /// Flushes pending edits and tears down the open binder. Returns false (and leaves the binder open,
     /// dirty, with the autosave still retrying) when the flush failed — so a save error never costs the
-    /// user their edits. Callers abort whatever they were doing (forget / switch / quit) on false.
+    /// user their edits. Callers abort whatever they were doing (forget / switch) on false.
     /// </summary>
     private async Task<bool> CloseCurrentAsync(bool clearSelection)
     {
@@ -2354,24 +2460,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     private void PersistState()
     {
-        if (!IsReady)
+        // During a quit the quit writes the state, and what changes meanwhile is in that write.
+        if (!IsReady || _shuttingDown)
         {
             return;
         }
 
-        _state.BindersPaneWidth = BindersPaneWidth;
-        _state.NotesPaneWidth = NotesPaneWidth;
-        _state.AttachmentsPaneWidth = AttachmentsPaneWidth;
-        _state.CurrentNoteId = SelectedNote?.Note.Id;
-
         try
         {
-            _stateStore.Save(_state);
+            _stateStore.Save(CaptureState());
         }
         catch (Exception ex)
         {
             _log.Error("Failed to save state", error: ex);
         }
+    }
+
+    private AppState CaptureState()
+    {
+        _state.BindersPaneWidth = BindersPaneWidth;
+        _state.NotesPaneWidth = NotesPaneWidth;
+        _state.AttachmentsPaneWidth = AttachmentsPaneWidth;
+        _state.CurrentNoteId = SelectedNote?.Note.Id;
+        return _state;
     }
 
     private void SetSaveState(SaveState state)

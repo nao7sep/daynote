@@ -187,6 +187,7 @@ internal sealed class PopulatedMainWindow : IDisposable
             return Task.FromResult(trySave(config));
         }
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName) => Task.FromResult(ExternalChangeChoice.KeepMine);
+        public Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName) => Task.FromResult(UnsavedQuitChoice.Stay);
         public Task OpenPathExternallyAsync(string path) => Task.CompletedTask;
     }
 

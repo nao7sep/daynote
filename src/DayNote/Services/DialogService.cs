@@ -124,6 +124,27 @@ public sealed class DialogService : IDialogService
         return dialog.ResultTag == "reload" ? ExternalChangeChoice.ReloadFromDisk : ExternalChangeChoice.KeepMine;
     }
 
+    public async Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName)
+    {
+        var dialog = new MessageDialog(
+            Message.Of("quit.unsavedTitle"),
+            Message.Of("quit.unsavedMessage", ("name", binderName)),
+            new[]
+            {
+                // Retry keeps the edits, so it takes focus; quitting without them is the destructive
+                // choice. Escape answers neither and leaves the app open.
+                new DialogButton("quit.retry", "retry"),
+                new DialogButton("quit.quitAnyway", "quit", DialogButtonKind.Destructive),
+            });
+        await dialog.ShowBoundedAsync(RequireOwner());
+        return dialog.ResultTag switch
+        {
+            "retry" => UnsavedQuitChoice.Retry,
+            "quit" => UnsavedQuitChoice.QuitAnyway,
+            _ => UnsavedQuitChoice.Stay,
+        };
+    }
+
     public async Task OpenPathExternallyAsync(string path)
     {
         var owner = RequireOwner();

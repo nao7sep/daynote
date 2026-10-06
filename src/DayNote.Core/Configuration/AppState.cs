@@ -35,4 +35,7 @@ public sealed class AppState
     // Current selection, restored on next launch.
     public string? CurrentBinderPath { get; set; }
     public string? CurrentNoteId { get; set; }
+
+    /// <summary>A copy to write off the UI thread; every member is a value or a string, so it shares nothing.</summary>
+    public AppState Copy() => (AppState)MemberwiseClone();
 }

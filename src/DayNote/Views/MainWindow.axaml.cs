@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     private bool _shutdownComplete;
 
     // The busy claim of a quit in flight (PLAYBOOK, Own the work in flight): a second close request
-    // while the first is still flushing waits for it rather than starting another shutdown.
+    // while the first is still saving or asking waits for it rather than starting another shutdown.
     private bool _quitting;
     private RecordsWindow? _recordsWindow;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
@@ -356,49 +356,55 @@ public partial class MainWindow : Window
     private void OnNoteCreated(object? sender, EventArgs e) =>
         Dispatcher.UIThread.Post(() => TitleBox.Focus(), DispatcherPriority.Background);
 
+    // Every quit path closes the main window: menu Quit, Cmd+Q and Dock Quit through the lifetime, and
+    // the window's own close (unsaved-edits-conventions, Quitting).
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
-        if (!_shutdownComplete && DataContext is MainWindowViewModel vm)
+        if (_shutdownComplete || DataContext is not MainWindowViewModel vm)
         {
-            e.Cancel = true;
-            if (_quitting)
-            {
-                return;
-            }
-
-            _quitting = true;
-
-            // The Records window goes first, so its placement is in the state this quit writes, and
-            // it can never be the window that keeps the app running.
-            _recordsWindow?.Close();
-
-            CapturePaneWidths(vm);
-            RememberNormalGeometry();
-            if (WindowState is WindowState.Normal or WindowState.Maximized
-                && _normalGeometry is { } normal)
-            {
-                vm.CaptureWindowPlacement(
-                    normal.X, normal.Y, normal.Width, normal.Height,
-                    OperatingSystem.IsWindows() && WindowState == WindowState.Maximized);
-            }
-
-            // Complete the quit only if the final flush succeeded. On failure ShutdownAsync keeps the
-            // binder open with the autosave retrying, so the window stays open rather than discarding
-            // unsaved edits on the way out.
-            if (await vm.ShutdownAsync())
-            {
-                _shutdownComplete = true;
-                Close();
-            }
-            else
-            {
-                _quitting = false;
-            }
-
+            base.OnClosing(e);
             return;
         }
 
-        base.OnClosing(e);
+        e.Cancel = true;
+        if (_quitting)
+        {
+            return;
+        }
+
+        _quitting = true;
+        PrepareQuit(vm);
+
+        // On a failed save the user chooses: retry, quit anyway, or keep the app open with the binder
+        // and its unsaved edits, the autosave still retrying.
+        if (await vm.QuitAsync())
+        {
+            _shutdownComplete = true;
+            Close();
+        }
+        else
+        {
+            _quitting = false;
+        }
+    }
+
+    private void PrepareQuit(MainWindowViewModel vm)
+    {
+        vm.BeginShutdown();
+
+        // The Records window goes first, so its placement is in the state this quit writes, and it can
+        // never be the window that keeps the app running.
+        _recordsWindow?.Close();
+
+        CapturePaneWidths(vm);
+        RememberNormalGeometry();
+        if (WindowState is WindowState.Normal or WindowState.Maximized
+            && _normalGeometry is { } normal)
+        {
+            vm.CaptureWindowPlacement(
+                normal.X, normal.Y, normal.Width, normal.Height,
+                OperatingSystem.IsWindows() && WindowState == WindowState.Maximized);
+        }
     }
 
     /// <summary>
