@@ -76,7 +76,7 @@
   "editor.status": "Status",
   "editor.titlePlaceholder": "Titel …",
   "failure.attachmentPicker": "Die Dateiauswahl für Anhänge konnte nicht geöffnet werden. Ihre Notiz ist unverändert; versuchen Sie erneut, Anhänge hinzuzufügen.",
-  "failure.binderAddSave": "Die Mappe ist geöffnet, konnte aber nicht zur Mappenliste hinzugefügt werden. Nach dem Schließen wird sie daher nicht mehr aufgeführt.",
+  "failure.binderAddSave": "Die Mappe ist geöffnet, konnte aber nicht zur Mappenliste hinzugefügt werden.",
   "failure.binderForgetSave": "Die Mappe konnte nicht aus der Liste entfernt werden. Sie wird weiterhin aufgeführt; versuchen Sie erneut, sie zu entfernen.",
   "failure.binderOrderSave": "Die Reihenfolge der Mappen konnte nicht gespeichert werden. Die Liste hat wieder ihre vorherige Reihenfolge; versuchen Sie es erneut.",
   "failure.binderRenameSave": "Der neue Name der Mappe konnte nicht gespeichert werden. Sie behält ihren bisherigen Namen; versuchen Sie es erneut.",
@@ -97,7 +97,7 @@
   "failure.startupSettings": "DayNote konnte seine Einstellungsdatei unter {path} nicht lesen und hat deshalb angehalten, bevor etwas geändert wurde. Die Datei liegt unverändert an ihrem Platz. Prüfen Sie ihre Zugriffsrechte oder verschieben Sie sie an einen anderen Ort, und starten Sie DayNote dann neu.",
   "failure.startupSettingsNewer": "Die Einstellungsdatei unter {path} wurde von einer neueren Version von DayNote geschrieben; diese Version hat deshalb angehalten, bevor etwas geändert wurde. Die Datei liegt unverändert an ihrem Platz. Verwenden Sie die neuere Version von DayNote, oder verschieben Sie die Datei an einen anderen Ort, und starten Sie DayNote dann neu.",
   "failure.startupStorage": "DayNote konnte seinen Speicherort nicht öffnen. Prüfen Sie, ob der Ort existiert und beschreibbar ist, und starten Sie DayNote dann neu.",
-  "failure.textStyleSave": "Der Textstil konnte nicht gespeichert werden. Der Editor behält seinen aktuellen Stil; versuchen Sie es erneut.",
+  "failure.textStyleSave": "Der Textstil konnte nicht gewechselt werden, weil die Einstellungen nicht gespeichert werden konnten. Der Editor behält seinen aktuellen Stil; versuchen Sie es erneut.",
   "files.andMore": {
     "one": "{names} und {count} weitere",
     "other": "{names} und {count} weitere"

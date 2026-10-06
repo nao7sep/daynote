@@ -76,7 +76,7 @@
   "editor.status": "Lifecycle status",
   "editor.titlePlaceholder": "Title…",
   "failure.attachmentPicker": "The attachment picker could not be opened. Your note is unchanged; try adding attachments again.",
-  "failure.binderAddSave": "The binder is open, but it could not be added to the binder list, so it will not be listed after you close it.",
+  "failure.binderAddSave": "The binder is open, but it could not be added to the binder list.",
   "failure.binderForgetSave": "The binder could not be removed from the list. It is still listed; try removing it again.",
   "failure.binderOrderSave": "The binder order could not be saved. The list is back in its previous order; try again.",
   "failure.binderRenameSave": "The binder’s new name could not be saved. It keeps its previous name; try again.",
@@ -97,7 +97,7 @@
   "failure.startupSettings": "DayNote couldn’t read its settings file at {path}, so it stopped before changing anything. The file was left in place. Check its permissions or move it aside, then restart DayNote.",
   "failure.startupSettingsNewer": "DayNote’s settings file at {path} was written by a newer version of DayNote, so this version stopped before changing anything. The file was left in place. Use the newer version of DayNote, or move the file aside, then restart DayNote.",
   "failure.startupStorage": "DayNote could not open its storage location. Check that the location exists and is writable, then restart DayNote.",
-  "failure.textStyleSave": "The text style could not be saved. The editor keeps its current style; try again.",
+  "failure.textStyleSave": "The text style could not be changed because the settings could not be saved. The editor keeps its current style; try again.",
   "files.andMore": {
     "one": "{names}, and {count} more",
     "other": "{names}, and {count} more"

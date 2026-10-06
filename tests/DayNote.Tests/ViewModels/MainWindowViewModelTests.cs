@@ -1168,7 +1168,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.CycleTextStyleCommand.Execute(null);
         Assert.Equal(style, vm.EditorFontFamily);
         Assert.Equal(string.Empty, vm.TextStyleStatusText);
-        Assert.Contains("text style could not be saved", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+        Assert.Contains("text style could not be changed", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
 
         var row = vm.Binders[0];
         var title = row.Title;
