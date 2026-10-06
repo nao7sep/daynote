@@ -18,13 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each status keeps the time the note reached it, and a status that implies an earlier one fills that time too: a published note always has a verification time, and a retired one a publication time. Moving back clears the times the new status does not hold, and un-retiring restores the original publication time.
 - Locking is a separate switch beside the status. A locked note's title, text and attachments cannot be edited; its status can still change and it can still be deleted. Publishing no longer locks a note, and editing no longer needs a move back to an earlier status.
 - The `.daynote` file stores `verified_at` and `retired_at` in place of `ready_at` and `expired_at`, adds `discarded_at` and `locked`, and no longer reads the `ready`, `expired` or `checked` statuses.
+- A binder with a missing, malformed or repeated id, an attachment that is not a plain file name, an unknown status, a time that is not a time, or status times its status contradicts no longer opens with those values replaced or dropped. The message names the binder, and the file is left as it is.
 
 ### Fixed
 
 - Quitting, closing a binder or opening another one while DayNote was checking the open binder for outside changes, or asking about one, could do nothing. It now waits for the check, saves, and goes ahead.
 - A note's modified time changes only when its title, text or attachments change. Changing its status, locking it, an edit undone before the save, and whitespace the save removes no longer move it.
 - A note's modified time is the time of its last edit, not the time the edit was saved.
-- A note or binder whose created or modified time is missing from the file takes another time the file records, rather than the time the file was opened.
+- A note or binder whose created or modified time is missing from the file takes another time the file records, rather than the time the file was opened. A note uses its own status times before its binder's.
+- A binder's modified time is the time of the last edit to its notes. Status and lock changes, and edits undone before the save, no longer move it.
+- A status time is never earlier than the note's creation, even after the computer's clock was set back.
+- A save, autosave or quit that comes before DayNote has noticed that a newer DayNote rewrote the open binder no longer writes over it.
+- Saving a binder or the settings keeps the file's permissions, extended attributes and Finder tags on macOS, and a save that would write the same bytes leaves the file untouched.
+- Changing the text style, renaming, reordering or removing a binder in the list, and adding a binder to it, now say so when the settings cannot be saved, instead of looking done and coming undone at the next launch.
+- Deleting a note or removing an attachment deletes the files only after the binder is saved without them, so a failed save no longer leaves the binder pointing at deleted files.
+- An attachment is copied under a temporary name first, so a copy that fails part-way no longer leaves a partial file in the binder's assets folder.
+- Locking a note while files are still being added to it no longer adds them.
 
 ## [0.1.0] - 2026-07-08
 
