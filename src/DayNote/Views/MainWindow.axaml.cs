@@ -356,12 +356,25 @@ public partial class MainWindow : Window
     private void OnNoteCreated(object? sender, EventArgs e) =>
         Dispatcher.UIThread.Post(() => TitleBox.Focus(), DispatcherPriority.Background);
 
-    // Every quit path closes the main window: menu Quit, Cmd+Q and Dock Quit through the lifetime, and
-    // the window's own close (unsaved-edits-conventions, Quitting).
+    // Every quit path closes the main window: menu Quit, Cmd+Q and Dock Quit through the lifetime, the
+    // window's own close, and the operating system ending the session (unsaved-edits-conventions,
+    // Quitting).
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
         if (_shutdownComplete || DataContext is not MainWindowViewModel vm)
         {
+            base.OnClosing(e);
+            return;
+        }
+
+        if (SessionEnd.Is(e.CloseReason))
+        {
+            // The system waits for this close to answer, so the quit's save runs here to its bounds and
+            // the window closes whatever it did. A quit the user started and that is still running ends
+            // with it.
+            _shutdownComplete = true;
+            PrepareQuit(vm);
+            RunUntilDone(vm.EndSessionAsync());
             base.OnClosing(e);
             return;
         }
@@ -377,7 +390,14 @@ public partial class MainWindow : Window
 
         // On a failed save the user chooses: retry, quit anyway, or keep the app open with the binder
         // and its unsaved edits, the autosave still retrying.
-        if (await vm.QuitAsync())
+        var exit = await vm.QuitAsync();
+        if (_shutdownComplete)
+        {
+            // The session ended while this quit was asking, and closed the window itself.
+            return;
+        }
+
+        if (exit)
         {
             _shutdownComplete = true;
             Close();
@@ -404,6 +424,27 @@ public partial class MainWindow : Window
             vm.CaptureWindowPlacement(
                 normal.X, normal.Y, normal.Width, normal.Height,
                 OperatingSystem.IsWindows() && WindowState == WindowState.Maximized);
+        }
+    }
+
+    // Keeps the dispatcher running, so the work's own continuations can run, until the work is done. The
+    // work carries its own bounds.
+    private static void RunUntilDone(Task work)
+    {
+        if (work.IsCompleted)
+        {
+            return;
+        }
+
+        try
+        {
+            var frame = new DispatcherFrame();
+            work.ContinueWith(_ => frame.Continue = false, TaskScheduler.Default);
+            Dispatcher.UIThread.PushFrame(frame);
+        }
+        catch (Exception ex)
+        {
+            Program.Log?.Error("Could not wait for the quit's save as the session ended", error: ex);
         }
     }
 

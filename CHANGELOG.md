@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An attachment is copied under a temporary name first, so a copy that fails part-way no longer leaves a partial file in the binder's assets folder.
 - Locking a note while files are still being added to it no longer adds them.
 - A quit no longer waits without end for a binder location that stops responding: after two seconds it asks whether to retry or quit anyway.
+- Logging out, restarting or shutting down the computer no longer waits on DayNote or asks anything. DayNote saves within a few seconds and quits; a save that fails then is recorded in the log.
 
 ## [0.1.0] - 2026-07-08
 

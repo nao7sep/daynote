@@ -780,6 +780,47 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task The_session_ending_with_a_failed_save_asks_nothing_and_logs_it()
+    {
+        var (vm, store, log) = await OpenWithUnsavedEditAsync("lost at logout");
+        store.SaveFailure = new IOException("No space left on device");
+
+        await vm.EndSessionAsync();
+
+        Assert.Empty(_dialogs.QuitQuestions);
+        Assert.Contains(("error", "Failed to save binder"), log.Entries);
+        Assert.Contains(("error", "Session ended with the binder's edits unsaved"), log.Entries);
+    }
+
+    [AvaloniaFact]
+    public async Task The_session_ending_with_a_stalled_save_ends_at_its_bound_and_asks_nothing()
+    {
+        var (vm, store, log) = await OpenWithUnsavedEditAsync("still writing at logout");
+        var stalled = store.HoldNextSave();
+
+        var ending = vm.EndSessionAsync();
+        await stalled.Entered.Task;
+        _clock.Advance(MainWindowViewModel.QuitBinderSaveBound);
+        await ending;
+
+        Assert.Empty(_dialogs.QuitQuestions);
+        Assert.Contains(("error", "Binder save did not finish within the quit's bound"), log.Entries);
+        Assert.Contains(("error", "Session ended with the binder's edits unsaved"), log.Entries);
+        stalled.Release();
+    }
+
+    [AvaloniaFact]
+    public async Task The_session_ending_with_the_edit_saved_logs_no_failure()
+    {
+        var (vm, _, log) = await OpenWithUnsavedEditAsync("saved at logout");
+
+        await vm.EndSessionAsync();
+
+        Assert.Equal("saved at logout", SavedBody());
+        Assert.DoesNotContain(log.Entries, entry => entry.Level == "error");
+    }
+
+    [AvaloniaFact]
     public async Task A_state_file_the_quit_cannot_write_is_logged_and_the_quit_goes_ahead()
     {
         var (vm, _, log) = await OpenWithUnsavedEditAsync("saved although the state is not");
@@ -834,6 +875,33 @@ public sealed class MainWindowViewModelTests : IDisposable
         await PumpUntilAsync(() => !window.IsVisible);
         Assert.Equal("kept by closing the question", SavedBody());
     }
+
+    [AvaloniaFact]
+    public async Task The_session_ending_closes_the_main_window_within_the_bound_without_asking()
+    {
+        var (vm, store, _) = await OpenWithUnsavedEditAsync("still writing as the session ends");
+        var stalled = store.HoldNextSave();
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        // The system waits on the close itself, so the bound has to run out while the close is waiting.
+        Dispatcher.UIThread.Post(async () =>
+        {
+            await stalled.Entered.Task;
+            _clock.Advance(MainWindowViewModel.QuitBinderSaveBound);
+        });
+        CloseAs(window, WindowCloseReason.OSShutdown);
+
+        Assert.False(window.IsVisible);
+        Assert.Empty(_dialogs.QuitQuestions);
+        stalled.Release();
+    }
+
+    // What the lifetime does when the system ends the session; Avalonia offers no public way to say why.
+    private static void CloseAs(Window window, WindowCloseReason reason) =>
+        typeof(Window).GetMethod("CloseCore", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(window, [reason, false, false]);
 
     [AvaloniaFact]
     public async Task Closing_a_binder_flushes_pending_edits_before_forgetting_it()

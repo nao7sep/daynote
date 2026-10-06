@@ -102,7 +102,11 @@ internal static class Program
         var forced = false;
         try
         {
-            return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            // On macOS a logout or shutdown ends the process as soon as the lifetime exits, before the
+            // close below runs, so what the quit logged is written here first, within the logger's bound.
+            return BuildAvaloniaApp().StartWithClassicDesktopLifetime(
+                args,
+                lifetime => lifetime.Exit += (_, _) => logger.Flush());
         }
         catch (Exception ex)
         {

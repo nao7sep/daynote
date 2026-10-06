@@ -122,6 +122,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // state is written once, by the quit, within its bound.
     private bool _shuttingDown;
 
+    // Set once the operating system is ending the session: from then on nothing asks the user anything.
+    private bool _sessionEnding;
+
     public MainWindowViewModel(
         AppPaths paths,
         IDialogService dialogs,
@@ -531,8 +534,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         while (!await ShutdownAsync())
         {
             // A binder a newer DayNote rewrote was closed instead of saved; its notice is showing and
-            // nothing is left to save, so the quit stops once for it to be seen.
-            if (_current is not { } binder)
+            // nothing is left to save, so the quit stops once for it to be seen. Once the session is
+            // ending, its own quit has taken over.
+            if (_current is not { } binder || _sessionEnding)
             {
                 return false;
             }
@@ -551,6 +555,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The operating system is logging out, restarting or shutting down: the same save as any quit,
+    /// within its bounds, and never a question. A failure is logged and the app exits.
+    /// </summary>
+    public async Task EndSessionAsync()
+    {
+        _sessionEnding = true;
+        if (!await ShutdownAsync())
+        {
+            _log.Error("Session ended with the binder's edits unsaved", new { path = _current?.Path });
+            BeginShutdown();
+        }
     }
 
     // The binder's pending edits, within the quit's bound. A save still running at the bound carries on
