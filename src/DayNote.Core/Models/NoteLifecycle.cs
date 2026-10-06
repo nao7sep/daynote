@@ -3,7 +3,9 @@ namespace DayNote.Core.Models;
 /// <summary>
 /// Moves a note to a new status and sets its status times by the transition table of the
 /// content-lifecycle-conventions. Retired implies published and published implies verified, so an
-/// implied time is set with the move when the source status cannot hold it, and kept when it can.
+/// implied time is set with the move when the source status cannot hold it, and kept when it can. A new
+/// time never precedes the note's Created, which keeps created first in the chronology even after the
+/// clock was corrected back.
 /// </summary>
 public static class NoteLifecycle
 {
@@ -14,6 +16,8 @@ public static class NoteLifecycle
         {
             return;
         }
+
+        now = NotBefore(now, note.Created);
 
         // Which times the source status holds, so each is kept rather than re-set.
         var holdsVerified = source is NoteStatus.Verified or NoteStatus.Published or NoteStatus.Retired;

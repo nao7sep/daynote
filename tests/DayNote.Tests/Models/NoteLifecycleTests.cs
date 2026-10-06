@@ -119,4 +119,36 @@ public sealed class NoteLifecycleTests
         Assert.Equal(T1, note.PublishedAt);
         Assert.Equal(T1, note.RetiredAt);
     }
+
+    [Theory]
+    [InlineData(NoteStatus.Discarded)]
+    [InlineData(NoteStatus.Verified)]
+    [InlineData(NoteStatus.Published)]
+    [InlineData(NoteStatus.Retired)]
+    public void A_new_time_never_precedes_the_notes_creation(NoteStatus target)
+    {
+        // Created while the clock ran ahead, then moved after the clock was corrected back.
+        var note = new Note { Id = "n1", Created = T3 };
+
+        NoteLifecycle.ApplyTransition(note, target, T1);
+
+        foreach (var time in new[] { note.DiscardedAt, note.VerifiedAt, note.PublishedAt, note.RetiredAt })
+        {
+            Assert.True(time is null || time == T3);
+        }
+
+        Assert.Equal(target, note.Status);
+        Assert.NotNull(target == NoteStatus.Discarded ? note.DiscardedAt : note.VerifiedAt);
+    }
+
+    [Fact]
+    public void A_time_after_the_notes_creation_is_the_moment_of_the_change()
+    {
+        var note = new Note { Id = "n1", Created = T1 };
+
+        NoteLifecycle.ApplyTransition(note, NoteStatus.Published, T2);
+
+        Assert.Equal(T2, note.VerifiedAt);
+        Assert.Equal(T2, note.PublishedAt);
+    }
 }
