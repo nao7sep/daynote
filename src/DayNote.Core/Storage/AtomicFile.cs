@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 using DayNote.Core.Backup;
 using DayNote.Core.Identity;
 
@@ -10,7 +12,9 @@ namespace DayNote.Core.Storage;
 /// over the target; then the containing directory is flushed so the rename itself survives a crash.
 /// Files are UTF-8 without a byte-order mark; callers supply LF-terminated content. A write whose bytes
 /// equal the file's is skipped, so the file's times, its backups and sync see only real changes
-/// (content-lifecycle-conventions).
+/// (content-lifecycle-conventions). A replace keeps what it can of the file it replaces: on macOS, where
+/// the rename installs the temp file's own metadata, the original's permission mode, ACL and extended
+/// attributes (Finder tags among them) are carried onto the temp first.
 /// </summary>
 /// <remarks>
 /// The app's one atomic text write: config.json and state.json through <see cref="JsonStore{T}"/>, and
@@ -48,6 +52,11 @@ public static partial class AtomicFile
                 stream.Flush(flushToDisk: true);
             }
 
+            if (OperatingSystem.IsMacOS() && File.Exists(fullPath))
+            {
+                CopyReplaceMetadata(fullPath, tempPath);
+            }
+
             File.Move(tempPath, fullPath, overwrite: true);
 
             // Flushing the temp file's data (above) is not enough: a crash right after the rename can
@@ -72,6 +81,28 @@ public static partial class AtomicFile
         {
             BackupStore.Record(fullPath, bytes);
         }
+    }
+
+    /// <summary>
+    /// Carries <paramref name="original"/>'s ACL, extended attributes and permission mode onto
+    /// <paramref name="temp"/>, never its times or ownership, which <c>COPYFILE_STAT</c> would copy too. A
+    /// volume that cannot hold ACLs or extended attributes answers <c>ENOTSUP</c> and keeps what it can.
+    /// </summary>
+    [SupportedOSPlatform("macos")]
+    private static void CopyReplaceMetadata(string original, string temp)
+    {
+        using (var from = File.OpenHandle(original))
+        using (var to = File.OpenHandle(temp, FileMode.Open, FileAccess.ReadWrite))
+        {
+            if (fcopyfile(from, to, IntPtr.Zero, COPYFILE_ACL | COPYFILE_XATTR) < 0
+                && Marshal.GetLastPInvokeError() is var errno && errno != ENOTSUP)
+            {
+                throw new IOException($"Could not copy the metadata of '{original}'; errno {errno}.");
+            }
+        }
+
+        // After the extended attributes, which a read-only mode would refuse.
+        File.SetUnixFileMode(temp, File.GetUnixFileMode(original));
     }
 
     private static bool HoldsExactly(string path, byte[] bytes)
@@ -138,4 +169,12 @@ public static partial class AtomicFile
 
     [LibraryImport("libc", SetLastError = true)]
     private static partial int close(int fd);
+
+    // From <copyfile.h> and macOS <sys/errno.h>.
+    private const uint COPYFILE_ACL = 1 << 0;
+    private const uint COPYFILE_XATTR = 1 << 2;
+    private const int ENOTSUP = 45;
+
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int fcopyfile(SafeFileHandle from, SafeFileHandle to, IntPtr state, uint flags);
 }
