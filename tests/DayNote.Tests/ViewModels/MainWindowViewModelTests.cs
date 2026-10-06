@@ -43,6 +43,9 @@ public sealed class MainWindowViewModelTests : IDisposable
     private readonly string? _previousHome;
     private readonly FakeDialogService _dialogs = new();
 
+    // Every time the view model records comes from here, so a test moves time explicitly.
+    private readonly ManualClock _clock = new(new DateTimeOffset(2026, 6, 1, 9, 0, 0, TimeSpan.Zero));
+
     public MainWindowViewModelTests()
     {
         _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
@@ -54,7 +57,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     private MainWindowViewModel NewViewModel(Action<string>? deleteFile = null, Action<string>? deleteDirectory = null)
     {
-        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger(), deleteFile, deleteDirectory);
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger(), deleteFile, deleteDirectory, _clock);
         Assert.True(vm.IsReady);
         return vm;
     }
@@ -135,7 +138,7 @@ public sealed class MainWindowViewModelTests : IDisposable
             created.Select(time => DayNote.Core.Time.DayNoteTime.ToDisplay(time, kiritimati, Localizer.Current.Culture)),
             vm.Notes.Select(row => row.Subtitle));
         Assert.EndsWith(
-            DayNote.Core.Time.DayNoteTime.ToSmartDisplay(vm.SelectedNote!.Note.Created, kiritimati, Localizer.Current.Culture, DateTimeOffset.UtcNow),
+            DayNote.Core.Time.DayNoteTime.ToSmartDisplay(vm.SelectedNote!.Note.Created, kiritimati, Localizer.Current.Culture, _clock.Now),
             vm.Editor.CreatedText);
         await vm.ShutdownAsync();
     }
@@ -1369,19 +1372,17 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var vm = await OpenNewBinderAsync();
         vm.NewNoteCommand.Execute(null);
-        var before = DateTimeOffset.UtcNow;
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        var edited = _clock.Now;
         vm.Editor.Body = "words";
-        var after = DateTimeOffset.UtcNow;
-        await Task.Delay(30);
+        _clock.Advance(TimeSpan.FromMinutes(1));
 
         // A status change after the edit, still unsaved, leaves the edit's time in place.
         vm.Editor.Status = NoteStatus.Verified;
-        var saving = DateTimeOffset.UtcNow;
+        _clock.Advance(TimeSpan.FromMinutes(1));
         await vm.SaveNowCommand.ExecuteAsync(null);
 
-        var modified = SavedNote().Modified;
-        Assert.InRange(modified, before.AddMilliseconds(-1), after.AddMilliseconds(1));
-        Assert.True(modified < saving);
+        Assert.Equal(edited, SavedNote().Modified);
         await vm.ShutdownAsync();
     }
 
@@ -1396,7 +1397,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         foreach (var status in new[] { NoteStatus.Verified, NoteStatus.Published, NoteStatus.Retired, NoteStatus.Published })
         {
-            await Task.Delay(5);
+            _clock.Advance(TimeSpan.FromMinutes(1));
             vm.Editor.Status = status;
             await vm.SaveNowCommand.ExecuteAsync(null);
             Assert.Equal(status, SavedNote().Status);
@@ -1420,7 +1421,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Body = "body";
         await vm.SaveNowCommand.ExecuteAsync(null);
         var modified = SavedNote().Modified;
-        await Task.Delay(5);
+        _clock.Advance(TimeSpan.FromMinutes(1));
 
         // Typed, then undone before the save.
         vm.Editor.Title = "Title changed";
@@ -1445,12 +1446,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Status = NoteStatus.Published;
         await vm.SaveNowCommand.ExecuteAsync(null);
         var before = SavedNote();
-        await Task.Delay(5);
+        _clock.Advance(TimeSpan.FromMinutes(1));
 
         vm.Editor.Body = "words.";
         await vm.SaveNowCommand.ExecuteAsync(null);
 
         var after = SavedNote();
+        Assert.Equal(_clock.Now, after.Modified);
         Assert.True(after.Modified > before.Modified);
         Assert.True(after.Modified > after.PublishedAt);
         Assert.Equal(before.PublishedAt, after.PublishedAt);
@@ -1470,12 +1472,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.AddAttachmentCommand.ExecuteAsync(null);
         await vm.SaveNowCommand.ExecuteAsync(null);
         var modified = SavedNote().Modified;
-        await Task.Delay(5);
+        _clock.Advance(TimeSpan.FromMinutes(1));
 
         Assert.True(vm.MoveAttachment(vm.Attachments[1], 0));
         vm.CommitAttachmentOrder();
         await vm.SaveNowCommand.ExecuteAsync(null);
 
+        Assert.Equal(_clock.Now, SavedNote().Modified);
         Assert.True(SavedNote().Modified > modified);
         await vm.ShutdownAsync();
     }
@@ -1492,7 +1495,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Status = NoteStatus.Verified;
         await firstSave;
         var modified = SavedNote().Modified;
-        await Task.Delay(5);
+        _clock.Advance(TimeSpan.FromMinutes(1));
 
         await vm.SaveNowCommand.ExecuteAsync(null);
 

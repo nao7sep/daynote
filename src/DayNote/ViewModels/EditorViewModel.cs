@@ -14,13 +14,15 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class EditorViewModel : ViewModelBase
 {
+    private readonly TimeProvider _clock;
     private TimeZoneInfo _displayZone;
     private Note? _note;
     private bool _suppress;
 
-    public EditorViewModel(TimeZoneInfo displayZone)
+    public EditorViewModel(TimeZoneInfo displayZone, TimeProvider? clock = null)
     {
         _displayZone = displayZone;
+        _clock = clock ?? TimeProvider.System;
         UpdateCounts();
     }
 
@@ -141,7 +143,7 @@ public sealed partial class EditorViewModel : ViewModelBase
             return;
         }
 
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock.GetUtcNow();
         string At(string key, DateTimeOffset? time) => time is { } value
             ? Localizer.T(key, ("time", DayNoteTime.ToSmartDisplay(value, _displayZone, Localizer.Current.Culture, now)))
             : string.Empty;
@@ -182,7 +184,7 @@ public sealed partial class EditorViewModel : ViewModelBase
             return;
         }
 
-        NoteLifecycle.ApplyTransition(_note, value, DateTimeOffset.UtcNow);
+        NoteLifecycle.ApplyTransition(_note, value, _clock.GetUtcNow());
         RefreshMetadata();
         Changed?.Invoke(this, EventArgs.Empty);
     }

@@ -47,6 +47,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private readonly Action<string> _deleteFile;
     private readonly Action<string> _deleteDirectory;
 
+    // The clock every recorded time is read from: created, modified and status times.
+    private readonly TimeProvider _clock;
+
     private readonly DispatcherTimer _autosaveTimer;
     private readonly DispatcherTimer _textStyleStatusTimer;
     private readonly DispatcherTimer _externalTimer;
@@ -110,13 +113,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         IDialogService dialogs,
         IAppLogger log,
         Action<string>? deleteFile = null,
-        Action<string>? deleteDirectory = null)
+        Action<string>? deleteDirectory = null,
+        TimeProvider? clock = null)
     {
         _paths = paths;
         _dialogs = dialogs;
         _log = log;
         _deleteFile = deleteFile ?? File.Delete;
         _deleteDirectory = deleteDirectory ?? (path => Directory.Delete(path, recursive: true));
+        _clock = clock ?? TimeProvider.System;
         _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
 
@@ -127,7 +132,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         LoadConfigAndState();
         _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
 
-        Editor = new EditorViewModel(_displayZone);
+        Editor = new EditorViewModel(_displayZone, _clock);
         Editor.Changed += OnEditorChanged;
         Editor.PropertyChanged += (_, e) =>
         {
@@ -609,7 +614,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var now = DateTimeOffset.UtcNow;
+        var now = _clock.GetUtcNow();
         var note = new Note
         {
             Id = IdGenerator.NewUnique(_current.Binder.Notes.Select(n => n.Id)),
@@ -1252,7 +1257,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 if (isNew)
                 {
-                    var now = DateTimeOffset.UtcNow;
+                    var now = _clock.GetUtcNow();
                     var binder = new Binder
                     {
                         Id = IdGenerator.New(),
@@ -1405,7 +1410,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
             var stopwatch = Stopwatch.StartNew();
             SetSaveState(SaveState.Saving);
-            var now = DateTimeOffset.UtcNow;
+            var now = _clock.GetUtcNow();
             var binder = _current.Binder;
             var path = _current.Path;
             _log.Info("Saving binder", new { path, noteCount = binder.Notes.Count });
@@ -2007,7 +2012,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             _dirtyNoteIds.Add(noteId);
             if (_current.Binder.Notes.FirstOrDefault(n => n.Id == noteId) is { } note)
             {
-                ApplyContentModified(note, DateTimeOffset.UtcNow);
+                ApplyContentModified(note, _clock.GetUtcNow());
             }
         }
 
