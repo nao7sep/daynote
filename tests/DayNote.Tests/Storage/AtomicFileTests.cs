@@ -5,6 +5,7 @@ using System.Text;
 using DayNote.Core.Backup;
 using DayNote.Core.Identity;
 using DayNote.Core.Storage;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace DayNote.Tests.Storage;
@@ -83,6 +84,25 @@ public sealed class AtomicFileTests : IDisposable
     }
 
     [Fact]
+    public void Writing_what_the_file_already_holds_leaves_it_and_its_history_alone()
+    {
+        AtomicFile.WriteAllText(_path, "same");
+        var earlier = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(_path, earlier);
+
+        AtomicFile.WriteAllText(_path, "same");
+
+        Assert.Equal(earlier, File.GetLastWriteTimeUtc(_path));
+        Assert.Equal(1, BackupRows());
+
+        AtomicFile.WriteAllText(_path, "changed");
+
+        Assert.Equal("changed", File.ReadAllText(_path, Encoding.UTF8));
+        Assert.NotEqual(earlier, File.GetLastWriteTimeUtc(_path));
+        Assert.Equal(2, BackupRows());
+    }
+
+    [Fact]
     public void Creates_missing_parent_directories()
     {
         var nested = Path.Combine(_directory, "a", "b", "data.txt");
@@ -90,6 +110,17 @@ public sealed class AtomicFileTests : IDisposable
         AtomicFile.WriteAllText(nested, "deep");
 
         Assert.Equal("deep", File.ReadAllText(nested, Encoding.UTF8));
+    }
+
+    private int BackupRows()
+    {
+        BackupStore.Close();
+        using var connection = new SqliteConnection($"Data Source={new AppPaths().BackupStoreFile};Mode=ReadOnly;Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM backups WHERE path = $path";
+        command.Parameters.AddWithValue("$path", Path.GetFullPath(_path));
+        return Convert.ToInt32(command.ExecuteScalar());
     }
 
     public void Dispose()

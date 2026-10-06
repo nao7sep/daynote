@@ -8,7 +8,9 @@ namespace DayNote.Core.Storage;
 /// <summary>
 /// Atomic, durable text writes: content is written to a temporary file, flushed to disk, and renamed
 /// over the target; then the containing directory is flushed so the rename itself survives a crash.
-/// Files are UTF-8 without a byte-order mark; callers supply LF-terminated content.
+/// Files are UTF-8 without a byte-order mark; callers supply LF-terminated content. A write whose bytes
+/// equal the file's is skipped, so the file's times, its backups and sync see only real changes
+/// (content-lifecycle-conventions).
 /// </summary>
 /// <remarks>
 /// The app's one atomic text write: config.json and state.json through <see cref="JsonStore{T}"/>, and
@@ -25,13 +27,18 @@ public static partial class AtomicFile
         var fullPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath)
             ?? throw new ArgumentException($"Path has no directory: {path}", nameof(path));
+        var bytes = Utf8NoBom.GetBytes(content);
+        if (HoldsExactly(fullPath, bytes))
+        {
+            return;
+        }
+
         Directory.CreateDirectory(directory);
 
         // <stem>-<nanoid>.tmp, beside the target: one final extension stating the file's current role
         // (a temp), never a suffix dot-appended after the full target filename.
         var stem = Path.GetFileNameWithoutExtension(fullPath);
         var tempPath = Path.Combine(directory, stem + "-" + IdGenerator.New() + ".tmp");
-        var bytes = Utf8NoBom.GetBytes(content);
 
         try
         {
@@ -65,6 +72,12 @@ public static partial class AtomicFile
         {
             BackupStore.Record(fullPath, bytes);
         }
+    }
+
+    private static bool HoldsExactly(string path, byte[] bytes)
+    {
+        var file = new FileInfo(path);
+        return file.Exists && file.Length == bytes.Length && File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes);
     }
 
     /// <summary>
