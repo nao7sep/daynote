@@ -72,7 +72,7 @@
   "failure.attachmentPicker": "첨부 파일 선택 창을 열 수 없습니다. 노트는 변경되지 않았습니다. 첨부 파일을 다시 추가하십시오.",
   "failure.newBinderPicker": "새 바인더 저장 창을 열 수 없습니다. 바인더를 다시 만드십시오.",
   "failure.openBinder": "이 바인더를 열 수 없습니다. 바인더를 사용할 수 있는지 확인한 후 다시 시도하십시오.",
-  "failure.openBinderFormat": "이 바인더의 내용이 올바른 DayNote 데이터가 아니어서 열 수 없습니다. 바인더를 복구하거나 정상적인 사본을 복원한 후 다시 시도하십시오.",
+  "failure.openBinderFormat": "“{name}”의 내용이 올바른 DayNote 데이터가 아니어서 열 수 없습니다. 파일은 변경하지 않았습니다. 파일을 복구하거나 정상적인 사본을 복원한 후 다시 시도하십시오.",
   "failure.openBinderGone": "이 바인더는 선택한 위치에 더 이상 없습니다.",
   "failure.openBinderNewer": "“{name}”은(는) 더 새로운 버전의 DayNote로 저장되어 이 버전에서는 열 수 없습니다. 파일은 변경하지 않았습니다. 더 새로운 버전의 DayNote에서 여십시오.",
   "failure.openBinderPermission": "이 바인더를 열 수 없습니다. 읽기 권한이 있는지 확인한 후 다시 시도하십시오.",

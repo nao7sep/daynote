@@ -1,4 +1,3 @@
-using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Storage;
 using DayNote.Core.Text;
@@ -13,8 +12,9 @@ namespace DayNote.Core.Toml;
 /// read; only the canonical writer enforces order. Reading is case-insensitive and tolerant of
 /// missing optional keys so hand-edited files still load, except <c>format_version</c>: a binder without
 /// it is malformed (store-recovery-conventions). A value that is present but malformed, such as a time
-/// that does not parse, an unknown status, or status times the status contradicts, makes the binder
-/// malformed too: it is never coerced, because the coerced reading would be written back. Bodies are run through <see cref="BodyCleanup"/>
+/// that does not parse, an unknown status, status times the status contradicts, a missing, malformed or
+/// duplicate id, or an attachment reference that is not a bare file name, makes the binder malformed
+/// too: it is never coerced, because the coerced reading would be written back. Bodies are run through <see cref="BodyCleanup"/>
 /// so the in-memory body equals the canonical stored form (this also removes the trailing newline
 /// that TOML multiline strings retain). The format version is read before anything else, so a binder
 /// written by a newer DayNote is reported as newer, never as malformed, whatever its shape.
@@ -51,17 +51,22 @@ public static class BinderTomlReader
 
         var binder = new Binder
         {
-            Id = string.IsNullOrEmpty(document.Id) ? IdGenerator.New() : document.Id,
+            Id = ValidId(document.Id, "binder"),
             Created = binderCreated,
             Modified = binderModified ?? binderCreated,
         };
 
-        // Track ids already assigned in this binder so a regenerated (unsafe) id can be made unique.
-        var noteIds = new List<string>(notes.Count);
+        // A note's id names its attachment folder, so two ids differing only in case would share one on
+        // the default macOS and Windows filesystems.
+        var noteIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < notes.Count; index++)
         {
-            var note = MapNote(notes[index], noteTimes[index], binderCreated, noteIds);
-            noteIds.Add(note.Id);
+            var note = MapNote(notes[index], noteTimes[index], binderCreated);
+            if (!noteIds.Add(note.Id))
+            {
+                throw new BinderFormatException("Two notes in the binder share an id.");
+            }
+
             binder.Notes.Add(note);
         }
 
@@ -92,7 +97,7 @@ public static class BinderTomlReader
     }
 
     private static Note MapNote(
-        NoteDocument document, NoteTimes times, DateTimeOffset binderCreated, IReadOnlyCollection<string> existingIds)
+        NoteDocument document, NoteTimes times, DateTimeOffset binderCreated)
     {
         // Created comes first in a note's chronology, so the earliest time it recorded stands in for it.
         var created = times.Created ?? Earliest(times.Recorded) ?? binderCreated;
@@ -100,7 +105,7 @@ public static class BinderTomlReader
         var lifecycle = Lifecycle(status, times, created);
         var note = new Note
         {
-            Id = SafeNoteId(document.Id, existingIds),
+            Id = ValidId(document.Id, "note"),
             Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
             Created = created,
             Modified = times.Modified ?? created,
@@ -117,10 +122,9 @@ public static class BinderTomlReader
         {
             foreach (var name in attachments)
             {
-                if (IsBareFileName(name))
-                {
-                    note.Attachments.Add(name);
-                }
+                note.Attachments.Add(IsBareFileName(name)
+                    ? name
+                    : throw new BinderFormatException("A note's attachment is not a bare file name."));
             }
         }
 
@@ -133,8 +137,7 @@ public static class BinderTomlReader
     /// filenames resolved under the note's assets directory (see <see cref="Models.Note"/>); a name
     /// carrying a path separator or a traversal segment — which the app never writes, but a
     /// hand-edited or hostile binder could — would resolve <em>outside</em> that directory, where
-    /// removing it would delete an unrelated file. Such names are dropped on read, the same way empty
-    /// names are, so the malformed reference never reaches the storage layer.
+    /// removing it would delete an unrelated file.
     /// </summary>
     private static bool IsBareFileName(string? name) =>
         !string.IsNullOrEmpty(name)
@@ -143,20 +146,15 @@ public static class BinderTomlReader
         && name != "..";
 
     /// <summary>
-    /// Returns a note id safe to use as a directory segment. A note's id becomes its attachment
-    /// directory name (<c>&lt;basename&gt;-assets/&lt;note-id&gt;/</c>), so an id carrying a path
-    /// separator or a <c>.</c>/<c>..</c> traversal segment — which the app never writes, but a
-    /// hand-edited or hostile binder could — would resolve attachment writes/deletes <em>outside</em>
-    /// that directory. The app only ever assigns unique generated bare ids, so any non-bare, empty,
-    /// duplicate, or case-only-colliding id is malformed and is replaced with a fresh id unique within
-    /// the binder rather than reaching the storage layer. Case-insensitive uniqueness matches the
-    /// default macOS and Windows filesystems. This mirrors the attachment-name guard in
-    /// <see cref="IsBareFileName"/>.
+    /// The id as recorded, when it is one: non-empty and drawn from the nanoid alphabet the app assigns
+    /// ids from, so it holds no separator and is never a <c>.</c> or <c>..</c> segment
+    /// (storage-path-conventions). A note's id names its attachment folder, so an id is never replaced:
+    /// a new one would part the note from its files.
     /// </summary>
-    private static string SafeNoteId(string? id, IReadOnlyCollection<string> existingIds) =>
-        IsBareFileName(id) && !existingIds.Contains(id!, StringComparer.OrdinalIgnoreCase)
-            ? id!
-            : IdGenerator.NewUnique(existingIds);
+    private static string ValidId(string? id, string owner) =>
+        !string.IsNullOrEmpty(id) && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-')
+            ? id
+            : throw new BinderFormatException($"A {owner} id is missing or is not a DayNote id.");
 
     private static NoteStatus ParseStatus(string? token) =>
         token is null ? NoteStatus.Draft

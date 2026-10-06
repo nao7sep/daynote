@@ -82,7 +82,7 @@
   "failure.attachmentPicker": "Le sélecteur de pièces jointes n’a pas pu s’ouvrir. Votre note est inchangée\u00a0; réessayez d’ajouter des pièces jointes.",
   "failure.newBinderPicker": "La fenêtre de création de classeur n’a pas pu s’ouvrir. Réessayez de créer le classeur.",
   "failure.openBinder": "Ce classeur n’a pas pu être ouvert. Vérifiez qu’il est disponible, puis réessayez.",
-  "failure.openBinderFormat": "Ce classeur n’a pas pu être ouvert, car son contenu n’est pas composé de données DayNote valides. Réparez le classeur ou restaurez une copie saine, puis réessayez.",
+  "failure.openBinderFormat": "«\u00a0{name}\u00a0» n’a pas pu être ouvert, car son contenu n’est pas composé de données DayNote valides. Le fichier n’a pas été modifié\u00a0; réparez-le ou restaurez une copie saine, puis réessayez.",
   "failure.openBinderGone": "Ce classeur n’est plus disponible à l’emplacement choisi.",
   "failure.openBinderNewer": "«\u00a0{name}\u00a0» a été enregistré par une version plus récente de DayNote\u00a0; cette version ne peut donc pas l’ouvrir. Le fichier n’a pas été modifié\u00a0; ouvrez-le avec la version plus récente de DayNote.",
   "failure.openBinderPermission": "Ce classeur n’a pas pu être ouvert. Vérifiez que vous avez l’autorisation de le lire, puis réessayez.",

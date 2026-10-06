@@ -82,7 +82,7 @@
   "failure.attachmentPicker": "Impossibile aprire la selezione degli allegati. La nota è invariata; riprova ad aggiungere allegati.",
   "failure.newBinderPicker": "Impossibile aprire la finestra per creare un raccoglitore. Riprova a crearlo.",
   "failure.openBinder": "Impossibile aprire questo raccoglitore. Verifica che sia disponibile, quindi riprova.",
-  "failure.openBinderFormat": "Impossibile aprire questo raccoglitore perché il suo contenuto non è costituito da dati DayNote validi. Ripara il raccoglitore o ripristina una copia integra, quindi riprova.",
+  "failure.openBinderFormat": "Impossibile aprire «{name}» perché il suo contenuto non è costituito da dati DayNote validi. Il file non è stato modificato; riparalo o ripristina una copia integra, quindi riprova.",
   "failure.openBinderGone": "Questo raccoglitore non è più disponibile nella posizione selezionata.",
   "failure.openBinderNewer": "«{name}» è stato salvato con una versione più recente di DayNote, quindi questa versione non può aprirlo. Il file non è stato modificato; aprilo con la versione più recente di DayNote.",
   "failure.openBinderPermission": "Impossibile aprire questo raccoglitore. Verifica di avere il permesso di leggerlo, quindi riprova.",

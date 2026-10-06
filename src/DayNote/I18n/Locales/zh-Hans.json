@@ -72,7 +72,7 @@
   "failure.attachmentPicker": "无法打开附件选择器。你的笔记未作更改；请重新添加附件。",
   "failure.newBinderPicker": "无法打开新建笔记本的窗口。请重新创建笔记本。",
   "failure.openBinder": "无法打开此笔记本。请确认它可用，然后重试。",
-  "failure.openBinderFormat": "此笔记本的内容不是有效的 DayNote 数据，因此无法打开。请修复该笔记本或恢复一份完好的副本，然后重试。",
+  "failure.openBinderFormat": "“{name}”的内容不是有效的 DayNote 数据，因此无法打开。该文件未被更改；请修复它或恢复一份完好的副本，然后重试。",
   "failure.openBinderGone": "此笔记本已不在所选位置。",
   "failure.openBinderNewer": "“{name}”是由较新版本的 DayNote 保存的，因此此版本无法打开它。该文件未被更改；请使用较新版本的 DayNote 打开它。",
   "failure.openBinderPermission": "无法打开此笔记本。请确认你有读取权限，然后重试。",

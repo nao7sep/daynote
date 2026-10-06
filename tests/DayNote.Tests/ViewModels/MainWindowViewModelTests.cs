@@ -448,6 +448,27 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(before, File.ReadAllBytes(BinderPath));
     }
 
+    [AvaloniaFact]
+    public async Task A_binder_whose_notes_share_an_id_is_not_opened_is_named_and_is_left_byte_identical()
+    {
+        // A hand edit that copied a note: assigning either one a fresh id would part it from its files.
+        var vm = NewViewModel();
+        File.WriteAllText(BinderPath,
+            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'one'\n\n[[note]]\nid = \"n1\"\nbody = 'two'\n");
+        var before = File.ReadAllBytes(BinderPath);
+
+        _dialogs.BinderToOpen = BinderPath;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+
+        Assert.False(vm.HasBinder);
+        var (_, message) = Assert.Single(_dialogs.Errors);
+        Assert.Equal("failure.openBinderFormat", message.Key);
+        Assert.Contains("“test”", English.Of(message), StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+
+        Assert.Equal(before, File.ReadAllBytes(BinderPath));
+    }
+
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]

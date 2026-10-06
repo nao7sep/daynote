@@ -77,7 +77,7 @@
   "failure.attachmentPicker": "The attachment picker could not be opened. Your note is unchanged; try adding attachments again.",
   "failure.newBinderPicker": "The new-binder picker could not be opened. Try creating the binder again.",
   "failure.openBinder": "This binder could not be opened. Check that it is available, then try again.",
-  "failure.openBinderFormat": "This binder could not be opened because its contents are not valid DayNote data. Repair the binder or restore a known-good copy, then try again.",
+  "failure.openBinderFormat": "“{name}” could not be opened because its contents are not valid DayNote data. The file was left untouched; repair it or restore a known-good copy, then try again.",
   "failure.openBinderGone": "This binder is no longer available at the selected location.",
   "failure.openBinderNewer": "“{name}” was written by a newer version of DayNote, so this version can’t open it. The file was left untouched; open it with the newer version of DayNote.",
   "failure.openBinderPermission": "This binder could not be opened. Check that you have permission to read it, then try again.",

@@ -267,76 +267,64 @@ public sealed class BinderTomlTests
         Assert.Equal("Caps", binder.Notes[0].Title);
     }
 
-    [Fact]
-    public void Reader_drops_empty_attachment_names()
+    [Theory]
+    [InlineData("")]
+    [InlineData("id = \"\"\n")]
+    [InlineData("id = \"a/b\"\n")]
+    [InlineData("id = \"..\"\n")]
+    public void A_missing_or_malformed_binder_id_makes_the_binder_malformed(string idLine)
     {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nattachments = [\"a.png\", \"\", \"b.png\"]\nbody = ''\n";
+        var text = "format_version = 1\n" + idLine + "created = \"2026-01-01T00:00:00.000Z\"\n";
 
-        var binder = BinderTomlReader.Read(text);
-
-        Assert.Equal(new[] { "a.png", "b.png" }, binder.Notes[0].Attachments);
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(text));
     }
 
-    [Fact]
-    public void Reader_drops_attachment_names_that_are_not_bare_filenames()
+    [Theory]
+    [InlineData("")]
+    [InlineData("id = \"\"\n")]
+    [InlineData("id = \".\"\n")]
+    [InlineData("id = \"..\"\n")]
+    [InlineData("id = \"../escape\"\n")]
+    [InlineData("id = \"sub/dir\"\n")]
+    [InlineData("id = \"/x\"\n")]
+    [InlineData("id = \"back\\\\slash\"\n")]
+    public void A_missing_or_malformed_note_id_makes_the_binder_malformed(string idLine)
     {
-        // A hostile or hand-edited binder must not be able to point an attachment outside the
-        // note's assets directory; only the bare filename "a.png" survives. (POSIX separators; on
-        // any platform a forward slash, "." and ".." are rejected.)
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
-            "attachments = [\"a.png\", \"../escape.txt\", \"sub/dir.png\", \"..\", \".\", \"/etc/passwd\"]\n" +
-            "body = ''\n";
+        // A note's id names its attachment folder: a fresh id would part the note from its files, and a
+        // traversal id would reach outside the binder's assets folder.
+        var text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"good1\"\nbody = ''\n\n[[note]]\n" + idLine + "body = ''\n";
 
-        var binder = BinderTomlReader.Read(text);
-
-        Assert.Equal(new[] { "a.png" }, binder.Notes[0].Attachments);
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(text));
     }
 
-    [Fact]
-    public void Reader_regenerates_note_ids_that_are_not_bare_names()
+    [Theory]
+    [InlineData("same-id")]
+    [InlineData("SAME-ID")]
+    public void Note_ids_that_collide_ignoring_case_make_the_binder_malformed(string second)
     {
-        // A note's id becomes its attachment directory segment (<basename>-assets/<id>/), so a
-        // traversal id from a hostile or hand-edited binder must never reach the storage layer. A valid
-        // bare id is preserved; unsafe ids ("..", "a/b", "/x", empty) are replaced with fresh bare ids.
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n" +
-            "[[note]]\nid = \"good1\"\nbody = ''\n\n" +
-            "[[note]]\nid = \"..\"\nbody = ''\n\n" +
-            "[[note]]\nid = \"../escape\"\nbody = ''\n\n" +
-            "[[note]]\nid = \"sub/dir\"\nbody = ''\n";
+        // Ids that differ only in case name one folder on the default macOS and Windows filesystems.
+        var text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"same-id\"\nbody = ''\n\n" +
+            $"[[note]]\nid = \"{second}\"\nbody = ''\n";
 
-        var ids = BinderTomlReader.Read(text).Notes.Select(n => n.Id).ToList();
-
-        Assert.Equal("good1", ids[0]);
-        foreach (var id in ids)
-        {
-            Assert.False(string.IsNullOrEmpty(id));
-            Assert.Equal(id, System.IO.Path.GetFileName(id)); // a single bare segment
-            Assert.NotEqual("..", id);
-            Assert.NotEqual(".", id);
-        }
-
-        Assert.Equal(ids.Count, ids.Distinct().Count()); // regenerated ids stay unique within the binder
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(text));
     }
 
-    [Fact]
-    public void Reader_regenerates_duplicate_note_ids_case_insensitively()
+    [Theory]
+    [InlineData("")]
+    [InlineData(".")]
+    [InlineData("..")]
+    [InlineData("../escape.txt")]
+    [InlineData("sub/dir.png")]
+    [InlineData("/etc/passwd")]
+    [InlineData("a/b/../../../../etc/passwd")]
+    public void An_attachment_that_is_not_a_bare_file_name_makes_the_binder_malformed(string name)
     {
-        // Note ids are attachment-directory names. Duplicate ids — including names that differ only
-        // in case on the fleet's default macOS/Windows filesystems — would make two notes share files
-        // and would also make selection and dirty tracking ambiguous.
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n" +
-            "[[note]]\nid = \"same-id\"\nbody = ''\n\n" +
-            "[[note]]\nid = \"same-id\"\nbody = ''\n\n" +
-            "[[note]]\nid = \"SAME-ID\"\nbody = ''\n";
+        // Dropping it would erase the reference at the next save; keeping it would let a remove reach
+        // outside the note's assets folder.
+        var text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
+            $"attachments = [\"a.png\", \"{name}\"]\nbody = ''\n";
 
-        var ids = BinderTomlReader.Read(text).Notes.Select(n => n.Id).ToList();
-
-        Assert.Equal("same-id", ids[0]);
-        Assert.Equal(ids.Count, ids.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(text));
     }
 
     [Theory]
@@ -751,14 +739,6 @@ public sealed class BinderTomlTests
     }
 
     [Fact]
-    public void A_missing_binder_id_gets_a_fresh_one()
-    {
-        const string text = "format_version = 1\ncreated = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-01T00:00:00.000Z\"\n";
-        var binder = BinderTomlReader.Read(text);
-        Assert.NotEqual(string.Empty, binder.Id);
-    }
-
-    [Fact]
     public void Reader_ignores_unknown_keys()
     {
         const string text =
@@ -800,88 +780,7 @@ public sealed class BinderTomlTests
 
     // Hostile ID edge cases
 
-    [Fact]
-    public void Note_id_with_forward_slash_is_regenerated()
-    {
-        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"a/b\"\nbody = ''\n";
-        var note = BinderTomlReader.Read(text).Notes[0];
-        Assert.NotEqual("a/b", note.Id);
-        Assert.Equal(note.Id, Path.GetFileName(note.Id));
-    }
-
-    [Fact]
-    public void Note_with_empty_id_gets_a_generated_one()
-    {
-        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"\"\nbody = ''\n";
-        var note = BinderTomlReader.Read(text).Notes[0];
-        Assert.False(string.IsNullOrEmpty(note.Id));
-    }
-
-    [Fact]
-    public void Note_with_missing_id_gets_a_generated_one()
-    {
-        const string text = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nbody = ''\n";
-        var note = BinderTomlReader.Read(text).Notes[0];
-        Assert.False(string.IsNullOrEmpty(note.Id));
-    }
-
-    [Fact]
-    public void Multiple_notes_with_hostile_ids_all_get_unique_regenerated_ids()
-    {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n" +
-            "[[note]]\nid = \"..\"\nbody = ''\n\n" +
-            "[[note]]\nid = \"..\"\nbody = ''\n\n" +
-            "[[note]]\nid = \"\"\nbody = ''\n\n" +
-            "[[note]]\nid = \".\"\nbody = ''\n";
-
-        var ids = BinderTomlReader.Read(text).Notes.Select(n => n.Id).ToList();
-        Assert.Equal(4, ids.Count);
-        Assert.Equal(ids.Count, ids.Distinct().Count());
-        Assert.All(ids, id =>
-        {
-            Assert.False(string.IsNullOrEmpty(id));
-            Assert.NotEqual(".", id);
-            Assert.NotEqual("..", id);
-        });
-    }
-
     // Hostile attachment edge cases
-
-    [Fact]
-    public void Attachment_with_forward_slash_in_name_is_dropped()
-    {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
-            "attachments = [\"ok.png\", \"sub/dir.png\", \"other/path/file.txt\"]\n" +
-            "body = ''\n";
-
-        var attachments = BinderTomlReader.Read(text).Notes[0].Attachments;
-        Assert.Equal(new[] { "ok.png" }, attachments);
-    }
-
-    [Fact]
-    public void Attachment_deeply_nested_traversal_is_dropped()
-    {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
-            "attachments = [\"../../../etc/passwd\", \"a.png\"]\n" +
-            "body = ''\n";
-
-        var attachments = BinderTomlReader.Read(text).Notes[0].Attachments;
-        Assert.Equal(new[] { "a.png" }, attachments);
-    }
-
-    [Fact]
-    public void All_attachments_hostile_leaves_empty_list()
-    {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\n" +
-            "attachments = [\"..\", \".\", \"../x\", \"a/b\", \"\", \"/root\"]\n" +
-            "body = ''\n";
-
-        Assert.Empty(BinderTomlReader.Read(text).Notes[0].Attachments);
-    }
 
     [Fact]
     public void Missing_attachments_key_reads_as_empty_list()
@@ -956,14 +855,6 @@ public sealed class BinderTomlTests
         // A note recording nothing takes its binder's time, never the moment the file was read.
         Assert.Equal(earliest, binder.Notes[2].Created);
         Assert.Equal(earliest, binder.Notes[2].Modified);
-    }
-
-    [Fact]
-    public void An_empty_binder_id_gets_a_fresh_one()
-    {
-        const string text = "format_version = 1\nid = \"\"\n";
-
-        Assert.NotEqual(string.Empty, BinderTomlReader.Read(text).Id);
     }
 
     [Theory]
@@ -1142,31 +1033,6 @@ public sealed class BinderTomlTests
         Assert.Equal(note.RetiredAt, restored.RetiredAt);
         Assert.Equal(note.Body, restored.Body);
         Assert.Equal(note.Attachments, restored.Attachments);
-    }
-
-    [Fact]
-    public void Mix_of_valid_and_hostile_notes_reads_correctly()
-    {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n" +
-            "created = \"2026-01-01T00:00:00.000Z\"\n" +
-            "modified = \"2026-01-01T00:00:00.000Z\"\n" +
-            "\n" +
-            "[[note]]\n" +
-            "id = \"good\"\ntitle = \"Valid\"\nbody = 'hello'\n" +
-            "\n" +
-            "[[note]]\n" +
-            "id = \"../bad\"\ntitle = \"Hostile id\"\n" +
-            "attachments = [\"../escape\", \"ok.png\"]\n" +
-            "body = 'world'\n";
-
-        var binder = BinderTomlReader.Read(text);
-        Assert.Equal(2, binder.Notes.Count);
-        Assert.Equal("good", binder.Notes[0].Id);
-        Assert.Equal("Valid", binder.Notes[0].Title);
-        Assert.NotEqual("../bad", binder.Notes[1].Id);
-        Assert.Equal("Hostile id", binder.Notes[1].Title);
-        Assert.Equal(new[] { "ok.png" }, binder.Notes[1].Attachments);
     }
 
     [Fact]

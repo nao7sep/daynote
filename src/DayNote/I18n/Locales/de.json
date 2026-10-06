@@ -77,7 +77,7 @@
   "failure.attachmentPicker": "Die Dateiauswahl für Anhänge konnte nicht geöffnet werden. Ihre Notiz ist unverändert; versuchen Sie erneut, Anhänge hinzuzufügen.",
   "failure.newBinderPicker": "Das Fenster zum Anlegen einer Mappe konnte nicht geöffnet werden. Versuchen Sie erneut, die Mappe zu erstellen.",
   "failure.openBinder": "Diese Mappe konnte nicht geöffnet werden. Prüfen Sie, ob sie verfügbar ist, und versuchen Sie es dann erneut.",
-  "failure.openBinderFormat": "Diese Mappe konnte nicht geöffnet werden, weil ihr Inhalt keine gültigen DayNote-Daten sind. Reparieren Sie die Mappe oder stellen Sie eine intakte Kopie wieder her, und versuchen Sie es dann erneut.",
+  "failure.openBinderFormat": "„{name}“ konnte nicht geöffnet werden, weil die Datei keine gültigen DayNote-Daten enthält. Die Datei bleibt unverändert; reparieren Sie sie oder stellen Sie eine intakte Kopie wieder her, und versuchen Sie es dann erneut.",
   "failure.openBinderGone": "Diese Mappe ist am ausgewählten Ort nicht mehr vorhanden.",
   "failure.openBinderNewer": "„{name}“ wurde mit einer neueren Version von DayNote gespeichert und kann mit dieser Version nicht geöffnet werden. Die Datei bleibt unverändert; öffnen Sie sie mit der neueren Version von DayNote.",
   "failure.openBinderPermission": "Diese Mappe konnte nicht geöffnet werden. Prüfen Sie, ob Sie sie lesen dürfen, und versuchen Sie es dann erneut.",

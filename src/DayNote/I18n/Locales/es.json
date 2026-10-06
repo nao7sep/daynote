@@ -82,7 +82,7 @@
   "failure.attachmentPicker": "No se pudo abrir el selector de adjuntos. Tu nota no ha cambiado; vuelve a intentar agregar adjuntos.",
   "failure.newBinderPicker": "No se pudo abrir la ventana para crear un archivador. Vuelve a intentar crearlo.",
   "failure.openBinder": "No se pudo abrir este archivador. Comprueba que esté disponible e inténtalo de nuevo.",
-  "failure.openBinderFormat": "No se pudo abrir este archivador porque su contenido no son datos válidos de DayNote. Repara el archivador o restaura una copia en buen estado e inténtalo de nuevo.",
+  "failure.openBinderFormat": "No se pudo abrir «{name}» porque su contenido no son datos válidos de DayNote. El archivo no se modificó; repáralo o restaura una copia en buen estado e inténtalo de nuevo.",
   "failure.openBinderGone": "Este archivador ya no está disponible en la ubicación seleccionada.",
   "failure.openBinderNewer": "«{name}» se guardó con una versión más reciente de DayNote, así que esta versión no puede abrirlo. El archivo no se modificó; ábrelo con la versión más reciente de DayNote.",
   "failure.openBinderPermission": "No se pudo abrir este archivador. Comprueba que tengas permiso para leerlo e inténtalo de nuevo.",

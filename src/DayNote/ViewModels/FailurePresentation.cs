@@ -35,7 +35,7 @@ public static class FailurePresentation
     public static Message OpenBinder(Exception error, string binderTitle) => error switch
     {
         NewerFormatException => NewerBinder(binderTitle),
-        BinderFormatException => Message.Of("failure.openBinderFormat"),
+        BinderFormatException => Message.Of("failure.openBinderFormat", ("name", binderTitle)),
         UnauthorizedAccessException => Message.Of("failure.openBinderPermission"),
         FileNotFoundException or DirectoryNotFoundException => Message.Of("failure.openBinderGone"),
         _ => Message.Of("failure.openBinder"),

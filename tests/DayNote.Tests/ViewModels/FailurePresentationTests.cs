@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using DayNote.Core.Storage;
+using DayNote.Core.Toml;
 using DayNote.Tests.I18n;
 using DayNote.ViewModels;
 using Xunit;
@@ -87,6 +88,17 @@ public sealed class FailurePresentationTests
         Assert.Contains("permission", English.Of(FailurePresentation.OpenBinder(new UnauthorizedAccessException(Hostile), "Journal")), StringComparison.Ordinal);
         Assert.Contains("no longer available", English.Of(FailurePresentation.OpenBinder(new FileNotFoundException(Hostile), "Journal")), StringComparison.Ordinal);
         Assert.Contains("writable", English.Of(FailurePresentation.SaveBinder(new UnauthorizedAccessException(Hostile))), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_malformed_binder_is_named_and_reported_as_left_untouched()
+    {
+        var text = English.Of(FailurePresentation.OpenBinder(new BinderFormatException(Hostile), "Journal"));
+
+        Assert.Contains("“Journal”", text, StringComparison.Ordinal);
+        Assert.Contains("not valid DayNote data", text, StringComparison.Ordinal);
+        Assert.Contains("left untouched", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(Hostile, text, StringComparison.Ordinal);
     }
 
     [Fact]
