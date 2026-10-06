@@ -57,9 +57,13 @@ public sealed class MainWindowViewModelTests : IDisposable
     private string BinderPath => Path.Combine(_home, "test.daynote");
 
     private MainWindowViewModel NewViewModel(
-        Action<string>? deleteFile = null, Action<string>? deleteDirectory = null, BinderStore? binderStore = null)
+        Action<string>? deleteFile = null,
+        Action<string>? deleteDirectory = null,
+        BinderStore? binderStore = null,
+        Action<string, string>? copyFile = null)
     {
-        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger(), deleteFile, deleteDirectory, _clock, binderStore);
+        var vm = new MainWindowViewModel(
+            new AppPaths(), _dialogs, new NullLogger(), deleteFile, deleteDirectory, _clock, binderStore, copyFile);
         Assert.True(vm.IsReady);
         return vm;
     }
@@ -1433,6 +1437,40 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(vm.MoveAttachment(vm.Attachments[1], 0));
         await vm.AddDroppedFiles([late]);
         Assert.Equal(3, vm.Attachments.Count);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_note_locked_while_its_files_are_copied_does_not_take_them()
+    {
+        var copying = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var vm = NewViewModel(copyFile: (source, destination) =>
+        {
+            copying.TrySetResult();
+            release.Wait();
+            AtomicFile.CopyNew(source, destination);
+        });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        var file = Path.Combine(_home, "large.bin");
+        File.WriteAllText(file, "large");
+
+        var adding = vm.AddDroppedFiles([file]);
+        await copying.Task;
+        vm.Editor.Locked = true;
+        release.Set();
+        await adding;
+
+        Assert.Empty(note.Attachments);
+        Assert.Empty(vm.Attachments);
+        Assert.Empty(Directory.GetFiles(BinderStore.NoteAssetsDirectory(BinderPath, note.Id)));
+        var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
+        Assert.Contains("locked while the files were being added", result.Text, StringComparison.Ordinal);
+        Assert.True(File.Exists(file));
 
         await vm.ShutdownAsync();
     }

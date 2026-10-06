@@ -18,6 +18,7 @@
   "attachments.failed": "추가하지 못함: {names}. 파일과 바인더 폴더를 사용할 수 있는지 확인한 후 다시 시도하십시오.",
   "attachments.folderFailed": "첨부 파일 폴더를 준비하지 못했습니다. 바인더 위치에 쓸 수 있는지 확인한 후 다시 시도하십시오.",
   "attachments.join": "{first} {rest}",
+  "attachments.lockedWhileAdding": "파일을 추가하는 동안 노트가 잠겨 파일이 첨부되지 않았습니다.",
   "attachments.noNote": "첨부 파일을 추가하려면 노트를 선택하거나 만드십시오.",
   "attachments.pane": "첨부 파일",
   "attachments.remove": "첨부 파일 제거",

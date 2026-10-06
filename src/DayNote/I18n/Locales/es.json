@@ -20,6 +20,7 @@
   "attachments.failed": "No se pudo agregar: {names}. Comprueba que los archivos y la carpeta del archivador estén disponibles e inténtalo de nuevo.",
   "attachments.folderFailed": "No se pudo preparar la carpeta de adjuntos. Comprueba que se pueda escribir en la ubicación del archivador e inténtalo de nuevo.",
   "attachments.join": "{first} {rest}",
+  "attachments.lockedWhileAdding": "La nota se bloqueó mientras se agregaban los archivos, así que no se adjuntaron.",
   "attachments.noNote": "Selecciona o crea una nota para agregarle adjuntos.",
   "attachments.pane": "Adjuntos",
   "attachments.remove": "Quitar adjunto",

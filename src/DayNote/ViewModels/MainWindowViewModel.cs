@@ -47,6 +47,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private readonly IAppLogger _log;
     private readonly Action<string> _deleteFile;
     private readonly Action<string> _deleteDirectory;
+    private readonly Action<string, string> _copyFile;
 
     // The clock every recorded time is read from: created, modified and status times.
     private readonly TimeProvider _clock;
@@ -123,7 +124,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         Action<string>? deleteFile = null,
         Action<string>? deleteDirectory = null,
         TimeProvider? clock = null,
-        BinderStore? binderStore = null)
+        BinderStore? binderStore = null,
+        Action<string, string>? copyFile = null)
     {
         _paths = paths;
         _dialogs = dialogs;
@@ -132,6 +134,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _deleteDirectory = deleteDirectory ?? (path => Directory.Delete(path, recursive: true));
         _clock = clock ?? TimeProvider.System;
         _binderStore = binderStore ?? new BinderStore();
+        _copyFile = copyFile ?? AtomicFile.CopyNew;
         _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
 
@@ -918,6 +921,31 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
+        // Locked while its files were copied: the note's content is locked now, so the copies are not
+        // attached, and they go, since nothing refers to them.
+        if (note.Locked && outcome.AddedNames.Count > 0)
+        {
+            _log.Info("Discarding attachment-add result: note was locked", new { noteId, copied = outcome.AddedNames.Count });
+            foreach (var name in outcome.AddedNames)
+            {
+                var copy = Path.Combine(directory, name);
+                try
+                {
+                    _deleteFile(copy);
+                }
+                catch (Exception ex)
+                {
+                    _log.Warn("Could not remove an attachment copy the lock left unattached", new { noteId, path = copy }, ex);
+                }
+            }
+
+            AttachmentResult = new OperationResultViewModel(
+                OperationResultKind.Warning,
+                Message.Of("attachments.lockedWhileAdding"),
+                isPersistent: true);
+            return;
+        }
+
         foreach (var name in outcome.AddedNames)
         {
             note.Attachments.Add(name);
@@ -1042,7 +1070,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 var name = UniqueFileName.Pick(existingEntries!, Path.GetFileName(source));
                 // not recorded: attachments are copied binary content; the binder text records the
                 // durable attachment reference, while binary writes stay outside the text history.
-                AtomicFile.CopyNew(source, Path.Combine(directory, name));
+                _copyFile(source, Path.Combine(directory, name));
                 addedNames.Add(name);
                 hashes[hash] = name;
             }

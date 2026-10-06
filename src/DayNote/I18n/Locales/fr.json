@@ -20,6 +20,7 @@
   "attachments.failed": "Impossible d’ajouter\u00a0: {names}. Vérifiez que les fichiers et le dossier du classeur sont disponibles, puis réessayez.",
   "attachments.folderFailed": "Impossible de préparer le dossier des pièces jointes. Vérifiez que l’emplacement du classeur est accessible en écriture, puis réessayez.",
   "attachments.join": "{first} {rest}",
+  "attachments.lockedWhileAdding": "La note a été verrouillée pendant l’ajout des fichiers\u00a0; ils n’ont donc pas été joints.",
   "attachments.noNote": "Sélectionnez ou créez une note pour ajouter des pièces jointes.",
   "attachments.pane": "Pièces jointes",
   "attachments.remove": "Retirer la pièce jointe",

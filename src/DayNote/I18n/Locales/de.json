@@ -19,6 +19,7 @@
   "attachments.failed": "Nicht hinzugefügt: {names}. Prüfen Sie, ob die Dateien und der Ordner der Mappe verfügbar sind, und versuchen Sie es dann erneut.",
   "attachments.folderFailed": "Der Ordner für die Anhänge konnte nicht vorbereitet werden. Prüfen Sie, ob der Speicherort der Mappe beschreibbar ist, und versuchen Sie es dann erneut.",
   "attachments.join": "{first} {rest}",
+  "attachments.lockedWhileAdding": "Die Notiz wurde gesperrt, während die Dateien hinzugefügt wurden, daher wurden sie nicht angehängt.",
   "attachments.noNote": "Wählen oder erstellen Sie eine Notiz, um Anhänge hinzuzufügen.",
   "attachments.pane": "Anhänge",
   "attachments.remove": "Anhang entfernen",

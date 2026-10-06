@@ -20,6 +20,7 @@
   "attachments.failed": "Não foi possível adicionar: {names}. Verifique se os arquivos e a pasta do fichário estão disponíveis e tente novamente.",
   "attachments.folderFailed": "Não foi possível preparar a pasta de anexos. Verifique se o local do fichário permite gravação e tente novamente.",
   "attachments.join": "{first} {rest}",
+  "attachments.lockedWhileAdding": "A nota foi bloqueada enquanto os arquivos eram adicionados, então eles não foram anexados.",
   "attachments.noNote": "Selecione ou crie uma nota para adicionar anexos.",
   "attachments.pane": "Anexos",
   "attachments.remove": "Remover anexo",

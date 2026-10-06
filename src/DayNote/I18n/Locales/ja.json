@@ -18,6 +18,7 @@
   "attachments.failed": "追加できませんでした: {names}。ファイルとバインダーのフォルダが利用できることを確認して、もう一度お試しください。",
   "attachments.folderFailed": "添付ファイル用のフォルダを準備できませんでした。バインダーの保存場所に書き込めることを確認して、もう一度お試しください。",
   "attachments.join": "{first}{rest}",
+  "attachments.lockedWhileAdding": "ファイルの追加中にノートがロックされたため、ファイルは添付されませんでした。",
   "attachments.noNote": "添付ファイルを追加するには、ノートを選択するか作成してください。",
   "attachments.pane": "添付ファイル",
   "attachments.remove": "添付ファイルを削除",

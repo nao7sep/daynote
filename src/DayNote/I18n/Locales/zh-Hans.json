@@ -18,6 +18,7 @@
   "attachments.failed": "无法添加：{names}。请确认这些文件和笔记本文件夹可用，然后重试。",
   "attachments.folderFailed": "无法准备附件文件夹。请确认笔记本所在位置可写，然后重试。",
   "attachments.join": "{first}{rest}",
+  "attachments.lockedWhileAdding": "添加文件时笔记已被锁定，因此这些文件未被附加。",
   "attachments.noNote": "请选择或新建一条笔记以添加附件。",
   "attachments.pane": "附件",
   "attachments.remove": "移除附件",

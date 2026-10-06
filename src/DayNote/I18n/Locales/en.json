@@ -19,6 +19,7 @@
   "attachments.failed": "Could not add: {names}. Check that the files and binder folder are available, then try again.",
   "attachments.folderFailed": "Could not prepare the attachment folder. Check that the binder location is writable, then try again.",
   "attachments.join": "{first} {rest}",
+  "attachments.lockedWhileAdding": "The note was locked while the files were being added, so they were not attached.",
   "attachments.noNote": "Select or create a note to add attachments.",
   "attachments.pane": "Attachments",
   "attachments.remove": "Remove attachment",
