@@ -233,7 +233,7 @@ public sealed class BinderTomlTests
     }
 
     [Fact]
-    public void Reader_tolerates_missing_keys_and_falls_back_for_bad_timestamps()
+    public void Reader_tolerates_missing_keys()
     {
         const string text =
             "format_version = 1\nid = \"nb1\"\n" +
@@ -356,15 +356,88 @@ public sealed class BinderTomlTests
     }
 
     [Fact]
-    public void Reader_defaults_missing_or_unknown_status_to_draft()
+    public void Reader_defaults_a_missing_status_to_draft()
     {
-        // An older file with no status key, and a hand-edit typo, both fall back to Draft.
         const string missing = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
-        const string unknown = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"archived\"\nbody = ''\n";
 
         Assert.Equal(NoteStatus.Draft, BinderTomlReader.Read(missing).Notes[0].Status);
-        Assert.Equal(NoteStatus.Draft, BinderTomlReader.Read(unknown).Notes[0].Status);
     }
+
+    [Fact]
+    public void An_unknown_status_makes_the_binder_malformed_rather_than_a_draft()
+    {
+        // A hand-edit typo is not a status: reading it as Draft would save the note back as one.
+        const string unknown = "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nstatus = \"publised\"\nbody = ''\n";
+
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(unknown));
+    }
+
+    [Theory]
+    [InlineData("draft", "verified_at = \"2026-06-12T00:00:00.000Z\"")]
+    [InlineData("discarded", "retired_at = \"2026-06-12T00:00:00.000Z\"")]
+    [InlineData("verified", "published_at = \"2026-06-12T00:00:00.000Z\"")]
+    [InlineData("published", "discarded_at = \"2026-06-12T00:00:00.000Z\"")]
+    [InlineData("retired", "discarded_at = \"2026-06-12T00:00:00.000Z\"")]
+    public void A_status_time_the_status_contradicts_makes_the_binder_malformed(string status, string time)
+    {
+        var text = NoteText($"status = \"{status}\"\n{time}\n");
+
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(text));
+    }
+
+    [Theory]
+    [InlineData("verified", "verified_at = \"2026-06-10T00:00:00.000Z\"")]
+    [InlineData("discarded", "discarded_at = \"2026-06-10T00:00:00.000Z\"")]
+    [InlineData("published", "verified_at = \"2026-06-13T00:00:00.000Z\"\npublished_at = \"2026-06-12T00:00:00.000Z\"")]
+    [InlineData("retired", "published_at = \"2026-06-13T00:00:00.000Z\"\nretired_at = \"2026-06-12T00:00:00.000Z\"")]
+    public void Status_times_out_of_order_make_the_binder_malformed(string status, string times)
+    {
+        // The note was created on 2026-06-11.
+        var text = NoteText($"status = \"{status}\"\n{times}\n");
+
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(text));
+    }
+
+    [Fact]
+    public void A_missing_implied_time_is_the_time_of_the_status_that_implies_it()
+    {
+        var retired = BinderTomlReader.Read(NoteText("status = \"retired\"\nretired_at = \"2026-06-14T00:00:00.000Z\"\n")).Notes[0];
+        var published = BinderTomlReader.Read(NoteText("status = \"published\"\npublished_at = \"2026-06-13T00:00:00.000Z\"\n")).Notes[0];
+
+        var retiredAt = new DateTimeOffset(2026, 6, 14, 0, 0, 0, TimeSpan.Zero);
+        Assert.Equal(retiredAt, retired.VerifiedAt);
+        Assert.Equal(retiredAt, retired.PublishedAt);
+        Assert.Equal(retiredAt, retired.RetiredAt);
+        var publishedAt = new DateTimeOffset(2026, 6, 13, 0, 0, 0, TimeSpan.Zero);
+        Assert.Equal(publishedAt, published.VerifiedAt);
+        Assert.Equal(publishedAt, published.PublishedAt);
+
+        // Retiring it later keeps the recorded times instead of inventing a verification at that moment.
+        NoteLifecycle.ApplyTransition(published, NoteStatus.Retired, new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero));
+        Assert.Equal(publishedAt, published.VerifiedAt);
+        Assert.Equal(publishedAt, published.PublishedAt);
+    }
+
+    [Fact]
+    public void A_status_missing_its_own_time_takes_the_time_before_it()
+    {
+        var created = new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero);
+        var verifiedAt = new DateTimeOffset(2026, 6, 12, 0, 0, 0, TimeSpan.Zero);
+
+        var discarded = BinderTomlReader.Read(NoteText("status = \"discarded\"\n")).Notes[0];
+        var verified = BinderTomlReader.Read(NoteText("status = \"verified\"\n")).Notes[0];
+        var published = BinderTomlReader.Read(NoteText("status = \"published\"\nverified_at = \"2026-06-12T00:00:00.000Z\"\n")).Notes[0];
+
+        Assert.Equal(created, discarded.DiscardedAt);
+        Assert.Equal(created, verified.VerifiedAt);
+        Assert.Equal(verifiedAt, published.VerifiedAt);
+        Assert.Equal(verifiedAt, published.PublishedAt);
+    }
+
+    // One note created on 2026-06-11, with the given lines after its id.
+    private static string NoteText(string lines) =>
+        "format_version = 1\nid = \"nb1\"\ncreated = \"2026-06-11T00:00:00.000Z\"\n\n" +
+        "[[note]]\nid = \"n1\"\ncreated = \"2026-06-11T00:00:00.000Z\"\n" + lines + "body = ''\n";
 
     [Fact]
     public void Reader_parses_status_case_insensitively()
@@ -380,8 +453,8 @@ public sealed class BinderTomlTests
         var binder = OneNote();
         var note = binder.Notes[0];
         note.Status = NoteStatus.Published;
-        note.VerifiedAt = new DateTimeOffset(2026, 6, 10, 12, 0, 0, 0, TimeSpan.Zero);
-        note.PublishedAt = new DateTimeOffset(2026, 6, 10, 13, 0, 0, 0, TimeSpan.Zero);
+        note.VerifiedAt = new DateTimeOffset(2026, 6, 12, 12, 0, 0, 0, TimeSpan.Zero);
+        note.PublishedAt = new DateTimeOffset(2026, 6, 12, 13, 0, 0, 0, TimeSpan.Zero);
 
         var text = BinderTomlWriter.Write(binder);
         Assert.Contains("verified_at =", text);
@@ -825,7 +898,7 @@ public sealed class BinderTomlTests
         const string text =
             "format_version = 1\nid = \"nb1\"\ncreated = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-01-02T00:00:00.000Z\"\n\n" +
             "[[note]]\nid = \"n1\"\nmodified = \"2026-03-01T00:00:00.000Z\"\nbody = ''\n\n" +
-            "[[note]]\nid = \"n2\"\ncreated = \"2026-04-01T00:00:00.000Z\"\nmodified = \"bad\"\nbody = ''\n";
+            "[[note]]\nid = \"n2\"\ncreated = \"2026-04-01T00:00:00.000Z\"\nbody = ''\n";
 
         var notes = BinderTomlReader.Read(text).Notes;
 
@@ -893,47 +966,21 @@ public sealed class BinderTomlTests
         Assert.NotEqual(string.Empty, BinderTomlReader.Read(text).Id);
     }
 
-    [Fact]
-    public void Malformed_binder_timestamps_fall_back_to_recent_time()
+    [Theory]
+    [InlineData("created = \"not-a-date\"\n", "")]
+    [InlineData("modified = \"also bad\"\n", "")]
+    [InlineData("", "created = \"garbage\"\n")]
+    [InlineData("", "modified = \"\"\n")]
+    [InlineData("", "status = \"discarded\"\ndiscarded_at = \"x\"\n")]
+    [InlineData("", "status = \"verified\"\nverified_at = \"bad\"\n")]
+    [InlineData("", "status = \"published\"\npublished_at = \"nope\"\n")]
+    [InlineData("", "status = \"retired\"\nretired_at = \" \"\n")]
+    public void A_time_that_does_not_parse_makes_the_binder_malformed(string binderLine, string noteLines)
     {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n" +
-            "created = \"not-a-date\"\n" +
-            "modified = \"also bad\"\n";
+        // A malformed time is not a missing one: taking it as absent would write another time over it.
+        var text = "format_version = 1\nid = \"nb1\"\n" + binderLine + "\n[[note]]\nid = \"n1\"\n" + noteLines + "body = ''\n";
 
-        var binder = BinderTomlReader.Read(text);
-        Assert.True(binder.Created.Year >= 2026);
-        Assert.True(binder.Modified.Year >= 2026);
-    }
-
-    [Fact]
-    public void Malformed_note_timestamps_fall_back_to_recent_time()
-    {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n" +
-            "[[note]]\nid = \"n1\"\n" +
-            "created = \"garbage\"\nmodified = \"also garbage\"\n" +
-            "body = ''\n";
-
-        var note = BinderTomlReader.Read(text).Notes[0];
-        Assert.True(note.Created.Year >= 2026);
-        Assert.True(note.Modified.Year >= 2026);
-    }
-
-    [Fact]
-    public void Malformed_lifecycle_timestamps_read_as_null()
-    {
-        const string text =
-            "format_version = 1\nid = \"nb1\"\n\n" +
-            "[[note]]\nid = \"n1\"\nstatus = \"published\"\n" +
-            "discarded_at = \"x\"\nverified_at = \"bad\"\npublished_at = \"nope\"\nretired_at = \"\"\n" +
-            "body = ''\n";
-
-        var note = BinderTomlReader.Read(text).Notes[0];
-        Assert.Null(note.DiscardedAt);
-        Assert.Null(note.VerifiedAt);
-        Assert.Null(note.PublishedAt);
-        Assert.Null(note.RetiredAt);
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(text));
     }
 
     [Fact]
@@ -966,18 +1013,23 @@ public sealed class BinderTomlTests
     public void All_lifecycle_timestamps_set_round_trip()
     {
         var binder = OneNote();
-        var note = binder.Notes[0];
-        note.Status = NoteStatus.Retired;
-        note.DiscardedAt = new DateTimeOffset(2025, 12, 1, 0, 0, 0, TimeSpan.Zero);
-        note.VerifiedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        note.PublishedAt = new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero);
-        note.RetiredAt = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
+        var retired = binder.Notes[0];
+        retired.Status = NoteStatus.Retired;
+        retired.VerifiedAt = new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero);
+        retired.PublishedAt = new DateTimeOffset(2026, 7, 2, 0, 0, 0, TimeSpan.Zero);
+        retired.RetiredAt = new DateTimeOffset(2026, 7, 3, 0, 0, 0, TimeSpan.Zero);
+        var discarded = OneNote().Notes[0];
+        discarded.Id = "n2";
+        discarded.Status = NoteStatus.Discarded;
+        discarded.DiscardedAt = new DateTimeOffset(2026, 7, 4, 0, 0, 0, TimeSpan.Zero);
+        binder.Notes.Add(discarded);
 
-        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder)).Notes[0];
-        Assert.Equal(note.DiscardedAt, restored.DiscardedAt);
-        Assert.Equal(note.VerifiedAt, restored.VerifiedAt);
-        Assert.Equal(note.PublishedAt, restored.PublishedAt);
-        Assert.Equal(note.RetiredAt, restored.RetiredAt);
+        var restored = BinderTomlReader.Read(BinderTomlWriter.Write(binder)).Notes;
+        Assert.Null(restored[0].DiscardedAt);
+        Assert.Equal(retired.VerifiedAt, restored[0].VerifiedAt);
+        Assert.Equal(retired.PublishedAt, restored[0].PublishedAt);
+        Assert.Equal(retired.RetiredAt, restored[0].RetiredAt);
+        Assert.Equal(discarded.DiscardedAt, restored[1].DiscardedAt);
     }
 
     // Large / stress inputs

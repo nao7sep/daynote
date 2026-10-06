@@ -11,8 +11,10 @@ namespace DayNote.Core.Toml;
 /// <summary>
 /// Parses <c>.daynote</c> TOML text into a <see cref="Binder"/>. Field order is irrelevant on
 /// read; only the canonical writer enforces order. Reading is case-insensitive and tolerant of
-/// missing keys so hand-edited files still load, except <c>format_version</c>: a binder without it is
-/// malformed (store-recovery-conventions). Bodies are run through <see cref="BodyCleanup"/>
+/// missing optional keys so hand-edited files still load, except <c>format_version</c>: a binder without
+/// it is malformed (store-recovery-conventions). A value that is present but malformed, such as a time
+/// that does not parse, an unknown status, or status times the status contradicts, makes the binder
+/// malformed too: it is never coerced, because the coerced reading would be written back. Bodies are run through <see cref="BodyCleanup"/>
 /// so the in-memory body equals the canonical stored form (this also removes the trailing newline
 /// that TOML multiline strings retain). The format version is read before anything else, so a binder
 /// written by a newer DayNote is reported as newer, never as malformed, whatever its shape.
@@ -37,8 +39,7 @@ public static class BinderTomlReader
         var document = Deserialize<BinderDocument>(text);
         var notes = document.Note ?? [];
 
-        // A timestamp that is absent or malformed (a hand-edit typo) takes another time the same item
-        // recorded, then its binder's, and the read instant only when the file records none at all, per
+        // A timestamp that is absent takes another time the same item recorded, then its binder's, and the read instant only when the file records none at all, per
         // the content-lifecycle-conventions. Never default(DateTimeOffset): it would be written back
         // as a bogus year-0001 date and corrupt chronological ordering.
         var noteTimes = notes.Select(NoteTimes.Of).ToList();
@@ -95,18 +96,20 @@ public static class BinderTomlReader
     {
         // Created comes first in a note's chronology, so the earliest time it recorded stands in for it.
         var created = times.Created ?? Earliest(times.Recorded) ?? binderCreated;
+        var status = ParseStatus(document.Status);
+        var lifecycle = Lifecycle(status, times, created);
         var note = new Note
         {
             Id = SafeNoteId(document.Id, existingIds),
             Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
             Created = created,
             Modified = times.Modified ?? created,
-            Status = NoteStatuses.Parse(document.Status),
+            Status = status,
             Locked = document.Locked ?? false,
-            DiscardedAt = times.Discarded,
-            VerifiedAt = times.Verified,
-            PublishedAt = times.Published,
-            RetiredAt = times.Retired,
+            DiscardedAt = lifecycle.Discarded,
+            VerifiedAt = lifecycle.Verified,
+            PublishedAt = lifecycle.Published,
+            RetiredAt = lifecycle.Retired,
             Body = BodyCleanup.Normalize(document.Body ?? string.Empty),
         };
 
@@ -155,11 +158,51 @@ public static class BinderTomlReader
             ? id!
             : IdGenerator.NewUnique(existingIds);
 
+    private static NoteStatus ParseStatus(string? token) =>
+        token is null ? NoteStatus.Draft
+        : NoteStatuses.TryParse(token, out var status) ? status
+        : throw new BinderFormatException("A note's status is not one DayNote knows.");
+
+    /// <summary>
+    /// The status times a note holds, per the content-lifecycle-conventions. A recorded time the status
+    /// contradicts, or recorded times out of order, are not a note's lifecycle and make the binder
+    /// malformed. A time the status holds but the file does not record is taken from the note's nearest
+    /// recorded time on the main line: an implied time from the status that implies it, the status's own
+    /// time from the time before it, so created ≤ verified ≤ published ≤ retired holds by construction.
+    /// </summary>
+    private static NoteTimes Lifecycle(NoteStatus status, NoteTimes recorded, DateTimeOffset created)
+    {
+        var holdsVerified = status is NoteStatus.Verified or NoteStatus.Published or NoteStatus.Retired;
+        var holdsPublished = status is NoteStatus.Published or NoteStatus.Retired;
+        if ((recorded.Discarded is not null && status != NoteStatus.Discarded)
+            || (recorded.Verified is not null && !holdsVerified)
+            || (recorded.Published is not null && !holdsPublished)
+            || (recorded.Retired is not null && status != NoteStatus.Retired))
+        {
+            throw new BinderFormatException("A note records a status time its status does not hold.");
+        }
+
+        var discarded = status == NoteStatus.Discarded ? recorded.Discarded ?? created : (DateTimeOffset?)null;
+        var verified = holdsVerified ? recorded.Verified ?? recorded.Published ?? recorded.Retired ?? created : (DateTimeOffset?)null;
+        var published = holdsPublished ? recorded.Published ?? recorded.Retired ?? verified : null;
+        var retired = status == NoteStatus.Retired ? recorded.Retired ?? published : null;
+
+        if (discarded < created || verified < created || published < verified || retired < published)
+        {
+            throw new BinderFormatException("A note's status times are out of order.");
+        }
+
+        return recorded with { Discarded = discarded, Verified = verified, Published = published, Retired = retired };
+    }
+
     private static DateTimeOffset? Earliest(IEnumerable<DateTimeOffset> times) =>
         times.Select(time => (DateTimeOffset?)time).Min();
 
+    // An absent time is unknown; a present one that does not parse is malformed, never taken as absent.
     private static DateTimeOffset? ParseOptionalTimestamp(string? text) =>
-        !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : null;
+        text is null ? null
+        : DayNoteTime.TryParseIso(text, out var value) ? value
+        : throw new BinderFormatException("A time in the binder is not an ISO-8601 timestamp.");
 
     /// <summary>The times one note records, parsed before any of them is filled from another.</summary>
     private sealed record NoteTimes(

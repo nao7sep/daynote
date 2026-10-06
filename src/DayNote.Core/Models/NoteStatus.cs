@@ -28,15 +28,21 @@ public static class NoteStatuses
     };
 
     /// <summary>
-    /// Parses a stored token back to a status, case-insensitively. Anything missing or unrecognized
-    /// falls back to <see cref="NoteStatus.Draft"/>.
+    /// Parses a stored token back to a status, case-insensitively. An unrecognized token is not a status
+    /// and parses to nothing; it is never taken for another status.
     /// </summary>
-    public static NoteStatus Parse(string? token) => token?.Trim().ToLowerInvariant() switch
+    public static bool TryParse(string token, out NoteStatus status)
     {
-        "discarded" => NoteStatus.Discarded,
-        "verified" => NoteStatus.Verified,
-        "published" => NoteStatus.Published,
-        "retired" => NoteStatus.Retired,
-        _ => NoteStatus.Draft,
-    };
+        NoteStatus? parsed = token.Trim().ToLowerInvariant() switch
+        {
+            "draft" => NoteStatus.Draft,
+            "discarded" => NoteStatus.Discarded,
+            "verified" => NoteStatus.Verified,
+            "published" => NoteStatus.Published,
+            "retired" => NoteStatus.Retired,
+            _ => null,
+        };
+        status = parsed ?? NoteStatus.Draft;
+        return parsed is not null;
+    }
 }
