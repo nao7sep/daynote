@@ -133,6 +133,36 @@ public sealed class AtomicFileTests : IDisposable
     }
 
     [Fact]
+    public void A_copy_keeps_the_sources_modified_time_and_leaves_no_temp_file()
+    {
+        var source = Path.Combine(_directory, "source.bin");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        var modified = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(source, modified);
+        var copy = Path.Combine(_directory, "copy.bin");
+
+        AtomicFile.CopyNew(source, copy);
+
+        Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(copy));
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(copy));
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
+    [Fact]
+    public void A_copy_never_replaces_an_existing_file_and_removes_its_temp_file()
+    {
+        var source = Path.Combine(_directory, "source.bin");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        var taken = Path.Combine(_directory, "taken.bin");
+        File.WriteAllBytes(taken, [9]);
+
+        Assert.ThrowsAny<IOException>(() => AtomicFile.CopyNew(source, taken));
+
+        Assert.Equal(new byte[] { 9 }, File.ReadAllBytes(taken));
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
+    [Fact]
     public void Creates_missing_parent_directories()
     {
         var nested = Path.Combine(_directory, "a", "b", "data.txt");

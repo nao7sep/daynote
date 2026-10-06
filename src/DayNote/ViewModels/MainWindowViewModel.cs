@@ -1042,7 +1042,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 var name = UniqueFileName.Pick(existingEntries!, Path.GetFileName(source));
                 // not recorded: attachments are copied binary content; the binder text records the
                 // durable attachment reference, while binary writes stay outside the text history.
-                File.Copy(source, Path.Combine(directory, name));
+                AtomicFile.CopyNew(source, Path.Combine(directory, name));
                 addedNames.Add(name);
                 hashes[hash] = name;
             }

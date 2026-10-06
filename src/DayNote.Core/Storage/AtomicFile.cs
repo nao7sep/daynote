@@ -38,11 +38,7 @@ public static partial class AtomicFile
         }
 
         Directory.CreateDirectory(directory);
-
-        // <stem>-<nanoid>.tmp, beside the target: one final extension stating the file's current role
-        // (a temp), never a suffix dot-appended after the full target filename.
-        var stem = Path.GetFileNameWithoutExtension(fullPath);
-        var tempPath = Path.Combine(directory, stem + "-" + IdGenerator.New() + ".tmp");
+        var tempPath = TempPathFor(fullPath);
 
         try
         {
@@ -82,6 +78,35 @@ public static partial class AtomicFile
             BackupStore.Record(fullPath, bytes);
         }
     }
+
+    /// <summary>
+    /// Copies a user's file to a new name that nothing else holds: into a temp file beside it, then
+    /// published under that name without replacing anything there, so the name never shows a partial
+    /// copy. <see cref="File.Copy(string, string)"/> keeps the source's modified time and the metadata the
+    /// destination volume supports (content-lifecycle-conventions). A failed copy removes its temp.
+    /// </summary>
+    /// <exception cref="IOException">The destination already exists, or the copy failed.</exception>
+    public static void CopyNew(string source, string destination)
+    {
+        var fullPath = Path.GetFullPath(destination);
+        var tempPath = TempPathFor(fullPath);
+        try
+        {
+            File.Copy(source, tempPath);
+            File.Move(tempPath, fullPath, overwrite: false);
+        }
+        catch
+        {
+            TryDelete(tempPath);
+            throw;
+        }
+    }
+
+    // <stem>-<nanoid>.tmp, beside the target: one final extension stating the file's current role (a
+    // temp), never a suffix dot-appended after the full target filename.
+    private static string TempPathFor(string fullPath) => Path.Combine(
+        Path.GetDirectoryName(fullPath)!,
+        Path.GetFileNameWithoutExtension(fullPath) + "-" + IdGenerator.New() + ".tmp");
 
     /// <summary>
     /// Carries <paramref name="original"/>'s ACL, extended attributes and permission mode onto
