@@ -92,6 +92,17 @@ public sealed class BinderStoreTests : IDisposable
         Assert.Equal(new[] { _path }, Directory.GetFiles(_directory, "*.daynote"));
     }
 
+    [Fact]
+    public void A_save_over_a_binder_a_newer_DayNote_wrote_is_refused_and_leaves_it_byte_identical()
+    {
+        File.WriteAllText(_path, NewerBinderText);
+        var before = File.ReadAllBytes(_path);
+
+        Assert.Throws<NewerFormatException>(() => _store.Save(_path, Sample()));
+
+        Assert.Equal(before, File.ReadAllBytes(_path));
+    }
+
     private static string NewerBinderText =>
         $"format_version = {FormatVersions.Binder + 1}\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
 

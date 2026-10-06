@@ -24,6 +24,7 @@ public sealed class BinderStore
     }
 
     /// <summary>Serializes and atomically writes a binder, returning the new baseline and text.</summary>
+    /// <exception cref="NewerFormatException">The file was written by a newer DayNote; it is left untouched.</exception>
     public SavedBinder Save(string path, Binder binder) => SaveText(path, Serialize(binder));
 
     /// <summary>Serializes a binder to its TOML text — pure and in-memory, no I/O.</summary>
@@ -34,11 +35,19 @@ public sealed class BinderStore
     /// <see cref="Save"/> so a caller can serialize the (mutable, UI-owned) <see cref="Binder"/> to an
     /// immutable string synchronously and then move only the I/O — the atomic write, fsync, and backup
     /// insert — to a background thread, with no risk of a concurrent edit touching the binder while it
-    /// is being written.
+    /// is being written. A file a newer DayNote wrote in the meantime, such as one a sync client just
+    /// delivered, is intact data this build cannot read, so it is never written over
+    /// (store-recovery-conventions).
     /// </summary>
+    /// <exception cref="NewerFormatException">The file was written by a newer DayNote; it is left untouched.</exception>
     public SavedBinder SaveText(string path, string text)
     {
         var fullPath = Path.GetFullPath(path);
+        if (File.Exists(fullPath) && NewerVersion(File.ReadAllText(fullPath, Encoding.UTF8)) is { } newer)
+        {
+            throw new NewerFormatException("binder", newer, FormatVersions.Binder);
+        }
+
         AtomicFile.WriteAllText(fullPath, text);
         return new SavedBinder(fullPath, ContentHash.Sha256Hex(text), text);
     }
@@ -62,19 +71,21 @@ public sealed class BinderStore
             return ExternalChange.None;
         }
 
-        return IsNewer(raw) ? ExternalChange.Newer : ExternalChange.Modified;
+        return NewerVersion(raw) is null ? ExternalChange.Modified : ExternalChange.Newer;
     }
 
-    // A file that is not a binder at all is merely modified; the reload reports it.
-    private static bool IsNewer(string raw)
+    // The version a newer DayNote recorded, if one did. A file that is not a binder at all is not newer:
+    // a reload reports it, and a save replaces it.
+    private static long? NewerVersion(string raw)
     {
         try
         {
-            return BinderTomlReader.FormatVersion(raw) > FormatVersions.Binder;
+            var version = BinderTomlReader.FormatVersion(raw);
+            return version > FormatVersions.Binder ? version : null;
         }
         catch (BinderFormatException)
         {
-            return false;
+            return null;
         }
     }
 

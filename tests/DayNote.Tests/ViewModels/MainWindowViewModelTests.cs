@@ -448,6 +448,36 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(before, File.ReadAllBytes(BinderPath));
     }
 
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_save_before_the_next_check_never_writes_over_a_binder_a_newer_DayNote_wrote(bool quitting)
+    {
+        // A sync client delivers a newer binder, and the save or quit lands before any check reads it.
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        vm.Editor.Body = "typed before the delivery";
+        File.WriteAllText(BinderPath, NewerBinderText);
+        var before = File.ReadAllBytes(BinderPath);
+
+        if (quitting)
+        {
+            // The quit stops once, so the closed binder's notice is seen before the window goes.
+            Assert.False(await vm.ShutdownAsync());
+        }
+        else
+        {
+            await vm.SaveNowCommand.ExecuteAsync(null);
+        }
+
+        Assert.False(vm.HasBinder);
+        var result = Assert.Single(vm.Results);
+        Assert.Contains("newer version of DayNote", result.Text, StringComparison.Ordinal);
+        Assert.True(await vm.ShutdownAsync());
+        Assert.Equal(before, File.ReadAllBytes(BinderPath));
+    }
+
     [AvaloniaFact]
     public async Task A_binder_whose_notes_share_an_id_is_not_opened_is_named_and_is_left_byte_identical()
     {

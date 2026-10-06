@@ -1467,6 +1467,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
                 return true;
             }
+            catch (NewerFormatException ex)
+            {
+                // A newer DayNote rewrote the file since the last check, so this save would replace it.
+                CloseNewerBinder(path, ex);
+                return false;
+            }
             catch (Exception ex)
             {
                 // The write failed: _dirty and _dirtyNoteIds are untouched above, so the edit is still
