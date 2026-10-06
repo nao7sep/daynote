@@ -80,6 +80,10 @@
   "editor.status": "Stato della nota",
   "editor.titlePlaceholder": "Titolo…",
   "failure.attachmentPicker": "Impossibile aprire la selezione degli allegati. La nota è invariata; riprova ad aggiungere allegati.",
+  "failure.binderAddSave": "Il raccoglitore è aperto, ma non è stato possibile aggiungerlo all’elenco dei raccoglitori, quindi non vi comparirà dopo che lo avrai chiuso.",
+  "failure.binderForgetSave": "Impossibile rimuovere il raccoglitore dall’elenco. È ancora elencato; prova di nuovo a rimuoverlo.",
+  "failure.binderOrderSave": "Impossibile salvare l’ordine dei raccoglitori. L’elenco è tornato all’ordine precedente; riprova.",
+  "failure.binderRenameSave": "Impossibile salvare il nuovo nome del raccoglitore. Mantiene il nome precedente; riprova.",
   "failure.newBinderPicker": "Impossibile aprire la finestra per creare un raccoglitore. Riprova a crearlo.",
   "failure.openBinder": "Impossibile aprire questo raccoglitore. Verifica che sia disponibile, quindi riprova.",
   "failure.openBinderFormat": "Impossibile aprire «{name}» perché il suo contenuto non è costituito da dati DayNote validi. Il file non è stato modificato; riparalo o ripristina una copia integra, quindi riprova.",
@@ -97,6 +101,7 @@
   "failure.startupSettings": "DayNote non è riuscito a leggere il suo file di impostazioni in {path}, quindi si è fermato prima di modificare qualsiasi cosa. Il file è rimasto dov’era. Controlla i suoi permessi o spostalo altrove, poi riavvia DayNote.",
   "failure.startupSettingsNewer": "Il file di impostazioni in {path} è stato scritto da una versione più recente di DayNote, quindi questa versione si è fermata prima di modificare qualsiasi cosa. Il file è rimasto dov’era. Usa la versione più recente di DayNote, oppure sposta il file altrove, poi riavvia DayNote.",
   "failure.startupStorage": "DayNote non è riuscito ad aprire la sua posizione di archiviazione. Verifica che esista e sia scrivibile, quindi riavvia DayNote.",
+  "failure.textStyleSave": "Impossibile salvare lo stile di testo. L’editor mantiene lo stile attuale; riprova.",
   "files.andMore": {
     "one": "{names} e {count} altro",
     "many": "{names} e altri {count}",

@@ -70,6 +70,10 @@
   "editor.status": "상태",
   "editor.titlePlaceholder": "제목…",
   "failure.attachmentPicker": "첨부 파일 선택 창을 열 수 없습니다. 노트는 변경되지 않았습니다. 첨부 파일을 다시 추가하십시오.",
+  "failure.binderAddSave": "바인더는 열려 있지만 바인더 목록에 추가하지 못했습니다. 따라서 닫은 후에는 목록에 표시되지 않습니다.",
+  "failure.binderForgetSave": "바인더를 목록에서 제거하지 못했습니다. 목록에 그대로 있습니다. 다시 제거해 보십시오.",
+  "failure.binderOrderSave": "바인더 순서를 저장하지 못했습니다. 목록이 이전 순서로 돌아갔습니다. 다시 시도하십시오.",
+  "failure.binderRenameSave": "바인더의 새 이름을 저장하지 못했습니다. 이전 이름이 유지됩니다. 다시 시도하십시오.",
   "failure.newBinderPicker": "새 바인더 저장 창을 열 수 없습니다. 바인더를 다시 만드십시오.",
   "failure.openBinder": "이 바인더를 열 수 없습니다. 바인더를 사용할 수 있는지 확인한 후 다시 시도하십시오.",
   "failure.openBinderFormat": "“{name}”의 내용이 올바른 DayNote 데이터가 아니어서 열 수 없습니다. 파일은 변경하지 않았습니다. 파일을 복구하거나 정상적인 사본을 복원한 후 다시 시도하십시오.",
@@ -87,6 +91,7 @@
   "failure.startupSettings": "DayNote가 {path}에 있는 설정 파일을 읽지 못해 아무것도 변경하지 않고 실행을 중단했습니다. 파일은 원래 자리에 그대로 두었습니다. 파일 권한을 확인하거나 파일을 다른 곳으로 옮긴 후 DayNote를 다시 시작하십시오.",
   "failure.startupSettingsNewer": "{path}에 있는 설정 파일은 더 새로운 버전의 DayNote가 작성한 것이어서 이 버전은 아무것도 변경하지 않고 실행을 중단했습니다. 파일은 원래 자리에 그대로 두었습니다. 더 새로운 버전의 DayNote를 사용하거나 파일을 다른 곳으로 옮긴 후 DayNote를 다시 시작하십시오.",
   "failure.startupStorage": "DayNote가 저장 위치를 열 수 없습니다. 위치가 존재하고 쓸 수 있는지 확인한 후 DayNote를 다시 시작하십시오.",
+  "failure.textStyleSave": "텍스트 스타일을 저장하지 못했습니다. 편집기는 현재 스타일을 유지합니다. 다시 시도하십시오.",
   "files.andMore": {
     "other": "{names} 외 {count}개"
   },

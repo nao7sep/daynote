@@ -1141,6 +1141,60 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Commands_that_change_the_settings_keep_what_was_saved_when_the_save_fails()
+    {
+        var vm = NewViewModel();
+        foreach (var name in new[] { "one", "two" })
+        {
+            _dialogs.BinderToCreate = Path.Combine(_home, name + ".daynote");
+            await vm.NewBinderCommand.ExecuteAsync(null);
+        }
+
+        // A folder where the settings file belongs makes every settings save fail.
+        var configPath = Path.Combine(_home, "config.json");
+        var saved = File.ReadAllText(configPath);
+        File.Delete(configPath);
+        Directory.CreateDirectory(configPath);
+        var order = vm.BinderOrder();
+        var style = vm.EditorFontFamily;
+
+        vm.CycleTextStyleCommand.Execute(null);
+        Assert.Equal(style, vm.EditorFontFamily);
+        Assert.Equal(string.Empty, vm.TextStyleStatusText);
+        Assert.Contains("text style could not be saved", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+
+        var row = vm.Binders[0];
+        var title = row.Title;
+        row.IsEditing = true;
+        vm.ApplyBinderRename(row, "Renamed");
+        Assert.Equal(title, row.Title);
+        Assert.Contains("new name could not be saved", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+
+        Assert.True(vm.MoveBinder(order[0], order[1]));
+        vm.CommitBinderOrder();
+        Assert.Equal(order.Select(item => item.Path), vm.BinderOrder().Select(item => item.Path));
+        Assert.Contains("order could not be saved", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+
+        await vm.RemoveBinderCommand.ExecuteAsync(order[0]);
+        Assert.Equal(order.Select(item => item.Path), vm.BinderOrder().Select(item => item.Path));
+        Assert.Contains("could not be removed from the list", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+
+        // A binder that could not be listed is still open; the list only says it was not added.
+        var third = Path.Combine(_home, "three.daynote");
+        _dialogs.BinderToCreate = third;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        Assert.True(vm.HasBinder);
+        Assert.DoesNotContain(vm.BinderOrder(), item => PathKey.Equal(item.Path, third));
+        var added = Assert.Single(vm.Results);
+        Assert.Equal(OperationResultKind.Warning, added.Kind);
+        Assert.Contains("could not be added to the binder list", added.Text, StringComparison.Ordinal);
+
+        await vm.ShutdownAsync();
+        Directory.Delete(configPath);
+        File.WriteAllText(configPath, saved);
+    }
+
+    [AvaloniaFact]
     public async Task Cancelling_a_binder_drag_restores_the_master_order_without_persisting()
     {
         var vm = NewViewModel();

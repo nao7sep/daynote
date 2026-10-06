@@ -70,6 +70,10 @@
   "editor.status": "ステータス",
   "editor.titlePlaceholder": "タイトル…",
   "failure.attachmentPicker": "添付ファイルの選択画面を開けませんでした。ノートは変更されていません。もう一度添付ファイルを追加してください。",
+  "failure.binderAddSave": "バインダーは開いていますが、バインダーの一覧に追加できませんでした。閉じると一覧には表示されません。",
+  "failure.binderForgetSave": "バインダーを一覧から削除できませんでした。一覧に残ったままです。もう一度お試しください。",
+  "failure.binderOrderSave": "バインダーの並び順を保存できませんでした。一覧は以前の並び順に戻りました。もう一度お試しください。",
+  "failure.binderRenameSave": "バインダーの新しい名前を保存できませんでした。名前は以前のままです。もう一度お試しください。",
   "failure.newBinderPicker": "新しいバインダーの保存画面を開けませんでした。もう一度バインダーを作成してください。",
   "failure.openBinder": "このバインダーを開けませんでした。利用できることを確認して、もう一度お試しください。",
   "failure.openBinderFormat": "「{name}」の内容が DayNote のデータとして正しくないため、開けませんでした。ファイルは変更していません。修復するか、正常なコピーを復元して、もう一度お試しください。",
@@ -87,6 +91,7 @@
   "failure.startupSettings": "DayNote は {path} にある設定ファイルを読み込めなかったため、何も変更せずに停止しました。ファイルはそのまま残してあります。ファイルのアクセス権を確認するか、別の場所に移してから、DayNote を再起動してください。",
   "failure.startupSettingsNewer": "{path} にある設定ファイルは新しいバージョンの DayNote で書き込まれているため、このバージョンは何も変更せずに停止しました。ファイルはそのまま残してあります。新しいバージョンの DayNote を使うか、ファイルを別の場所に移してから、DayNote を再起動してください。",
   "failure.startupStorage": "DayNote はデータの保存場所を開けませんでした。保存場所が存在し、書き込めることを確認してから、DayNote を再起動してください。",
+  "failure.textStyleSave": "テキストスタイルを保存できませんでした。エディタは現在のスタイルのままです。もう一度お試しください。",
   "files.andMore": {
     "other": "{names}、ほか {count} 件"
   },

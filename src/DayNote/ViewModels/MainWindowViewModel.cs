@@ -28,13 +28,14 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowHost
 {
-    // The subjects of app-shell results. Each holds at most one result, so these five are also the
+    // The subjects of app-shell results. Each holds at most one result, so these six are also the
     // most results the shell can show at once.
     private const string SaveFailureResultKey = "binder-save-failure";
     private const string NewBinderPickerResultKey = "new-binder-picker";
     private const string OpenBinderPickerResultKey = "open-binder-picker";
     private const string BinderFileResultKey = "binder-file";
     private const string AttachmentCleanupResultKey = "attachment-cleanup";
+    private const string ConfigSaveFailureResultKey = "config-save-failure";
 
     private const string AttachmentPickerResultKey = "attachment-picker";
 
@@ -1205,20 +1206,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var index = _config.TextStyles.IndexOf(_config.ResolveDefaultStyle()!);
-        var nextIndex = (index + 1) % _config.TextStyles.Count;
-        for (var i = 0; i < _config.TextStyles.Count; i++)
+        var next = _config.Copy();
+        var index = next.TextStyles.IndexOf(next.ResolveDefaultStyle()!);
+        var nextIndex = (index + 1) % next.TextStyles.Count;
+        for (var i = 0; i < next.TextStyles.Count; i++)
         {
-            _config.TextStyles[i].IsDefault = i == nextIndex;
+            next.TextStyles[i].IsDefault = i == nextIndex;
         }
 
+        // Saved before it is adopted, so a style that did not reach the settings file is not shown as set.
+        // While the settings could not be loaded, nothing is saved and the style holds for this session.
+        if (IsReady && !TrySaveConfig(next, "failure.textStyleSave"))
+        {
+            return;
+        }
+
+        _config = next;
         ApplyTextStyle();
         var label = TextStyleLabels.For(_config.TextStyles, Localizer.T("settings.noFontFamily"), Localizer.Current.Culture)[nextIndex];
         _log.Info("Cycled text style", new { style = label });
-        if (IsReady)
-        {
-            TrySaveConfig(_config);
-        }
 
         _textStyleStatus = Message.Of("textStyle.applied", ("style", label));
         OnPropertyChanged(nameof(TextStyleStatusText));
@@ -1760,15 +1766,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var entry = _config.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, item.Path));
+        var next = _config.Copy();
+        var entry = next.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, item.Path));
         if (entry is null)
         {
             return; // not a known binder (shouldn't happen for a visible row)
         }
 
         entry.Title = newTitle;
+        if (!TrySaveConfig(next, "failure.binderRenameSave"))
+        {
+            return;
+        }
+
+        _config = next;
         item.Title = newTitle;
-        TrySaveConfig(_config);
         _log.Info("Renamed binder", new { path = item.Path });
     }
 
@@ -1863,13 +1875,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
+        var next = _config.Copy();
         var reordered = _allBinders
-            .Select(item => _config.Binders.Find(entry => PathKey.Equal(entry.Path, item.Path)))
+            .Select(item => next.Binders.Find(entry => PathKey.Equal(entry.Path, item.Path)))
             .OfType<KnownBinder>()
             .ToList();
-        reordered.AddRange(_config.Binders.Except(reordered));
-        _config.Binders = reordered;
-        TrySaveConfig(_config);
+        reordered.AddRange(next.Binders.Except(reordered));
+        next.Binders = reordered;
+        if (!TrySaveConfig(next, "failure.binderOrderSave"))
+        {
+            // The rows go back to the order the settings file still holds.
+            RebuildBinders();
+            return;
+        }
+
+        _config = next;
         _log.Info("Reordered binders", new { count = order.Count });
     }
 
@@ -1941,18 +1961,34 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        _config.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
-        TrySaveConfig(_config);
+        var next = _config.Copy();
+        next.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
+        // The binder stays open either way; only its place in the list depends on the save.
+        if (!TrySaveConfig(next, "failure.binderAddSave", OperationResultKind.Warning))
+        {
+            ApplyBinderFilter();
+            return;
+        }
+
+        _config = next;
         RebuildBinders();
     }
 
     // Removes a binder from the known list and persists. Caller closes it first if it is the open one.
     private void ForgetBinder(string path)
     {
-        if (_config.Binders.RemoveAll(b => PathKey.Equal(b.Path, path)) > 0)
+        var next = _config.Copy();
+        if (next.Binders.RemoveAll(b => PathKey.Equal(b.Path, path)) > 0)
         {
-            TrySaveConfig(_config);
+            if (!TrySaveConfig(next, "failure.binderForgetSave"))
+            {
+                RebuildBinders();
+                return;
+            }
+
+            _config = next;
         }
+
         RebuildBinders();
         _log.Info("Forgot binder", new { path });
     }
@@ -2148,6 +2184,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     // ----- Configuration / state -----------------------------------------------------------------
+
+    /// <summary>
+    /// Persists a candidate configuration for a command that changes it outside Settings. On failure the
+    /// command's own consequence, <paramref name="failureKey"/>, is shown and false is returned, so the
+    /// command keeps the configuration it had.
+    /// </summary>
+    private bool TrySaveConfig(AppConfig config, string failureKey, OperationResultKind kind = OperationResultKind.Error)
+    {
+        if (TrySaveConfig(config))
+        {
+            return true;
+        }
+
+        ShowResult(kind, Message.Of(failureKey), ConfigSaveFailureResultKey);
+        return false;
+    }
 
     /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
     private bool TrySaveConfig(AppConfig config)

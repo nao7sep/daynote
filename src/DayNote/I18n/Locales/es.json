@@ -80,6 +80,10 @@
   "editor.status": "Estado de la nota",
   "editor.titlePlaceholder": "Título…",
   "failure.attachmentPicker": "No se pudo abrir el selector de adjuntos. Tu nota no ha cambiado; vuelve a intentar agregar adjuntos.",
+  "failure.binderAddSave": "El archivador está abierto, pero no se pudo agregar a la lista de archivadores, así que no aparecerá en ella cuando lo cierres.",
+  "failure.binderForgetSave": "No se pudo quitar el archivador de la lista. Sigue en ella; intenta quitarlo de nuevo.",
+  "failure.binderOrderSave": "No se pudo guardar el orden de los archivadores. La lista vuelve a su orden anterior; inténtalo de nuevo.",
+  "failure.binderRenameSave": "No se pudo guardar el nuevo nombre del archivador. Conserva su nombre anterior; inténtalo de nuevo.",
   "failure.newBinderPicker": "No se pudo abrir la ventana para crear un archivador. Vuelve a intentar crearlo.",
   "failure.openBinder": "No se pudo abrir este archivador. Comprueba que esté disponible e inténtalo de nuevo.",
   "failure.openBinderFormat": "No se pudo abrir «{name}» porque su contenido no son datos válidos de DayNote. El archivo no se modificó; repáralo o restaura una copia en buen estado e inténtalo de nuevo.",
@@ -97,6 +101,7 @@
   "failure.startupSettings": "DayNote no pudo leer su archivo de configuración en {path}, así que se detuvo antes de cambiar nada. El archivo sigue donde estaba. Revisa sus permisos o muévelo a otro lugar y luego reinicia DayNote.",
   "failure.startupSettingsNewer": "El archivo de configuración en {path} lo escribió una versión más reciente de DayNote, así que esta versión se detuvo antes de cambiar nada. El archivo sigue donde estaba. Usa la versión más reciente de DayNote, o mueve el archivo a otro lugar y luego reinicia DayNote.",
   "failure.startupStorage": "DayNote no pudo abrir su ubicación de almacenamiento. Comprueba que exista y que se pueda escribir en ella, y reinicia DayNote.",
+  "failure.textStyleSave": "No se pudo guardar el estilo de texto. El editor mantiene su estilo actual; inténtalo de nuevo.",
   "files.andMore": {
     "one": "{names} y {count} más",
     "many": "{names} y {count} más",

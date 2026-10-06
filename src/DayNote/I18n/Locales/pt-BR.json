@@ -80,6 +80,10 @@
   "editor.status": "Status da nota",
   "editor.titlePlaceholder": "Título…",
   "failure.attachmentPicker": "Não foi possível abrir o seletor de anexos. Sua nota não foi alterada; tente adicionar os anexos novamente.",
+  "failure.binderAddSave": "O fichário está aberto, mas não foi possível adicioná-lo à lista de fichários, então ele não aparecerá nela depois que você fechá-lo.",
+  "failure.binderForgetSave": "Não foi possível remover o fichário da lista. Ele continua listado; tente removê-lo novamente.",
+  "failure.binderOrderSave": "Não foi possível salvar a ordem dos fichários. A lista voltou à ordem anterior; tente novamente.",
+  "failure.binderRenameSave": "Não foi possível salvar o novo nome do fichário. Ele mantém o nome anterior; tente novamente.",
   "failure.newBinderPicker": "Não foi possível abrir a janela para criar um fichário. Tente criar o fichário novamente.",
   "failure.openBinder": "Não foi possível abrir este fichário. Verifique se ele está disponível e tente novamente.",
   "failure.openBinderFormat": "Não foi possível abrir “{name}” porque o conteúdo dele não contém dados válidos do DayNote. O arquivo não foi alterado; repare-o ou restaure uma cópia íntegra e tente novamente.",
@@ -97,6 +101,7 @@
   "failure.startupSettings": "O DayNote não conseguiu ler seu arquivo de configurações em {path}, então parou antes de alterar qualquer coisa. O arquivo continua onde estava. Verifique as permissões dele ou mova-o para outro lugar e reinicie o DayNote.",
   "failure.startupSettingsNewer": "O arquivo de configurações em {path} foi gravado por uma versão mais recente do DayNote, então esta versão parou antes de alterar qualquer coisa. O arquivo continua onde estava. Use a versão mais recente do DayNote ou mova o arquivo para outro lugar e reinicie o DayNote.",
   "failure.startupStorage": "O DayNote não conseguiu abrir seu local de armazenamento. Verifique se o local existe e permite gravação e reinicie o DayNote.",
+  "failure.textStyleSave": "Não foi possível salvar o estilo de texto. O editor mantém o estilo atual; tente novamente.",
   "files.andMore": {
     "one": "{names} e mais {count}",
     "many": "{names} e mais {count}",

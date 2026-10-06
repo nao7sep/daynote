@@ -80,6 +80,10 @@
   "editor.status": "Statut de la note",
   "editor.titlePlaceholder": "Titre…",
   "failure.attachmentPicker": "Le sélecteur de pièces jointes n’a pas pu s’ouvrir. Votre note est inchangée\u00a0; réessayez d’ajouter des pièces jointes.",
+  "failure.binderAddSave": "Le classeur est ouvert, mais il n’a pas pu être ajouté à la liste des classeurs\u00a0; il n’y figurera donc plus une fois fermé.",
+  "failure.binderForgetSave": "Le classeur n’a pas pu être retiré de la liste. Il y figure toujours\u00a0; réessayez de le retirer.",
+  "failure.binderOrderSave": "L’ordre des classeurs n’a pas pu être enregistré. La liste a retrouvé son ordre précédent\u00a0; réessayez.",
+  "failure.binderRenameSave": "Le nouveau nom du classeur n’a pas pu être enregistré. Il conserve son nom précédent\u00a0; réessayez.",
   "failure.newBinderPicker": "La fenêtre de création de classeur n’a pas pu s’ouvrir. Réessayez de créer le classeur.",
   "failure.openBinder": "Ce classeur n’a pas pu être ouvert. Vérifiez qu’il est disponible, puis réessayez.",
   "failure.openBinderFormat": "«\u00a0{name}\u00a0» n’a pas pu être ouvert, car son contenu n’est pas composé de données DayNote valides. Le fichier n’a pas été modifié\u00a0; réparez-le ou restaurez une copie saine, puis réessayez.",
@@ -97,6 +101,7 @@
   "failure.startupSettings": "DayNote n’a pas pu lire son fichier de paramètres situé à {path}\u00a0; il s’est donc arrêté avant de modifier quoi que ce soit. Le fichier a été laissé en place. Vérifiez ses autorisations ou déplacez-le ailleurs, puis redémarrez DayNote.",
   "failure.startupSettingsNewer": "Le fichier de paramètres situé à {path} a été écrit par une version plus récente de DayNote\u00a0; cette version s’est donc arrêtée avant de modifier quoi que ce soit. Le fichier a été laissé en place. Utilisez la version plus récente de DayNote, ou déplacez le fichier ailleurs, puis redémarrez DayNote.",
   "failure.startupStorage": "DayNote n’a pas pu ouvrir son emplacement de stockage. Vérifiez qu’il existe et qu’il est accessible en écriture, puis redémarrez DayNote.",
+  "failure.textStyleSave": "Le style de texte n’a pas pu être enregistré. L’éditeur conserve son style actuel\u00a0; réessayez.",
   "files.andMore": {
     "one": "{names} et {count} autre",
     "many": "{names} et {count} d’autres",
