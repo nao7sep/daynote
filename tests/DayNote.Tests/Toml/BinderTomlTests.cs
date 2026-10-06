@@ -849,6 +849,43 @@ public sealed class BinderTomlTests
     }
 
     [Fact]
+    public void A_note_missing_created_and_modified_takes_its_own_status_times_before_its_binders()
+    {
+        const string text =
+            "format_version = 1\nid = \"nb1\"\ncreated = \"2026-01-01T00:00:00.000Z\"\nmodified = \"2026-05-01T00:00:00.000Z\"\n\n" +
+            "[[note]]\nid = \"n1\"\nstatus = \"published\"\n" +
+            "verified_at = \"2026-03-01T00:00:00.000Z\"\npublished_at = \"2026-03-02T00:00:00.000Z\"\nbody = ''\n";
+
+        var note = BinderTomlReader.Read(text).Notes[0];
+
+        // The earliest time the note itself recorded, so Created never follows its own publication.
+        var verified = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
+        Assert.Equal(verified, note.Created);
+        Assert.Equal(verified, note.Modified);
+    }
+
+    [Fact]
+    public void A_binder_recording_no_time_takes_the_earliest_its_notes_recorded()
+    {
+        const string text =
+            "format_version = 1\nid = \"nb1\"\n\n" +
+            "[[note]]\nid = \"n1\"\nmodified = \"2026-04-01T00:00:00.000Z\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"n2\"\ncreated = \"2026-02-01T00:00:00.000Z\"\nbody = ''\n\n" +
+            "[[note]]\nid = \"n3\"\nbody = ''\n";
+
+        var binder = BinderTomlReader.Read(text);
+
+        var earliest = new DateTimeOffset(2026, 2, 1, 0, 0, 0, TimeSpan.Zero);
+        Assert.Equal(earliest, binder.Created);
+        Assert.Equal(earliest, binder.Modified);
+        Assert.Equal(new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero), binder.Notes[0].Created);
+        Assert.Equal(earliest, binder.Notes[1].Modified);
+        // A note recording nothing takes its binder's time, never the moment the file was read.
+        Assert.Equal(earliest, binder.Notes[2].Created);
+        Assert.Equal(earliest, binder.Notes[2].Modified);
+    }
+
+    [Fact]
     public void An_empty_binder_id_gets_a_fresh_one()
     {
         const string text = "format_version = 1\nid = \"\"\n";

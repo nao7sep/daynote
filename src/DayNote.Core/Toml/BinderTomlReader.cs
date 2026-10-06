@@ -35,32 +35,33 @@ public static class BinderTomlReader
         }
 
         var document = Deserialize<BinderDocument>(text);
+        var notes = document.Note ?? [];
 
         // A timestamp that is absent or malformed (a hand-edit typo) takes another time the same item
-        // recorded, then its binder's, and the load time only when the file records none at all, per
+        // recorded, then its binder's, and the read instant only when the file records none at all, per
         // the content-lifecycle-conventions. Never default(DateTimeOffset): it would be written back
         // as a bogus year-0001 date and corrupt chronological ordering.
-        var binderCreated = ParseOptionalTimestamp(document.Created);
+        var noteTimes = notes.Select(NoteTimes.Of).ToList();
         var binderModified = ParseOptionalTimestamp(document.Modified);
-        var fallback = binderCreated ?? binderModified ?? DateTimeOffset.UtcNow;
+        var binderCreated = ParseOptionalTimestamp(document.Created)
+            ?? binderModified
+            ?? Earliest(noteTimes.SelectMany(times => times.Recorded))
+            ?? DateTimeOffset.UtcNow;
 
         var binder = new Binder
         {
             Id = string.IsNullOrEmpty(document.Id) ? IdGenerator.New() : document.Id,
-            Created = fallback,
-            Modified = binderModified ?? fallback,
+            Created = binderCreated,
+            Modified = binderModified ?? binderCreated,
         };
 
-        if (document.Note is { } notes)
+        // Track ids already assigned in this binder so a regenerated (unsafe) id can be made unique.
+        var noteIds = new List<string>(notes.Count);
+        for (var index = 0; index < notes.Count; index++)
         {
-            // Track ids already assigned in this binder so a regenerated (unsafe) id can be made unique.
-            var noteIds = new List<string>(notes.Count);
-            foreach (var noteDocument in notes)
-            {
-                var note = MapNote(noteDocument, fallback, noteIds);
-                noteIds.Add(note.Id);
-                binder.Notes.Add(note);
-            }
+            var note = MapNote(notes[index], noteTimes[index], binderCreated, noteIds);
+            noteIds.Add(note.Id);
+            binder.Notes.Add(note);
         }
 
         return binder;
@@ -89,22 +90,23 @@ public static class BinderTomlReader
         return document ?? throw new BinderFormatException("Binder is empty or not a TOML table.");
     }
 
-    private static Note MapNote(NoteDocument document, DateTimeOffset fallback, IReadOnlyCollection<string> existingIds)
+    private static Note MapNote(
+        NoteDocument document, NoteTimes times, DateTimeOffset binderCreated, IReadOnlyCollection<string> existingIds)
     {
-        var created = ParseOptionalTimestamp(document.Created);
-        var modified = ParseOptionalTimestamp(document.Modified);
+        // Created comes first in a note's chronology, so the earliest time it recorded stands in for it.
+        var created = times.Created ?? Earliest(times.Recorded) ?? binderCreated;
         var note = new Note
         {
             Id = SafeNoteId(document.Id, existingIds),
             Title = TextCleanup.SingleLine(document.Title ?? string.Empty),
-            Created = created ?? modified ?? fallback,
-            Modified = modified ?? created ?? fallback,
+            Created = created,
+            Modified = times.Modified ?? created,
             Status = NoteStatuses.Parse(document.Status),
             Locked = document.Locked ?? false,
-            DiscardedAt = ParseOptionalTimestamp(document.DiscardedAt),
-            VerifiedAt = ParseOptionalTimestamp(document.VerifiedAt),
-            PublishedAt = ParseOptionalTimestamp(document.PublishedAt),
-            RetiredAt = ParseOptionalTimestamp(document.RetiredAt),
+            DiscardedAt = times.Discarded,
+            VerifiedAt = times.Verified,
+            PublishedAt = times.Published,
+            RetiredAt = times.Retired,
             Body = BodyCleanup.Normalize(document.Body ?? string.Empty),
         };
 
@@ -153,8 +155,32 @@ public static class BinderTomlReader
             ? id!
             : IdGenerator.NewUnique(existingIds);
 
+    private static DateTimeOffset? Earliest(IEnumerable<DateTimeOffset> times) =>
+        times.Select(time => (DateTimeOffset?)time).Min();
+
     private static DateTimeOffset? ParseOptionalTimestamp(string? text) =>
         !string.IsNullOrWhiteSpace(text) && DayNoteTime.TryParseIso(text, out var value) ? value : null;
+
+    /// <summary>The times one note records, parsed before any of them is filled from another.</summary>
+    private sealed record NoteTimes(
+        DateTimeOffset? Created,
+        DateTimeOffset? Modified,
+        DateTimeOffset? Discarded,
+        DateTimeOffset? Verified,
+        DateTimeOffset? Published,
+        DateTimeOffset? Retired)
+    {
+        public static NoteTimes Of(NoteDocument document) => new(
+            ParseOptionalTimestamp(document.Created),
+            ParseOptionalTimestamp(document.Modified),
+            ParseOptionalTimestamp(document.DiscardedAt),
+            ParseOptionalTimestamp(document.VerifiedAt),
+            ParseOptionalTimestamp(document.PublishedAt),
+            ParseOptionalTimestamp(document.RetiredAt));
+
+        public IEnumerable<DateTimeOffset> Recorded =>
+            new[] { Created, Modified, Discarded, Verified, Published, Retired }.OfType<DateTimeOffset>();
+    }
 
     // Internal DTOs mirroring the on-disk shape. Timestamps are read as strings because the format
     // stores them as quoted ISO-8601 values rather than TOML-native datetimes.
