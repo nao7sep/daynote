@@ -39,7 +39,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private const string AttachmentPickerResultKey = "attachment-picker";
 
     private readonly AppPaths _paths;
-    private readonly BinderStore _binderStore = new();
+    private readonly BinderStore _binderStore;
     private readonly ConfigStore _configStore;
     private readonly JsonStore<AppState> _stateStore;
     private readonly IDialogService _dialogs;
@@ -121,7 +121,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         IAppLogger log,
         Action<string>? deleteFile = null,
         Action<string>? deleteDirectory = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        BinderStore? binderStore = null)
     {
         _paths = paths;
         _dialogs = dialogs;
@@ -129,6 +130,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _deleteFile = deleteFile ?? File.Delete;
         _deleteDirectory = deleteDirectory ?? (path => Directory.Delete(path, recursive: true));
         _clock = clock ?? TimeProvider.System;
+        _binderStore = binderStore ?? new BinderStore();
         _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
 

@@ -184,16 +184,19 @@ public sealed class BackupStoreTests : IDisposable
             insert.ExecuteNonQuery();
         }
 
-        using var started = new ManualResetEventSlim();
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var competingRecord = Task.Run(() =>
+        // Everything Record does before its reservation has happened once this is set; the reservation
+        // itself then waits for the other process's transaction, which still holds the write lock.
+        var reserving = new ManualResetEventSlim();
+        BackupStore.BeforeWriteReservation = path =>
         {
-            started.Set();
-            BackupStore.Record(TargetPath, (byte[])successor.Clone());
-        }, cancellationToken);
-        Assert.True(started.Wait(TimeSpan.FromSeconds(2), cancellationToken));
-
-        await Task.Delay(100, cancellationToken);
+            if (path == TargetPath)
+            {
+                reserving.Set();
+            }
+        };
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var competingRecord = Task.Run(() => BackupStore.Record(TargetPath, (byte[])successor.Clone()), cancellationToken);
+        Assert.True(reserving.Wait(TimeSpan.FromSeconds(2), cancellationToken));
         Assert.False(competingRecord.IsCompleted);
 
         otherTransaction.Commit();
@@ -402,6 +405,7 @@ public sealed class BackupStoreTests : IDisposable
     {
         // Restore the default (no-op) warn sink so an injected sink from one test never leaks into another.
         BackupStore.ConfigureWarn((_, _, _) => { });
+        BackupStore.BeforeWriteReservation = null;
         BackupStore.Close();
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try

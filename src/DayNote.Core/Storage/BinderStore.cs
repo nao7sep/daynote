@@ -9,9 +9,10 @@ namespace DayNote.Core.Storage;
 /// Reads and writes <c>.daynote</c> binder files, capturing the content hash needed for
 /// external-change detection, and manages the matching <c>-assets</c> directory.
 /// This is the edge where binder file I/O lives; serialization itself is pure and lives in
-/// <see cref="BinderTomlReader"/> and <see cref="BinderTomlWriter"/>.
+/// <see cref="BinderTomlReader"/> and <see cref="BinderTomlWriter"/>. The write and the external-change
+/// read are virtual so a test can hold one at its file I/O while it starts a competing action.
 /// </summary>
-public sealed class BinderStore
+public class BinderStore
 {
     /// <summary>Loads a binder and records the content-hash baseline for external-change detection.</summary>
     /// <exception cref="NewerFormatException">The binder was written by a newer DayNote; it is left untouched.</exception>
@@ -40,7 +41,7 @@ public sealed class BinderStore
     /// (store-recovery-conventions).
     /// </summary>
     /// <exception cref="NewerFormatException">The file was written by a newer DayNote; it is left untouched.</exception>
-    public SavedBinder SaveText(string path, string text)
+    public virtual SavedBinder SaveText(string path, string text)
     {
         var fullPath = Path.GetFullPath(path);
         if (File.Exists(fullPath) && NewerVersion(File.ReadAllText(fullPath, Encoding.UTF8)) is { } newer)
@@ -57,7 +58,7 @@ public sealed class BinderStore
     /// computed (modification time is not used as a short-circuit), so an external edit that lands
     /// within the same coarse filesystem timestamp tick is still detected.
     /// </summary>
-    public ExternalChange CheckExternalChange(string path, string loadedHash)
+    public virtual ExternalChange CheckExternalChange(string path, string loadedHash)
     {
         var fullPath = Path.GetFullPath(path);
         if (!File.Exists(fullPath))

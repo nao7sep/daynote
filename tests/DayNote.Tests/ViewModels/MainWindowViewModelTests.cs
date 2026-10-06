@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Automation;
@@ -55,9 +56,10 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     private string BinderPath => Path.Combine(_home, "test.daynote");
 
-    private MainWindowViewModel NewViewModel(Action<string>? deleteFile = null, Action<string>? deleteDirectory = null)
+    private MainWindowViewModel NewViewModel(
+        Action<string>? deleteFile = null, Action<string>? deleteDirectory = null, BinderStore? binderStore = null)
     {
-        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger(), deleteFile, deleteDirectory, _clock);
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger(), deleteFile, deleteDirectory, _clock, binderStore);
         Assert.True(vm.IsReady);
         return vm;
     }
@@ -86,9 +88,9 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
     }
 
-    private async Task<MainWindowViewModel> OpenNewBinderAsync()
+    private async Task<MainWindowViewModel> OpenNewBinderAsync(BinderStore? binderStore = null)
     {
-        var vm = NewViewModel();
+        var vm = NewViewModel(binderStore: binderStore);
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         Assert.True(vm.HasBinder);
@@ -610,7 +612,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         // it, and the save is about to replace it. A check that ran now would ask about a conflict and,
         // on Reload, adopt a file the in-flight save then overwrites with the older text, reporting
         // Saved over content the user chose to keep. The check skips the tick instead.
-        var vm = await OpenNewBinderAsync();
+        var gated = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(gated);
         vm.NewNoteCommand.Execute(null);
         await vm.SaveNowCommand.ExecuteAsync(null);
 
@@ -621,8 +624,12 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         vm.Editor.Body = "local edit";
         _dialogs.ExternalChoice = ExternalChangeChoice.ReloadFromDisk;
+        var writing = gated.HoldNextSave();
         var save = vm.SaveNowCommand.ExecuteAsync(null);
+        await writing.Entered.Task;
         await vm.CheckExternalChangeAsync();
+        Assert.False(save.IsCompleted);
+        writing.Release();
         await save;
 
         Assert.Equal(0, _dialogs.ExternalChangeQuestions);
@@ -642,13 +649,19 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         // The poll's read is still in flight when the quit arrives. The quit waits its turn for the file
         // and flushes the edit, rather than refusing and leaving the window open.
-        var vm = await OpenNewBinderAsync();
+        var gated = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(gated);
         vm.NewNoteCommand.Execute(null);
         vm.Editor.Body = "typed just before quitting";
 
+        var reading = gated.HoldNextCheck();
         var check = vm.CheckExternalChangeAsync();
-        Assert.True(await vm.ShutdownAsync());
+        await reading.Entered.Task;
+        var quit = vm.ShutdownAsync();
+        Assert.False(quit.IsCompleted);
+        reading.Release();
         await check;
+        Assert.True(await quit);
 
         Assert.False(vm.HasBinder);
         Assert.Equal("typed just before quitting", new BinderStore().Load(BinderPath).Binder.Notes[0].Body);
@@ -1486,14 +1499,19 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task A_change_landing_during_a_save_does_not_stamp_the_note_again()
     {
-        var vm = await OpenNewBinderAsync();
+        var gated = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(gated);
         vm.NewNoteCommand.Execute(null);
         vm.Editor.Body = "words";
 
         // The status changes while the first save is writing, so the note stays marked for the next one.
+        var writing = gated.HoldNextSave();
         var firstSave = vm.SaveNowCommand.ExecuteAsync(null);
+        await writing.Entered.Task;
         vm.Editor.Status = NoteStatus.Verified;
+        writing.Release();
         await firstSave;
+        Assert.Equal("Unsaved changes", vm.SaveStateText);
         var modified = SavedNote().Modified;
         _clock.Advance(TimeSpan.FromMinutes(1));
 
@@ -2172,6 +2190,47 @@ public sealed class MainWindowViewModelTests : IDisposable
             return OpenPathError is null
                 ? Task.CompletedTask
                 : Task.FromException(OpenPathError);
+        }
+    }
+
+    /// <summary>
+    /// A binder store whose next write or external-change read, once armed, stops at its file I/O until
+    /// the test releases it, so a competing action provably lands while that I/O is in flight.
+    /// </summary>
+    private sealed class GatedBinderStore : BinderStore
+    {
+        private Hold? _nextSave;
+        private Hold? _nextCheck;
+
+        public Hold HoldNextSave() => _nextSave = new Hold();
+
+        public Hold HoldNextCheck() => _nextCheck = new Hold();
+
+        public override SavedBinder SaveText(string path, string text)
+        {
+            Interlocked.Exchange(ref _nextSave, null)?.Wait();
+            return base.SaveText(path, text);
+        }
+
+        public override ExternalChange CheckExternalChange(string path, string loadedHash)
+        {
+            Interlocked.Exchange(ref _nextCheck, null)?.Wait();
+            return base.CheckExternalChange(path, loadedHash);
+        }
+
+        public sealed class Hold
+        {
+            private readonly ManualResetEventSlim _released = new();
+
+            public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public void Release() => _released.Set();
+
+            internal void Wait()
+            {
+                Entered.SetResult();
+                _released.Wait();
+            }
         }
     }
 

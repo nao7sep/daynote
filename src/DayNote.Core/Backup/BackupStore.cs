@@ -63,6 +63,13 @@ public static class BackupStore
     private static SqliteConnection? _connection;
     private static bool _initialized;
 
+    /// <summary>
+    /// Runs on the recording thread, with the path being recorded, right before <see cref="Record"/>
+    /// requests SQLite's write reservation, so a test knows everything before the reservation has
+    /// happened. Null in the app.
+    /// </summary>
+    internal static Action<string>? BeforeWriteReservation { get; set; }
+
     /// <summary>Installs the warn sink the store uses to log a record/open failure once. Called once at
     /// app startup, before any managed save. Optional: with no sink installed, a failure is swallowed
     /// silently rather than logged, but recording is never affected.</summary>
@@ -107,6 +114,7 @@ public static class BackupStore
                 // Reserve SQLite's cross-process write lane before reading the predecessor. WAL
                 // serializes eventual writes, but without this immediate transaction two processes
                 // can both read the same predecessor and later append the same successor.
+                BeforeWriteReservation?.Invoke(absolutePath);
                 using var transaction = connection.BeginTransaction(deferred: false);
 
                 using (var latest = connection.CreateCommand())
