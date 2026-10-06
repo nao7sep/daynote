@@ -67,6 +67,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // Each note's content as of its latest change, so a change that leaves the content as it was (a
     // status or lock change) is told apart from an edit.
     private readonly Dictionary<string, NoteContent> _lastContent = new();
+
+    // The binder's notes and its Modified time as last loaded or saved, and when a note was last added or
+    // deleted. The binder's content is its notes', so its Modified is the latest edit among them, and it
+    // keeps the saved time when its content is back to what was saved (content-lifecycle-conventions).
+    private string[] _savedNoteIds = [];
+    private DateTimeOffset _savedBinderModified;
+    private DateTimeOffset _notesChangedAt;
     private string? _attachmentNoteId;
 
     private AppConfig _config = new();
@@ -625,6 +632,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         };
 
         _current.Binder.Notes.Add(note);
+        _notesChangedAt = now;
         // The empty note is its own baseline: until something is typed, its Modified stays its Created.
         _saved[note.Id] = SavedNote.Of(note);
         _lastContent[note.Id] = NoteContent.Of(note);
@@ -684,6 +692,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var index = Notes.IndexOf(target);
 
         _current.Binder.Notes.Remove(note);
+        _notesChangedAt = _clock.GetUtcNow();
         _allNotes.RemoveAll(n => ReferenceEquals(n.Note, note));
         RebuildNotes();
 
@@ -1410,7 +1419,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
             var stopwatch = Stopwatch.StartNew();
             SetSaveState(SaveState.Saving);
-            var now = _clock.GetUtcNow();
             var binder = _current.Binder;
             var path = _current.Path;
             _log.Info("Saving binder", new { path, noteCount = binder.Notes.Count });
@@ -1431,7 +1439,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 written[id] = SavedNote.Of(note);
             }
 
-            binder.Modified = now;
+            binder.Modified = BinderContentModified(binder);
+            var noteIds = binder.Notes.Select(note => note.Id).ToArray();
 
             // Serializing the binder to text is pure, in-memory work over the (UI-owned, mutable)
             // Binder object, so it stays on the UI thread; only the text — an immutable snapshot — and
@@ -1448,6 +1457,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 {
                     _saved[id] = savedNote;
                 }
+
+                _savedNoteIds = noteIds;
+                _savedBinderModified = binder.Modified;
 
                 _externalChangeAcknowledged = false;
 
@@ -1660,6 +1672,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             _saved[note.Id] = SavedNote.Of(note);
             _lastContent[note.Id] = NoteContent.Of(note);
         }
+
+        _savedNoteIds = loaded.Binder.Notes.Select(note => note.Id).ToArray();
+        _savedBinderModified = loaded.Binder.Modified;
 
         HasBinder = true;
         BuildNotes(loaded.Binder, selectNoteId);
@@ -2314,6 +2329,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             _lastContent[note.Id] = content;
         }
+    }
+
+    /// <summary>
+    /// The binder's Modified: the latest edit among its notes whose content differs from what was saved,
+    /// and the latest addition or deletion when its notes differ from those saved; the saved time when
+    /// nothing differs. A note's Modified already holds the time of its own latest edit.
+    /// </summary>
+    private DateTimeOffset BinderContentModified(Binder binder)
+    {
+        DateTimeOffset? latest = binder.Notes.Select(note => note.Id).SequenceEqual(_savedNoteIds) ? null : _notesChangedAt;
+        foreach (var note in binder.Notes)
+        {
+            if ((!_saved.TryGetValue(note.Id, out var saved) || saved.Content != NoteContent.Of(note))
+                && (latest is null || note.Modified > latest))
+            {
+                latest = note.Modified;
+            }
+        }
+
+        return latest ?? _savedBinderModified;
     }
 
     /// <summary>A note's content as the file stores it: what decides whether Modified moves.</summary>

@@ -1504,6 +1504,86 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
     }
 
+    private Binder SavedBinder() => new BinderStore().Load(BinderPath).Binder;
+
+    [AvaloniaFact]
+    public async Task The_binders_Modified_is_the_time_of_its_latest_content_edit()
+    {
+        var vm = await OpenNewBinderAsync();
+        var opened = SavedBinder().Modified;
+
+        // Adding a note is an edit of the binder's content, at the moment it was added.
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        var added = _clock.Now;
+        vm.NewNoteCommand.Execute(null);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.NotEqual(opened, added);
+        Assert.Equal(added, SavedBinder().Modified);
+
+        // A note's content edit, saved later.
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        var edited = _clock.Now;
+        vm.Editor.Body = "words";
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(edited, SavedBinder().Modified);
+
+        // Deleting a note.
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        var deleted = _clock.Now;
+        _dialogs.ConfirmResult = true;
+        await vm.DeleteNoteCommand.ExecuteAsync(null);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(deleted, SavedBinder().Modified);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Status_lock_and_undone_edits_leave_the_binders_Modified_alone()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "words";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var modified = SavedBinder().Modified;
+
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        vm.Editor.Status = NoteStatus.Published;
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(modified, SavedBinder().Modified);
+
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        vm.Editor.Locked = true;
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(modified, SavedBinder().Modified);
+
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        vm.Editor.Locked = false;
+        vm.Editor.Body = "words changed";
+        vm.Editor.Body = "words";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(modified, SavedBinder().Modified);
+
+        // Whitespace the save's own cleanup removes.
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        vm.Editor.Body = "words   ";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(modified, SavedBinder().Modified);
+
+        // A note added and deleted before the save leaves the notes as saved.
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        vm.NewNoteCommand.Execute(null);
+        _dialogs.ConfirmResult = true;
+        await vm.DeleteNoteCommand.ExecuteAsync(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(modified, SavedBinder().Modified);
+
+        await vm.ShutdownAsync();
+    }
+
     [AvaloniaFact]
     public async Task A_binder_deleted_outside_the_app_shows_on_its_row_and_can_be_removed()
     {
