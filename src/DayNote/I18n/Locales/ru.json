@@ -24,7 +24,7 @@
   "attachments.noNote": "Выберите или создайте заметку, чтобы добавить вложения.",
   "attachments.pane": "Вложения",
   "attachments.remove": "Убрать вложение",
-  "attachments.removeFailed": "Не удалось убрать вложение. Оно остаётся вложенным, а его файл не изменён; повторите попытку.",
+  "attachments.removeFailed": "Вложение убрано из заметки, но его файл удалить не удалось. Он по-прежнему находится в папке assets блокнота.",
   "attachments.removeMessage": "Убрать «{name}»? Файл будет удалён.",
   "attachments.removeTitle": "Убрать вложение",
   "attachments.unreadable": {

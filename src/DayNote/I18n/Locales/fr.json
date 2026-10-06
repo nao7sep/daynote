@@ -23,7 +23,7 @@
   "attachments.noNote": "Sélectionnez ou créez une note pour ajouter des pièces jointes.",
   "attachments.pane": "Pièces jointes",
   "attachments.remove": "Retirer la pièce jointe",
-  "attachments.removeFailed": "La pièce jointe n’a pas pu être retirée. Elle reste jointe et son fichier est inchangé\u00a0; réessayez.",
+  "attachments.removeFailed": "La pièce jointe a été retirée de la note, mais son fichier n’a pas pu être supprimé. Il se trouve toujours dans le dossier assets du classeur.",
   "attachments.removeMessage": "Retirer «\u00a0{name}\u00a0»\u00a0? Le fichier sera supprimé.",
   "attachments.removeTitle": "Retirer la pièce jointe",
   "attachments.unreadable": {

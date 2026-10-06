@@ -23,7 +23,7 @@
   "attachments.noNote": "Seleziona o crea una nota per aggiungere allegati.",
   "attachments.pane": "Allegati",
   "attachments.remove": "Rimuovi allegato",
-  "attachments.removeFailed": "Impossibile rimuovere l’allegato. Resta allegato e il suo file è invariato; riprova.",
+  "attachments.removeFailed": "L’allegato è stato rimosso dalla nota, ma non è stato possibile eliminarne il file. Si trova ancora nella cartella assets del raccoglitore.",
   "attachments.removeMessage": "Rimuovere «{name}»? Il file verrà eliminato.",
   "attachments.removeTitle": "Rimuovi allegato",
   "attachments.unreadable": {

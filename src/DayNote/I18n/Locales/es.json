@@ -23,7 +23,7 @@
   "attachments.noNote": "Selecciona o crea una nota para agregarle adjuntos.",
   "attachments.pane": "Adjuntos",
   "attachments.remove": "Quitar adjunto",
-  "attachments.removeFailed": "No se pudo quitar el adjunto. Sigue adjunto y su archivo no ha cambiado; inténtalo de nuevo.",
+  "attachments.removeFailed": "El adjunto se quitó de la nota, pero no se pudo eliminar su archivo. Sigue en la carpeta assets del archivador.",
   "attachments.removeMessage": "¿Quitar «{name}»? El archivo se eliminará.",
   "attachments.removeTitle": "Quitar adjunto",
   "attachments.unreadable": {

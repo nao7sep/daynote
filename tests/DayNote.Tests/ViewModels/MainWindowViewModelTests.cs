@@ -65,7 +65,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Attachment_remove_failure_keeps_the_item_and_authors_hostile_diagnostics()
+    public async Task An_attachment_file_that_could_not_be_deleted_is_reported_with_authored_copy()
     {
         var hostile = new IOException("EACCES IPC /private/tmp/DAYNOTE-REMOVE-SENTINEL");
         var vm = NewViewModel(_ => throw hostile);
@@ -79,10 +79,13 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         await vm.RemoveAttachmentCommand.ExecuteAsync(item);
 
-        Assert.Contains(item.FileName, vm.SelectedNote!.Note.Attachments);
+        // The removal was saved first, so the note no longer refers to the file the delete left behind.
+        Assert.DoesNotContain(item.FileName, vm.SelectedNote!.Note.Attachments);
+        Assert.DoesNotContain(item.FileName, new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
         Assert.True(File.Exists(item.FullPath));
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
-        Assert.Contains("remains attached", result.Text, StringComparison.Ordinal);
+        Assert.Equal(OperationResultKind.Warning, result.Kind);
+        Assert.Contains("could not be deleted", result.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("DAYNOTE-REMOVE-SENTINEL", result.Text, StringComparison.Ordinal);
         Assert.Empty(vm.Results);
         await vm.ShutdownAsync();
@@ -1315,6 +1318,48 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(vm.Results);
         // The file the user attached FROM is theirs and is untouched.
         Assert.True(File.Exists(doomed));
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Attachment_files_are_deleted_only_after_the_binder_stops_referring_to_them()
+    {
+        var vm = await OpenNewBinderAsync();
+        var first = Path.Combine(_home, "first.txt");
+        var second = Path.Combine(_home, "second.txt");
+        File.WriteAllText(first, "first");
+        File.WriteAllText(second, "second");
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        _dialogs.AttachmentPaths = [first, second];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var assets = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
+        var removed = vm.Attachments[0].FullPath;
+
+        // A folder where the binder file belongs makes every save fail.
+        File.Delete(BinderPath);
+        Directory.CreateDirectory(BinderPath);
+
+        await vm.RemoveAttachmentCommand.ExecuteAsync(vm.Attachments[0]);
+        Assert.True(File.Exists(removed));
+        Assert.Equal(OperationResultKind.Warning, Assert.IsType<OperationResultViewModel>(vm.AttachmentResult).Kind);
+
+        await vm.DeleteNoteCommand.ExecuteAsync(null);
+        Assert.Empty(vm.Notes);
+        Assert.True(Directory.Exists(assets));
+        Assert.Contains(vm.Results, result => result.Text.Contains("attachment files", StringComparison.Ordinal));
+
+        // Once a save can land, a removal saves the binder before its file goes.
+        Directory.Delete(BinderPath);
+        vm.NewNoteCommand.Execute(null);
+        _dialogs.AttachmentPaths = [first];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        var attached = vm.Attachments.Single().FullPath;
+        await vm.RemoveAttachmentCommand.ExecuteAsync(vm.Attachments.Single());
+        Assert.False(File.Exists(attached));
+        Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
 
         await vm.ShutdownAsync();
     }

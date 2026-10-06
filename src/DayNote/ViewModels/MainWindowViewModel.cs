@@ -693,6 +693,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         var deletingSelected = ReferenceEquals(target, SelectedNote);
         var index = Notes.IndexOf(target);
+        var binder = _current;
 
         _current.Binder.Notes.Remove(note);
         _notesChangedAt = _clock.GetUtcNow();
@@ -706,30 +707,43 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             SelectedNote = Notes.Count == 0 ? null : Notes[Math.Clamp(index, 0, Notes.Count - 1)];
         }
 
-        DeleteNoteAssets(note);
         MarkDirty(noteId: null);
         _log.Info("Deleted note", new { noteId = note.Id });
+
+        // The files go only once the binder on disk no longer refers to them, so a save that fails
+        // never leaves a reopened binder pointing at deleted files. A binder reloaded or closed
+        // meanwhile may still hold the note, so its files stay.
+        var saved = await SaveCurrentAsync();
+        if (ReferenceEquals(_current, binder))
+        {
+            DeleteNoteAssets(binder.Path, note, saved);
+        }
     }
 
     /// <summary>
-    /// Deletes the note's own attachment folder. The folder is named by the note's id and nothing
-    /// else reads it, so leaving it would leave bytes on disk under a name no one can resolve once
-    /// the note is gone. A failure says so, because the user asked for those files to go.
+    /// Deletes the note's own attachment folder once its removal is saved. The folder is named by the
+    /// note's id and nothing else reads it, so leaving it would leave bytes on disk under a name no one
+    /// can resolve once the note is gone. Files left behind are reported, whether the save failed or the
+    /// delete did, because the user asked for those files to go.
     /// </summary>
-    private void DeleteNoteAssets(Note note)
+    private void DeleteNoteAssets(string binderPath, Note note, bool removalSaved)
     {
-        if (_current is null)
-        {
-            return;
-        }
-
-        var directory = BinderStore.NoteAssetsDirectory(_current.Path, note.Id);
+        var directory = BinderStore.NoteAssetsDirectory(binderPath, note.Id);
         try
         {
-            if (Directory.Exists(directory))
+            if (!Directory.Exists(directory))
             {
-                _deleteDirectory(directory);
+                return;
             }
+
+            if (!removalSaved)
+            {
+                _log.Warn("Kept a deleted note's attachments: its removal was not saved", new { noteId = note.Id, path = directory });
+                ShowResult(OperationResultKind.Warning, Message.Of("note.attachmentsLeft"), AttachmentCleanupResultKey);
+                return;
+            }
+
+            _deleteDirectory(directory);
         }
         catch (Exception ex)
         {
@@ -1089,31 +1103,49 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         _log.Info("Removing attachment", new { noteId = note.Id, file = item.FileName });
-        try
-        {
-            if (File.Exists(item.FullPath))
-            {
-                _deleteFile(item.FullPath);
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to delete attachment", new { noteId = note.Id, path = item.FullPath }, ex);
-            AttachmentResult = new OperationResultViewModel(
-                OperationResultKind.Error,
-                Message.Of("attachments.removeFailed"),
-                isPersistent: true,
-                resultKey: $"remove-attachment:{note.Id}:{item.FileName}");
-            return;
-        }
-
-        note.Attachments.Remove(item.FileName);
-        if (AttachmentResult?.ResultKey == $"remove-attachment:{note.Id}:{item.FileName}")
+        var binder = _current;
+        var fileName = item.FileName;
+        var fullPath = item.FullPath;
+        var resultKey = $"remove-attachment:{note.Id}:{fileName}";
+        note.Attachments.Remove(fileName);
+        if (AttachmentResult?.ResultKey == resultKey)
         {
             AttachmentResult = null;
         }
         LoadAttachments(note);
         MarkDirty(note.Id);
+
+        // The file goes only once the binder on disk no longer refers to it, so a save that fails never
+        // leaves a reopened binder pointing at a deleted file. A binder reloaded or closed meanwhile may
+        // still refer to it, so it stays.
+        var saved = await SaveCurrentAsync();
+        if (!ReferenceEquals(_current, binder) || !File.Exists(fullPath))
+        {
+            return;
+        }
+
+        if (!saved)
+        {
+            _log.Warn("Kept a removed attachment's file: its removal was not saved", new { noteId = note.Id, path = fullPath });
+            ShowFileLeft();
+            return;
+        }
+
+        try
+        {
+            _deleteFile(fullPath);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to delete attachment", new { noteId = note.Id, path = fullPath }, ex);
+            ShowFileLeft();
+        }
+
+        void ShowFileLeft() => AttachmentResult = new OperationResultViewModel(
+            OperationResultKind.Warning,
+            Message.Of("attachments.removeFailed"),
+            isPersistent: true,
+            resultKey: resultKey);
     }
 
     [RelayCommand]

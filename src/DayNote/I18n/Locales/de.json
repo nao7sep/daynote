@@ -22,7 +22,7 @@
   "attachments.noNote": "Wählen oder erstellen Sie eine Notiz, um Anhänge hinzuzufügen.",
   "attachments.pane": "Anhänge",
   "attachments.remove": "Anhang entfernen",
-  "attachments.removeFailed": "Der Anhang konnte nicht entfernt werden. Er bleibt angehängt, und seine Datei ist unverändert; versuchen Sie es erneut.",
+  "attachments.removeFailed": "Der Anhang wurde aus der Notiz entfernt, aber seine Datei konnte nicht gelöscht werden. Sie liegt weiterhin im assets-Ordner der Mappe.",
   "attachments.removeMessage": "„{name}“ entfernen? Die Datei wird gelöscht.",
   "attachments.removeTitle": "Anhang entfernen",
   "attachments.unreadable": {

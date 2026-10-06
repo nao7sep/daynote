@@ -23,7 +23,7 @@
   "attachments.noNote": "Selecione ou crie uma nota para adicionar anexos.",
   "attachments.pane": "Anexos",
   "attachments.remove": "Remover anexo",
-  "attachments.removeFailed": "Não foi possível remover o anexo. Ele continua anexado e o arquivo não foi alterado; tente novamente.",
+  "attachments.removeFailed": "O anexo foi removido da nota, mas não foi possível apagar o arquivo. Ele continua na pasta assets do fichário.",
   "attachments.removeMessage": "Remover “{name}”? O arquivo será apagado.",
   "attachments.removeTitle": "Remover anexo",
   "attachments.unreadable": {

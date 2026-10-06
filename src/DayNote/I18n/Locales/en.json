@@ -22,7 +22,7 @@
   "attachments.noNote": "Select or create a note to add attachments.",
   "attachments.pane": "Attachments",
   "attachments.remove": "Remove attachment",
-  "attachments.removeFailed": "The attachment could not be removed. It remains attached and its file is unchanged; try again.",
+  "attachments.removeFailed": "The attachment was removed from the note, but its file could not be deleted. It is still in the binder’s assets folder.",
   "attachments.removeMessage": "Remove “{name}”? The file will be deleted.",
   "attachments.removeTitle": "Remove attachment",
   "attachments.unreadable": {

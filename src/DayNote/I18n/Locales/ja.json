@@ -21,7 +21,7 @@
   "attachments.noNote": "添付ファイルを追加するには、ノートを選択するか作成してください。",
   "attachments.pane": "添付ファイル",
   "attachments.remove": "添付ファイルを削除",
-  "attachments.removeFailed": "添付ファイルを削除できませんでした。添付はそのままで、ファイルも変更されていません。もう一度お試しください。",
+  "attachments.removeFailed": "添付ファイルはノートから削除されましたが、ファイル自体を削除できませんでした。ファイルはバインダーの assets フォルダに残っています。",
   "attachments.removeMessage": "「{name}」を削除しますか？ファイルも削除されます。",
   "attachments.removeTitle": "添付ファイルを削除",
   "attachments.unreadable": {

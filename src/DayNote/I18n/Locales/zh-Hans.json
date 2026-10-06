@@ -21,7 +21,7 @@
   "attachments.noNote": "请选择或新建一条笔记以添加附件。",
   "attachments.pane": "附件",
   "attachments.remove": "移除附件",
-  "attachments.removeFailed": "无法移除附件。附件仍然保留，文件也未改动；请重试。",
+  "attachments.removeFailed": "附件已从笔记中移除，但其文件无法删除。它仍在笔记本的 assets 文件夹中。",
   "attachments.removeMessage": "要移除“{name}”吗？该文件将被删除。",
   "attachments.removeTitle": "移除附件",
   "attachments.unreadable": {
