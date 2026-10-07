@@ -67,9 +67,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // (content-lifecycle-conventions).
     private readonly Dictionary<string, SavedNote> _saved = new();
 
-    // Each note's content as of its latest change, so a change that leaves the content as it was (a
-    // status or lock change) is told apart from an edit.
-    private readonly Dictionary<string, NoteContent> _lastContent = new();
+    // Keep the latest canonical edit and its instant even when it undoes to the old saved
+    // baseline: a save already in flight may make that content a new edit again.
+    private readonly Dictionary<string, SavedNote> _lastContent = new();
 
     // The binder's notes and its Modified time as last loaded or saved, and when a note was last added or
     // deleted. The binder's content is its notes', so its Modified is the latest edit among them, and it
@@ -577,7 +577,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         try
         {
-            return await SaveCurrentAsync().WaitAsync(QuitBinderSaveBound, _clock);
+            return await SaveCurrentEditsAsync().WaitAsync(QuitBinderSaveBound, _clock);
         }
         catch (TimeoutException)
         {
@@ -765,7 +765,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _notesChangedAt = now;
         // The empty note is its own baseline: until something is typed, its Modified stays its Created.
         _saved[note.Id] = SavedNote.Of(note);
-        _lastContent[note.Id] = NoteContent.Of(note);
+        _lastContent[note.Id] = SavedNote.Of(note);
         // A brand-new note is the newest, so it goes to the top of the newest-first list.
         _allNotes.Insert(0, new NoteListItemViewModel(note, _displayZone));
         NotesFilter = string.Empty;
@@ -1528,7 +1528,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         _log.Info("Closing binder", new { path = _current.Path });
         _autosaveTimer.Stop();
-        if (_dirty && !await SaveCurrentAsync())
+        if (!await SaveCurrentEditsAsync())
         {
             // The flush failed (a full disk, a volume that disconnected, a file briefly locked). Keep the
             // binder open with its unsaved edits and resume the autosave so it retries; the error state
@@ -1588,6 +1588,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// and false when a save was attempted and failed. Callers that tear down or quit rely on this to
     /// avoid discarding edits that never reached disk.
     /// </summary>
+    private async Task<bool> SaveCurrentEditsAsync()
+    {
+        while (_current is not null && _dirty)
+        {
+            if (!await SaveCurrentAsync())
+                return false;
+        }
+
+        return true;
+    }
+
     private async Task<bool> SaveCurrentAsync()
     {
         if (!IsReady || _current is null || !_dirty)
@@ -1640,6 +1651,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             // thread, so a keystroke landing mid-save can never race a background reader of the binder.
             var text = BinderStore.Serialize(binder);
             var generationAtSnapshot = _dirtyGeneration;
+            var modifiedAtSnapshot = binder.Modified;
 
             try
             {
@@ -1651,7 +1663,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 }
 
                 _savedNoteIds = noteIds;
-                _savedBinderModified = binder.Modified;
+                _savedBinderModified = modifiedAtSnapshot;
 
                 _externalChangeAcknowledged = false;
 
@@ -1751,7 +1763,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
                 case ExternalChange.Modified when !_dirty:
                     _log.Info("Binder changed on disk; reloading", new { path });
-                    if (await ReloadFromDiskAsync(checkedBinder, yieldToNewEdits: true))
+                    if (await ReloadFromDiskAsync(checkedBinder))
                     {
                         ShowResult(
                             OperationResultKind.Info,
@@ -1770,7 +1782,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     if (choice == ExternalChangeChoice.ReloadFromDisk)
                     {
                         _log.Info("External change: reloading from disk, discarding local edits", new { path });
-                        await ReloadFromDiskAsync(checkedBinder, yieldToNewEdits: false);
+                        await ReloadFromDiskAsync(checkedBinder);
                     }
                     else
                     {
@@ -1802,10 +1814,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     /// <summary>
     /// Reads the binder file on a background thread and adopts it only if the same binder is still open.
-    /// With <paramref name="yieldToNewEdits"/>, an edit typed while the file was being read also cancels
-    /// the reload, so the next check asks about it instead of silently dropping it.
+    /// An edit typed while the file is being read cancels adoption, including an explicit Reload: that
+    /// choice permits discarding earlier edits, never input entered after the read begins.
     /// </summary>
-    private async Task<bool> ReloadFromDiskAsync(LoadedBinder reloading, bool yieldToNewEdits)
+    private async Task<bool> ReloadFromDiskAsync(LoadedBinder reloading)
     {
         var path = reloading.Path;
         var generation = _dirtyGeneration;
@@ -1838,7 +1850,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return false;
         }
 
-        if (!ReferenceEquals(_current, reloading) || (yieldToNewEdits && _dirtyGeneration != generation))
+        if (!ReferenceEquals(_current, reloading) || _dirtyGeneration != generation)
         {
             return false;
         }
@@ -1862,7 +1874,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         foreach (var note in loaded.Binder.Notes)
         {
             _saved[note.Id] = SavedNote.Of(note);
-            _lastContent[note.Id] = NoteContent.Of(note);
+            _lastContent[note.Id] = SavedNote.Of(note);
         }
 
         _savedNoteIds = loaded.Binder.Notes.Select(note => note.Id).ToArray();
@@ -2559,18 +2571,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private void ApplyContentModified(Note note, DateTimeOffset? editTime)
     {
         var content = NoteContent.Of(note);
+        if (editTime is { } time && (!_lastContent.TryGetValue(note.Id, out var last) || last.Content != content))
+        {
+            _lastContent[note.Id] = new SavedNote(content, time);
+        }
+
         if (_saved.TryGetValue(note.Id, out var saved) && saved.Content == content)
         {
             note.Modified = saved.Modified;
         }
-        else if (editTime is { } time && (!_lastContent.TryGetValue(note.Id, out var last) || last != content))
+        else if (_lastContent.TryGetValue(note.Id, out var edited) && edited.Content == content)
         {
-            note.Modified = time;
-        }
-
-        if (editTime is not null)
-        {
-            _lastContent[note.Id] = content;
+            note.Modified = edited.Modified;
         }
     }
 

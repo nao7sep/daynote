@@ -1888,6 +1888,92 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
     }
 
+    [AvaloniaFact]
+    public async Task Undoing_to_the_old_baseline_during_a_save_keeps_the_later_edit_time()
+    {
+        var store = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(store);
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "A";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        vm.Editor.Body = "B";
+        var hold = store.HoldNextSave();
+        var save = vm.SaveNowCommand.ExecuteAsync(null);
+        try
+        {
+            await hold.Entered.Task;
+            _clock.Advance(TimeSpan.FromMinutes(1));
+            vm.Editor.Body = "A";
+        }
+        finally
+        {
+            hold.Release();
+            await save;
+        }
+        var editedAt = _clock.Now;
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal("A", SavedNote().Body);
+        Assert.Equal(editedAt, SavedNote().Modified);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Closing_finishes_an_edit_entered_during_its_older_save(bool shutdown)
+    {
+        var store = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(store);
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "older";
+        var hold = store.HoldNextSave();
+        var close = shutdown ? vm.ShutdownAsync() : vm.CloseBinderCommand.ExecuteAsync(null);
+        try
+        {
+            await hold.Entered.Task;
+            vm.Editor.Body = "latest";
+        }
+        finally
+        {
+            hold.Release();
+            await close;
+        }
+        Assert.Equal("latest", SavedNote().Body);
+        Assert.False(vm.HasBinder);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Explicit_reload_does_not_replace_input_entered_during_its_read()
+    {
+        var store = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(store);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var outside = new BinderStore().Load(BinderPath).Binder;
+        outside.Notes[0].Body = "outside";
+        new BinderStore().Save(BinderPath, outside);
+        vm.Editor.Body = "discard authorized";
+        _dialogs.ExternalChoice = ExternalChangeChoice.ReloadFromDisk;
+        var hold = store.HoldNextLoad();
+        var reload = vm.CheckExternalChangeAsync();
+        try
+        {
+            await hold.Entered.Task;
+            vm.Editor.Body = "later input";
+        }
+        finally
+        {
+            hold.Release();
+            await reload;
+        }
+        Assert.Equal("later input", vm.Editor.Body);
+        Assert.Equal("Unsaved changes", vm.SaveStateText);
+        await vm.ShutdownAsync();
+    }
+
     private Binder SavedBinder() => new BinderStore().Load(BinderPath).Binder;
 
     [AvaloniaFact]
@@ -2579,10 +2665,19 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         private Hold? _nextSave;
         private Hold? _nextCheck;
+        private Hold? _nextLoad;
 
         public Hold HoldNextSave() => _nextSave = new Hold();
 
         public Hold HoldNextCheck() => _nextCheck = new Hold();
+
+        public Hold HoldNextLoad() => _nextLoad = new Hold();
+
+        public override LoadedBinder Load(string path)
+        {
+            Interlocked.Exchange(ref _nextLoad, null)?.Wait();
+            return base.Load(path);
+        }
 
         /// <summary>While set, every write fails with it, as a full disk or a vanished volume would.</summary>
         public Exception? SaveFailure { get; set; }
