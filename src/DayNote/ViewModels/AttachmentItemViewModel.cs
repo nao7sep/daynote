@@ -21,9 +21,18 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     private long _size;
     private PixelSize? _dimensions;
     private bool _disposed;
+    private int _thumbnailGeneration;
+    private readonly Func<string, Task<(Bitmap Bitmap, PixelSize Size)>> _decodeThumbnail;
+
+    internal Task ThumbnailTask { get; private set; } = Task.CompletedTask;
 
     public AttachmentItemViewModel(Attachment attachment, IAppLogger log)
+        : this(attachment, log, DecodeThumbnailAsync) { }
+
+    internal AttachmentItemViewModel(Attachment attachment, IAppLogger log,
+        Func<string, Task<(Bitmap Bitmap, PixelSize Size)>> decodeThumbnail)
     {
+        _decodeThumbnail = decodeThumbnail;
         _log = log;
         Attachment = attachment;
         FileName = attachment.FileName;
@@ -43,7 +52,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
         if (IsImage && Exists)
         {
-            _ = LoadThumbnailAsync();
+            ThumbnailTask = LoadThumbnailAsync();
         }
     }
 
@@ -105,6 +114,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
     public void ShowUnavailable()
     {
+        _thumbnailGeneration++;
         Exists = false;
         Thumbnail?.Dispose();
         Thumbnail = null;
@@ -122,6 +132,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
     public void ClearOpenResult()
     {
+        _thumbnailGeneration++;
         _size = FileSize(FullPath);
         Exists = true;
         OnPropertyChanged(nameof(DetailsText));
@@ -132,35 +143,29 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
         if (IsImage && Thumbnail is null)
         {
-            _ = LoadThumbnailAsync();
+            ThumbnailTask = LoadThumbnailAsync();
         }
     }
 
     private async Task LoadThumbnailAsync()
     {
         var path = FullPath;
+        var generation = ++_thumbnailGeneration;
         try
         {
             // Decode off the UI thread so selecting an image-heavy note does not block the UI; the
             // full decode yields the original pixel size for the details line, then is scaled down to a
             // bounded thumbnail. The continuation resumes on the UI thread (assigning Thumbnail is
             // binding-safe there).
-            var (bitmap, size) = await Task.Run(() =>
-            {
-                using var stream = File.OpenRead(path);
-                using var full = new Bitmap(stream);
-                var original = full.PixelSize;
-                var width = Math.Min(ThumbnailWidth, original.Width);
-                var height = Math.Max(1, (int)Math.Round(original.Height * (double)width / original.Width));
-                return (full.CreateScaledBitmap(new PixelSize(width, height)), original);
-            });
+            var (bitmap, size) = await _decodeThumbnail(path);
 
-            if (_disposed)
+            if (_disposed || generation != _thumbnailGeneration || !Exists)
             {
                 bitmap.Dispose();
                 return;
             }
 
+            Thumbnail?.Dispose();
             Thumbnail = bitmap;
             _dimensions = size;
             OnPropertyChanged(nameof(DetailsText));
@@ -170,9 +175,23 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             // A corrupt or unsupported image is recoverable — the row just shows no preview — but it
             // is unexpected for a file we classified as an image, so it is recorded rather than swallowed.
             _log.Warn("Could not decode attachment thumbnail", new { path }, ex);
-            Thumbnail = null;
+            if (!_disposed && generation == _thumbnailGeneration)
+            {
+                Thumbnail?.Dispose();
+                Thumbnail = null;
+            }
         }
     }
+
+    private static Task<(Bitmap Bitmap, PixelSize Size)> DecodeThumbnailAsync(string path) => Task.Run(() =>
+    {
+        using var stream = File.OpenRead(path);
+        using var full = new Bitmap(stream);
+        var original = full.PixelSize;
+        var width = Math.Min(ThumbnailWidth, original.Width);
+        var height = Math.Max(1, (int)Math.Round(original.Height * (double)width / original.Width));
+        return (full.CreateScaledBitmap(new PixelSize(width, height)), original);
+    });
 
     private static long FileSize(string path)
     {
@@ -212,6 +231,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     public void Dispose()
     {
         _disposed = true;
+        _thumbnailGeneration++;
         Thumbnail?.Dispose();
         Thumbnail = null;
     }

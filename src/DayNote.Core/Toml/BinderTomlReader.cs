@@ -120,8 +120,11 @@ public static class BinderTomlReader
 
         if (document.Attachments is { } attachments)
         {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var name in attachments)
             {
+                if (!names.Add(name))
+                    throw new BinderFormatException("Two attachments in a note share a file name.");
                 note.Attachments.Add(IsBareFileName(name)
                     ? name
                     : throw new BinderFormatException("A note's attachment is not a bare file name."));

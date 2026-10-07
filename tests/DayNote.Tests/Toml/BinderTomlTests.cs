@@ -782,6 +782,17 @@ public sealed class BinderTomlTests
 
     // Hostile attachment edge cases
 
+    [Theory]
+    [InlineData("same.png", "same.png")]
+    [InlineData("same.png", "SAME.png")]
+    public void Colliding_attachment_references_make_the_binder_malformed(string first, string second)
+    {
+        var binder = OneNote();
+        binder.Notes[0].Attachments.Add(first);
+        binder.Notes[0].Attachments.Add(second);
+        Assert.Throws<BinderFormatException>(() => BinderTomlReader.Read(BinderTomlWriter.Write(binder)));
+    }
+
     [Fact]
     public void Missing_attachments_key_reads_as_empty_list()
     {
