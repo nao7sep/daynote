@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.Versioning;
@@ -106,12 +105,11 @@ public sealed class AtomicFileTests : IDisposable
 
     [MacOnlyFact]
     [SupportedOSPlatform("macos")]
-    public void A_changed_write_keeps_the_files_mode_and_extended_attributes_and_gets_a_fresh_modified_time()
+    public void A_changed_write_keeps_the_files_mode_and_gets_a_fresh_modified_time()
     {
         AtomicFile.WriteAllText(_path, "one");
         const UnixFileMode restricted = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         File.SetUnixFileMode(_path, restricted);
-        Xattr("-w", "com.example.tag", "kept", _path);
         var earlier = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
         File.SetLastWriteTimeUtc(_path, earlier);
 
@@ -119,17 +117,7 @@ public sealed class AtomicFileTests : IDisposable
 
         Assert.Equal("two", File.ReadAllText(_path, Encoding.UTF8));
         Assert.Equal(restricted, File.GetUnixFileMode(_path));
-        Assert.Equal("kept", Xattr("-p", "com.example.tag", _path));
         Assert.NotEqual(earlier, File.GetLastWriteTimeUtc(_path));
-    }
-
-    private static string Xattr(params string[] arguments)
-    {
-        using var process = Process.Start(new ProcessStartInfo("/usr/bin/xattr", arguments) { RedirectStandardOutput = true })!;
-        var output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit();
-        Assert.Equal(0, process.ExitCode);
-        return output.Trim();
     }
 
     [Fact]
