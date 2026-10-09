@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private RecordsWindow? _recordsWindow;
     private IReadOnlyList<ShortcutItem>? _shortcuts;
     private (int X, int Y, double Width, double Height)? _normalGeometry;
+    private bool _closed;
 
     // The pixel width the user last dragged each side pane to (the "intent"). Only a splitter drag
     // updates these; a window resize re-derives the displayed width but never overwrites the intent,
@@ -488,7 +489,9 @@ public partial class MainWindow : Window
 
     private void RememberNormalGeometry()
     {
-        if (WindowState != WindowState.Normal)
+        // A geometry read posted by a move or resize can run after the window closed; there is nothing to
+        // remember then, and a closed window has no screen to judge it against.
+        if (_closed || WindowState != WindowState.Normal)
             return;
 
         // Avalonia reports macOS title-bar zoom as Normal. Judge the settled native frame too,
@@ -512,6 +515,7 @@ public partial class MainWindow : Window
     // Symmetric with the OnOpened subscriptions, so no handler outlives the window.
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
         Localizer.Changed -= OnLanguageChanged;
         Activated -= OnWindowActivated;
         if (DataContext is MainWindowViewModel vm)

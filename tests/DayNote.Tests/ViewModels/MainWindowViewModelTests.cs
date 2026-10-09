@@ -59,6 +59,9 @@ public sealed class MainWindowViewModelTests : IDisposable
     // Every view model a test makes, so teardown can stop it even when the test failed before its own quit.
     private readonly List<MainWindowViewModel> _viewModels = [];
 
+    // Every window a test opens, so teardown closes it even when the test failed before closing it.
+    private readonly List<MainWindow> _windows = [];
+
     private MainWindowViewModel NewViewModel(
         Action<string>? deleteFile = null,
         Action<string>? deleteDirectory = null,
@@ -1005,6 +1008,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var (vm, store, _) = await OpenWithUnsavedEditAsync("kept by closing the question");
         store.SaveFailure = new IOException("No space left on device");
         var window = new MainWindow { DataContext = vm };
+        _windows.Add(window);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -1026,6 +1030,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var (vm, store, _) = await OpenWithUnsavedEditAsync("still writing as the session ends");
         var stalled = store.HoldNextSave();
         var window = new MainWindow { DataContext = vm };
+        _windows.Add(window);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -1491,6 +1496,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         }
 
         var window = new MainWindow { DataContext = vm };
+        _windows.Add(window);
         window.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Assert.IsType<ListBox>(window.FindControl<ListBox>("BindersList"));
@@ -2588,6 +2594,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var vm = NewViewModel();
         var window = new MainWindow { DataContext = vm };
+        _windows.Add(window);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -2605,6 +2612,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var vm = NewViewModel();
         var window = new MainWindow { DataContext = vm };
+        _windows.Add(window);
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
@@ -2726,23 +2734,48 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     public void Dispose()
     {
-        // A test that failed midway may have left a view model with a pending autosave or a quit to make,
-        // and a save, load or copy held on a background thread. Stop the view models from starting
-        // anything more, then let every held operation finish, so none of it runs into the next test.
+        // A test that failed midway may have left a window open, a view model with a pending autosave or a
+        // quit to make, and a save, load or copy held on a background thread. Every step runs whatever the
+        // others did, and their failures are reported together, so none of it runs into the next test. The
+        // temp root goes either way: the failure's own message is the evidence (tests-folder-conventions).
+        var failures = new List<Exception>();
+        void Attempt(Action step)
+        {
+            try
+            {
+                step();
+            }
+            catch (Exception ex)
+            {
+                failures.Add(ex);
+            }
+        }
+
         if (Dispatcher.UIThread.CheckAccess())
         {
             foreach (var vm in _viewModels)
             {
-                vm.BeginShutdown();
+                Attempt(vm.BeginShutdown);
             }
+
+            foreach (var window in _windows.Where(window => window.IsVisible))
+            {
+                Attempt(() =>
+                {
+                    window.DataContext = null;
+                    window.Close();
+                });
+            }
+
+            Attempt(() => Dispatcher.UIThread.RunJobs());
         }
 
-        GatedBinderStore.Hold.ReleaseAll();
-        HeldCopy.ReleaseAll();
+        Attempt(GatedBinderStore.Hold.ReleaseAll);
+        Attempt(HeldCopy.ReleaseAll);
 
         // Close the backup store so its singleton re-opens against the next test's throwaway root and
         // releases the file handle before the directory is deleted.
-        BackupStore.Close();
+        Attempt(BackupStore.Close);
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
         {
@@ -2751,6 +2784,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         catch (IOException)
         {
             // Best effort: a leftover temp directory is harmless.
+        }
+
+        if (failures.Count > 0)
+        {
+            throw new AggregateException("Test teardown failed.", failures);
         }
     }
 
