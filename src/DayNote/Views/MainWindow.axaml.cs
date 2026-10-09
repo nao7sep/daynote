@@ -310,7 +310,7 @@ public partial class MainWindow : Window
         {
             var target = Screens.All.FirstOrDefault(screen => WindowMetrics.CanRestoreWindowGeometry(
                 vm.WindowPositionX, vm.WindowPositionY, vm.WindowWidth, vm.WindowHeight,
-                [screen.WorkingArea]));
+                screen.WorkingArea, screen.Scaling));
             if (target is null)
             {
                 return;

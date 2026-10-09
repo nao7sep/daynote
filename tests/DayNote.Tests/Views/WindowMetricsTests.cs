@@ -43,19 +43,44 @@ public sealed class WindowMetricsTests
             scale));
     }
 
-    [Fact]
-    public void Saved_window_geometry_requires_a_position_on_a_current_working_area()
-    {
-        Avalonia.PixelRect[] workingAreas =
-        [
-            new(-1920, -200, 1920, 1080),
-            new(0, 0, 2560, 1440),
-        ];
+    private static bool OnEitherScreen(int x, int y, double width, double height, double scaling = 1) =>
+        WindowMetrics.CanRestoreWindowGeometry(x, y, width, height, new Avalonia.PixelRect(-1920, -200, 1920, 1080), scaling)
+        || WindowMetrics.CanRestoreWindowGeometry(x, y, width, height, new Avalonia.PixelRect(0, 0, 2560, 1440), scaling);
 
-        Assert.True(WindowMetrics.CanRestoreWindowGeometry(-1800, -100, 1200, 800, workingAreas));
-        Assert.True(WindowMetrics.CanRestoreWindowGeometry(0, 0, 1200, 800, workingAreas));
-        Assert.False(WindowMetrics.CanRestoreWindowGeometry(-2500, 100, 1200, 800, workingAreas));
-        Assert.False(WindowMetrics.CanRestoreWindowGeometry(2560, 100, 1200, 800, workingAreas));
+    [Fact]
+    public void A_saved_window_restores_where_its_title_bar_can_be_grabbed()
+    {
+        // Fully on either screen, negative coordinates included.
+        Assert.True(OnEitherScreen(-1800, -100, 1200, 800));
+        Assert.True(OnEitherScreen(0, 0, 1200, 800));
+
+        // Its top-left is off every screen, but its title bar reaches 620 pixels onto the left one.
+        Assert.True(OnEitherScreen(-2500, 100, 1200, 800));
+
+        // Only a corner, or a strip narrower than a grab, is on a screen.
+        Assert.False(OnEitherScreen(2559, 1439, 1200, 800));
+        Assert.False(OnEitherScreen(2500, 100, 1200, 800));
+        Assert.False(OnEitherScreen(-3110, 100, 1200, 800));
+
+        // The title bar is above the top of the screen, or too close to its bottom to show.
+        Assert.False(OnEitherScreen(100, -10, 1200, 800));
+        Assert.False(OnEitherScreen(100, 1420, 1200, 800));
+
+        // Entirely off every screen.
+        Assert.False(OnEitherScreen(2560, 100, 1200, 800));
+    }
+
+    [Fact]
+    public void A_narrow_window_needs_its_whole_title_bar_and_a_scaled_screen_scales_the_strip()
+    {
+        // A window narrower than a grab needs all of its title bar on the screen.
+        Assert.True(OnEitherScreen(2460, 100, 100, 400));
+        Assert.False(OnEitherScreen(2470, 100, 100, 400));
+
+        // At 2x, the grab is 240 device pixels wide and the title bar 64 tall.
+        Assert.True(OnEitherScreen(2320, 100, 1200, 800, scaling: 2));
+        Assert.False(OnEitherScreen(2330, 100, 1200, 800, scaling: 2));
+        Assert.False(OnEitherScreen(100, 1380, 1200, 800, scaling: 2));
     }
 
     [Theory]
@@ -70,7 +95,7 @@ public sealed class WindowMetricsTests
         int? x, int? y, double? width, double? height)
     {
         Assert.False(WindowMetrics.CanRestoreWindowGeometry(
-            x, y, width, height, [new Avalonia.PixelRect(0, 0, 1920, 1080)]));
+            x, y, width, height, new Avalonia.PixelRect(0, 0, 1920, 1080), 1));
     }
 
     [Fact]

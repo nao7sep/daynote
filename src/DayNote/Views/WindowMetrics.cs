@@ -17,21 +17,46 @@ public static class WindowMetrics
             ? Avalonia.Controls.WindowState.Maximized
             : Avalonia.Controls.WindowState.Normal;
 
+    // The strip along a window's top edge that the user drags it by: the title bar, at least as tall as the
+    // tallest system title bar DayNote meets (macOS 28, Windows about 31 device-independent pixels).
+    private const double TitleBarHeight = 32;
+
+    // How much of that strip must be on the screen for the user to grab it: room beside the window
+    // buttons on either platform, or the whole strip of a narrower window.
+    private const double GrabWidth = 120;
+
+    /// <summary>
+    /// Whether a saved window can be put back on this screen and still be moved by ordinary interaction
+    /// (window-conventions, Placement): its title bar lies on the working area from top to bottom, with
+    /// enough of its width on it to grab. Overlap alone is not enough, since a corner of the window can sit
+    /// on the screen with its title bar off it. The position is in device pixels, as the screen reports it,
+    /// and may be negative on a display left of or above the primary one; the size is in device-independent
+    /// pixels, scaled by the screen's factor.
+    /// </summary>
     public static bool CanRestoreWindowGeometry(
         int? x, int? y, double? width, double? height,
-        IEnumerable<Avalonia.PixelRect> workingAreas)
+        Avalonia.PixelRect workingArea, double scaling)
     {
         if (x is not { } savedX || y is not { } savedY
             || width is not > 0 || height is not > 0
-            || !double.IsFinite(width.Value) || !double.IsFinite(height.Value))
+            || !double.IsFinite(width.Value) || !double.IsFinite(height.Value)
+            || workingArea.Width <= 0 || workingArea.Height <= 0
+            || scaling <= 0 || !double.IsFinite(scaling))
         {
             return false;
         }
 
-        return workingAreas.Any(area =>
-            area.Width > 0 && area.Height > 0
-            && savedX >= area.X && savedX < (long)area.X + area.Width
-            && savedY >= area.Y && savedY < (long)area.Y + area.Height);
+        var titleBarTop = (double)savedY;
+        var titleBarBottom = titleBarTop + TitleBarHeight * scaling;
+        if (titleBarTop < workingArea.Y || titleBarBottom > (double)workingArea.Y + workingArea.Height)
+        {
+            return false;
+        }
+
+        var windowWidth = width.Value * scaling;
+        var visible = Math.Min((double)savedX + windowWidth, (double)workingArea.X + workingArea.Width)
+            - Math.Max(savedX, workingArea.X);
+        return visible >= Math.Min(windowWidth, GrabWidth * scaling);
     }
 
     public static bool IsMaximizedGeometry(

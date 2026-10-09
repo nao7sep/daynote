@@ -80,7 +80,7 @@ public partial class RecordsWindow : Window
         {
             if (_vm.Placement is not { } saved
                 || !Screens.All.Any(screen => WindowMetrics.CanRestoreWindowGeometry(
-                    saved.X, saved.Y, saved.Width, saved.Height, [screen.WorkingArea])))
+                    saved.X, saved.Y, saved.Width, saved.Height, screen.WorkingArea, screen.Scaling)))
             {
                 return;
             }
