@@ -289,7 +289,7 @@ public sealed class RecordsLoggerTests : IDisposable
 
         Assert.Null(ex);
         var file = Assert.Single(Directory.GetFiles(LogsDirectory));
-        Assert.Matches(@"^\d{8}-\d{6}-\d{3}-utc\.log$", Path.GetFileName(file));
+        Assert.Matches(@"^\d{8}-\d{6}-utc\.log$", Path.GetFileName(file));
 
         var lines = File.ReadAllLines(file).Select(line => JsonNode.Parse(line)!).ToArray();
         Assert.Equal(3, lines.Length);

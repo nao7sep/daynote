@@ -18,7 +18,7 @@ namespace DayNote.Logging;
 /// A row holds the event <c>time</c>, its <c>session</c> (this launch's start time), <c>level</c>,
 /// <c>message</c>, the <c>note_id</c> it concerns when the entry names a <c>noteId</c>, and every other
 /// field given as one JSON object. An entry the database cannot take is appended as one JSON line to
-/// <c>logs/yyyymmdd-hhmmss-fff-utc.log</c>, named for the session, carrying the database's error; if that
+/// <c>logs/yyyymmdd-hhmmss-utc.log</c>, named for the session, carrying the database's error; if that
 /// fails too, it goes to <see cref="Console.Error"/>. Logging never throws.
 ///
 /// The records window reads through the same thread (<see cref="IRecordsSource"/>), so a read sees

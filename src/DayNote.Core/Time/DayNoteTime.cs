@@ -5,8 +5,8 @@ namespace DayNote.Core.Time;
 /// <summary>
 /// Timestamp conventions for DayNote. Internal timestamps are UTC, ISO-8601 with millisecond
 /// precision (the serialized form used for data values such as the backup store's written_at_utc).
-/// Filename timestamps use <c>yyyymmdd-hhmmss-fff-utc</c> at millisecond precision — currently the
-/// per-launch log filename — so two events within the same second still produce distinct names.
+/// Filename timestamps use <c>yyyymmdd-hhmmss-utc</c> at second precision; the one such name is the
+/// per-launch fallback log.
 /// User-facing timestamps are rendered in the reader's culture and in the display zone: the
 /// computer's own by default (<see cref="SystemZone"/>), or a zone the user chose from
 /// <see cref="ZoneIds"/>.
@@ -48,9 +48,12 @@ public static class DayNoteTime
             || DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, styles, out value);
     }
 
-    /// <summary>Filename-safe UTC stamp in the <c>yyyymmdd-hhmmss-fff-utc</c> convention (millisecond precision).</summary>
+    /// <summary>
+    /// Filename-safe UTC stamp in the <c>yyyymmdd-hhmmss-utc</c> convention. Second precision is enough: it
+    /// names one launch's fallback log, and the single-instance lease keeps launches from overlapping.
+    /// </summary>
     public static string FileStamp(DateTimeOffset value) =>
-        value.ToUniversalTime().ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + "-utc";
+        value.ToUniversalTime().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-utc";
 
     /// <summary>The saved time-zone setting that means "follow the computer".</summary>
     public const string SystemZone = "system";
