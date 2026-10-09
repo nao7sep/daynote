@@ -34,8 +34,11 @@ public sealed class RecordsLoggerTests : IDisposable
     private string RecordsFile => Path.Combine(_root, "records.sqlite3");
     private string LogsDirectory => Path.Combine(_root, "logs");
 
+    // Every time the logger records comes from here, so a test moves time explicitly.
+    private readonly ManualClock _clock = new(new DateTimeOffset(2026, 6, 1, 9, 0, 0, TimeSpan.Zero));
+
     private RecordsLogger Open(bool debugEnabled = false) =>
-        RecordsLogger.Open(RecordsFile, LogsDirectory, debugEnabled);
+        RecordsLogger.Open(RecordsFile, LogsDirectory, debugEnabled, _clock);
 
     private sealed record Row(string Time, string Session, string Level, string Message, string? NoteId, JsonObject Fields);
 
@@ -101,6 +104,23 @@ public sealed class RecordsLoggerTests : IDisposable
     }
 
     [Fact]
+    public void Closing_waits_only_within_its_bound_while_the_records_thread_is_still_busy()
+    {
+        using var release = new System.Threading.ManualResetEventSlim();
+        var log = Open();
+        log.Stored += () => release.Wait();
+        log.Info("written before the close");
+
+        var stopwatch = Stopwatch.StartNew();
+        log.Close(TimeSpan.FromMilliseconds(100));
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2), $"Closing waited {stopwatch.Elapsed}.");
+
+        // The thread carries on past the bound: what it was writing is kept, and it closes the database.
+        release.Set();
+        Assert.Equal(["written before the close"], ReadRows().Select(r => r.Message));
+    }
+
+    [Fact]
     public void One_launch_is_one_session_and_the_next_launch_another()
     {
         using (var first = Open())
@@ -109,7 +129,7 @@ public sealed class RecordsLoggerTests : IDisposable
             first.Info("b");
         }
 
-        System.Threading.Thread.Sleep(5);
+        _clock.Advance(TimeSpan.FromSeconds(1));
 
         using (var second = Open())
         {

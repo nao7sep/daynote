@@ -201,7 +201,10 @@ internal sealed class SingleInstanceLease : IDisposable
         }
     }
 
-    public void Dispose()
+    public void Dispose() => Dispose(TimeSpan.FromSeconds(2));
+
+    /// <summary>Releases the lease, waiting up to <paramref name="listenerBound"/> for the listener to stop.</summary>
+    public void Dispose(TimeSpan listenerBound)
     {
         if (_disposed)
             return;
@@ -214,7 +217,7 @@ internal sealed class SingleInstanceLease : IDisposable
         }
 
         _listener.Stop();
-        _listenerThread.Join(TimeSpan.FromSeconds(2));
+        _listenerThread.Join(listenerBound);
         var mutex = Interlocked.Exchange(ref _mutex, null);
         if (mutex is not null)
         {

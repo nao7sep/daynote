@@ -21,6 +21,18 @@ internal static class Program
     /// <summary>The single path resolver, resolved once here and threaded to the rest of the app.</summary>
     internal static AppPaths Paths { get; private set; } = null!;
 
+    /// <summary>
+    /// Set once the operating system is ending the session. Everything after the main window closes then
+    /// shares one short bound, so DayNote never holds up a logout, restart or shutdown.
+    /// </summary>
+    internal static volatile bool SessionEnding;
+
+    // The session-end shares of that bound: writing what the quit logged, closing the records database,
+    // and releasing the single-instance lease.
+    private static readonly TimeSpan SessionEndFlushBound = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan SessionEndCloseBound = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan SessionEndLeaseBound = TimeSpan.FromMilliseconds(200);
+
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
@@ -106,7 +118,17 @@ internal static class Program
             // close below runs, so what the quit logged is written here first, within the logger's bound.
             return BuildAvaloniaApp().StartWithClassicDesktopLifetime(
                 args,
-                lifetime => lifetime.Exit += (_, _) => logger.Flush());
+                lifetime => lifetime.Exit += (_, _) =>
+                {
+                    if (SessionEnding)
+                    {
+                        logger.Flush(SessionEndFlushBound);
+                    }
+                    else
+                    {
+                        logger.Flush();
+                    }
+                });
         }
         catch (Exception ex)
         {
@@ -117,7 +139,15 @@ internal static class Program
         finally
         {
             logger.Info("DayNote shutting down", new { reason = forced ? "forced" : "clean" });
-            logger.Dispose();
+            if (SessionEnding)
+            {
+                logger.Close(SessionEndCloseBound);
+                ownedInstance?.Dispose(SessionEndLeaseBound);
+            }
+            else
+            {
+                logger.Dispose();
+            }
         }
     }
 

@@ -38,6 +38,8 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         FileName = attachment.FileName;
         FullPath = attachment.FullPath;
         IsImage = attachment.IsImage;
+        // On the UI thread, as the note's rows are built: these files sit in the open binder's own folder,
+        // and when that volume stalls the binder cannot be used anyway.
         Exists = File.Exists(attachment.FullPath);
         _size = FileSize(attachment.FullPath);
 

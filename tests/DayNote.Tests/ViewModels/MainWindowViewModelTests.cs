@@ -56,6 +56,9 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     private string BinderPath => Path.Combine(_home, "test.daynote");
 
+    // Every view model a test makes, so teardown can stop it even when the test failed before its own quit.
+    private readonly List<MainWindowViewModel> _viewModels = [];
+
     private MainWindowViewModel NewViewModel(
         Action<string>? deleteFile = null,
         Action<string>? deleteDirectory = null,
@@ -65,6 +68,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var vm = new MainWindowViewModel(
             new AppPaths(), _dialogs, log ?? new NullLogger(), deleteFile, deleteDirectory, _clock, binderStore, copyFile);
+        _viewModels.Add(vm);
         Assert.True(vm.IsReady);
         return vm;
     }
@@ -312,6 +316,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         try
         {
             var vm = new MainWindowViewModel(new AppPaths(), _dialogs, log);
+            _viewModels.Add(vm);
             await vm.InitializeAsync();
 
             Assert.True(vm.IsReady);
@@ -338,6 +343,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         try
         {
             var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+            _viewModels.Add(vm);
             await vm.InitializeAsync();
 
             Assert.False(vm.IsReady);
@@ -366,6 +372,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var before = File.ReadAllBytes(ConfigPath);
 
         var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+        _viewModels.Add(vm);
         await vm.InitializeAsync();
 
         Assert.False(vm.IsReady);
@@ -387,6 +394,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var log = new RecordingLogger();
 
         var vm = new MainWindowViewModel(new AppPaths(), _dialogs, log);
+        _viewModels.Add(vm);
         await vm.InitializeAsync();
 
         Assert.True(vm.IsReady);
@@ -409,6 +417,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var before = File.ReadAllBytes(ConfigPath);
 
         var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+        _viewModels.Add(vm);
         await vm.InitializeAsync();
 
         Assert.False(vm.IsReady);
@@ -431,6 +440,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var log = new RecordingLogger();
 
         var vm = new MainWindowViewModel(new AppPaths(), _dialogs, log);
+        _viewModels.Add(vm);
         await vm.InitializeAsync();
         Assert.True(vm.IsReady);
         Assert.Equal(new AppState().BindersPaneWidth, vm.BindersPaneWidth);
@@ -2226,13 +2236,13 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         // Deleting the file in Finder, with the binder never opened here.
         File.Delete(travel);
-        vm.RefreshKnownBinders();
+        await vm.RefreshKnownBinders();
         Assert.True(missing.IsMissing);
         Assert.Empty(vm.Results);
 
         // The open binder's row stays quiet: its next save writes the file again.
         File.Delete(BinderPath);
-        vm.RefreshKnownBinders();
+        await vm.RefreshKnownBinders();
         Assert.False(open.IsMissing);
 
         // Removing the entry needs no file, and it does not come back.
@@ -2244,7 +2254,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         // A file that comes back clears the marker on the next look.
         File.WriteAllText(travel, "{}");
-        vm.RefreshKnownBinders();
+        await vm.RefreshKnownBinders();
         Assert.DoesNotContain(vm.Binders, binder => binder.IsMissing);
 
         await vm.ShutdownAsync();
@@ -2716,6 +2726,20 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     public void Dispose()
     {
+        // A test that failed midway may have left a view model with a pending autosave or a quit to make,
+        // and a save, load or copy held on a background thread. Stop the view models from starting
+        // anything more, then let every held operation finish, so none of it runs into the next test.
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            foreach (var vm in _viewModels)
+            {
+                vm.BeginShutdown();
+            }
+        }
+
+        GatedBinderStore.Hold.ReleaseAll();
+        HeldCopy.ReleaseAll();
+
         // Close the backup store so its singleton re-opens against the next test's throwaway root and
         // releases the file handle before the directory is deleted.
         BackupStore.Close();
@@ -2918,6 +2942,99 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.BeginShutdown();
     }
 
+    // ----- A required question that cannot be shown (modal-dialog conventions) ----------------------
+
+    [AvaloniaFact]
+    public async Task A_quit_question_that_cannot_be_shown_cancels_the_quit_and_keeps_the_edit()
+    {
+        var (vm, store, log) = await OpenWithUnsavedEditAsync("kept");
+        store.SaveFailure = new IOException("No space left on device");
+        _dialogs.QuitAnswer = () => throw new InvalidOperationException("The owner window is gone.");
+
+        Assert.False(await vm.QuitAsync());
+
+        Assert.True(vm.HasBinder);
+        Assert.Equal("kept", vm.Editor.Body);
+        Assert.Contains(("error", "Could not show the quit question; the quit is cancelled"), log.Entries);
+
+        store.SaveFailure = null;
+        Assert.True(await vm.QuitAsync());
+        Assert.Equal("kept", SavedBody());
+    }
+
+    [AvaloniaFact]
+    public async Task A_wait_for_attachments_that_cannot_be_shown_cancels_the_quit_and_the_add_still_lands()
+    {
+        var (vm, held, note, _, adding) = await StartHeldAddAsync();
+        _dialogs.AttachmentWaitAnswer = _ => throw new InvalidOperationException("The owner window is gone.");
+        vm.BeginShutdown();
+
+        var quitting = vm.QuitAsync();
+        _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
+        Assert.False(await quitting);
+
+        held.Release();
+        await adding;
+        Assert.Single(note.Attachments);
+        Assert.True(vm.HasBinder);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Single(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_wait_for_attachments_that_cannot_be_shown_keeps_the_binder_open_instead_of_switching()
+    {
+        var (vm, held, _, _, adding) = await StartHeldAddAsync();
+        _dialogs.AttachmentWaitAnswer = _ => throw new InvalidOperationException("The owner window is gone.");
+        _dialogs.BinderToCreate = Path.Combine(_home, "second.daynote");
+
+        var switching = vm.NewBinderCommand.ExecuteAsync(null);
+        _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
+        await switching;
+
+        Assert.Equal(BinderPath, vm.SelectedBinder?.Path);
+        held.Release();
+        await adding;
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task An_outside_change_question_that_cannot_be_shown_writes_nothing()
+    {
+        var log = new ListLogger();
+        var vm = await OpenNewBinderAsync(log: log);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        ChangeOutside("Changed outside");
+        var outside = File.ReadAllBytes(BinderPath);
+        _dialogs.ExternalAnswer = () => throw new InvalidOperationException("The owner window is gone.");
+
+        vm.Editor.Body = "local edit";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.Equal(outside, File.ReadAllBytes(BinderPath));
+        Assert.Equal("local edit", vm.Editor.Body);
+        Assert.Contains(("error", "Could not show the question about a binder changed on disk"), log.Entries);
+        vm.BeginShutdown();
+    }
+
+    [AvaloniaFact]
+    public async Task A_startup_message_that_cannot_be_shown_is_logged_instead_of_lost()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(ConfigPath, "{ not json");
+        _dialogs.ErrorDialogFailure = new InvalidOperationException("The owner window is gone.");
+        var log = new RecordingLogger();
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, log);
+        _viewModels.Add(vm);
+
+        await vm.InitializeAsync();
+
+        Assert.False(vm.IsReady);
+        Assert.Contains(("error", "Startup could not finish"), log.Entries);
+    }
+
     private sealed class FakeDialogService : IDialogService
     {
         public string? BinderToCreate { get; set; }
@@ -2949,10 +3066,12 @@ public sealed class MainWindowViewModelTests : IDisposable
             return Task.FromResult(ConfirmResult);
         }
         public List<(Message Title, Message Message)> Errors { get; } = [];
+        /// <summary>When set, the error dialog cannot be shown and fails with it.</summary>
+        public Exception? ErrorDialogFailure { get; set; }
         public Task ShowErrorAsync(Message title, Message message)
         {
             Errors.Add((title, message));
-            return Task.CompletedTask;
+            return ErrorDialogFailure is null ? Task.CompletedTask : Task.FromException(ErrorDialogFailure);
         }
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
@@ -3046,7 +3165,26 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         public sealed class Hold
         {
+            private static readonly List<Hold> Unreleased = [];
             private readonly ManualResetEventSlim _released = new();
+
+            public Hold()
+            {
+                lock (Unreleased)
+                {
+                    Unreleased.Add(this);
+                }
+            }
+
+            /// <summary>Releases every hold a test left, so a failed test never strands its thread.</summary>
+            public static void ReleaseAll()
+            {
+                lock (Unreleased)
+                {
+                    Unreleased.ForEach(hold => hold.Release());
+                    Unreleased.Clear();
+                }
+            }
 
             public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -3064,7 +3202,25 @@ public sealed class MainWindowViewModelTests : IDisposable
     /// a slow drive would; then it copies as the app does.</summary>
     private sealed class HeldCopy
     {
+        private static readonly List<HeldCopy> Unreleased = [];
         private readonly ManualResetEventSlim _released = new();
+
+        public HeldCopy()
+        {
+            lock (Unreleased)
+            {
+                Unreleased.Add(this);
+            }
+        }
+
+        public static void ReleaseAll()
+        {
+            lock (Unreleased)
+            {
+                Unreleased.ForEach(held => held.Release());
+                Unreleased.Clear();
+            }
+        }
 
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

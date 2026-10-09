@@ -123,6 +123,33 @@ public sealed class BlockingDialogTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task The_quit_question_offers_cancel_focused_and_it_keeps_the_app_open()
+    {
+        var (service, owner) = Service();
+        var asking = service.AskQuitWithUnsavedBinderAsync("Journal");
+        var dialog = OpenDialog(owner);
+        var cancel = ButtonTagged(dialog, "cancel");
+
+        Assert.Same(cancel, dialog.FocusManager?.GetFocusedElement());
+        cancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(UnsavedQuitChoice.Stay, await asking);
+
+        var retrying = service.AskQuitWithUnsavedBinderAsync("Journal");
+        ButtonTagged(OpenDialog(owner), "retry").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(UnsavedQuitChoice.Retry, await retrying);
+    }
+
+    [AvaloniaFact]
+    public void The_session_end_save_loop_ends_when_its_work_finishes_on_another_thread()
+    {
+        var work = Task.Run(() => Task.Delay(20));
+
+        MainWindow.RunUntilDone(work);
+
+        Assert.True(work.IsCompleted);
+    }
+
+    [AvaloniaFact]
     public async Task An_attachment_wait_for_adds_already_settled_shows_nothing()
     {
         var (service, owner) = Service();

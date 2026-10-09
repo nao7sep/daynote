@@ -59,12 +59,15 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     private readonly string _session;
     private readonly string _fallbackFile;
     private readonly bool _debugEnabled;
+    private readonly TimeProvider _clock;
     private int _disposed;
 
     private RecordsLogger(
-        SqliteConnection? connection, Exception? openError, DateTimeOffset sessionStart, string fallbackDirectory, bool debugEnabled)
+        SqliteConnection? connection, Exception? openError, DateTimeOffset sessionStart, string fallbackDirectory, bool debugEnabled,
+        TimeProvider clock)
     {
         _connection = connection;
+        _clock = clock;
         _openError = openError;
         _session = DayNoteTime.ToIso(sessionStart);
         _fallbackFile = Path.Combine(fallbackDirectory, $"{DayNoteTime.FileStamp(sessionStart)}.log");
@@ -80,16 +83,18 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     /// <param name="recordsFile">The app's <c>records.sqlite3</c>.</param>
     /// <param name="fallbackDirectory">The app's <c>logs/</c> directory, created on the first fallback.</param>
     /// <param name="debugEnabled">Whether <see cref="Debug"/> entries are written (off on end-user machines).</param>
-    public static RecordsLogger Open(string recordsFile, string fallbackDirectory, bool debugEnabled)
+    /// <param name="clock">The clock the session start and every entry's time are read from.</param>
+    public static RecordsLogger Open(string recordsFile, string fallbackDirectory, bool debugEnabled, TimeProvider? clock = null)
     {
-        var sessionStart = DateTimeOffset.UtcNow;
+        clock ??= TimeProvider.System;
+        var sessionStart = clock.GetUtcNow();
         try
         {
-            return new RecordsLogger(OpenDatabase(recordsFile), null, sessionStart, fallbackDirectory, debugEnabled);
+            return new RecordsLogger(OpenDatabase(recordsFile), null, sessionStart, fallbackDirectory, debugEnabled, clock);
         }
         catch (Exception ex)
         {
-            var logger = new RecordsLogger(null, ex, sessionStart, fallbackDirectory, debugEnabled);
+            var logger = new RecordsLogger(null, ex, sessionStart, fallbackDirectory, debugEnabled, clock);
             logger.Warn("Records database could not be opened; this session's records go to the fallback file", new { file = recordsFile }, ex);
             return logger;
         }
@@ -146,7 +151,7 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     /// </summary>
     private void Write(string level, string message, object? data, Exception? error)
     {
-        var time = DayNoteTime.ToIso(DateTimeOffset.UtcNow);
+        var time = DayNoteTime.ToIso(_clock.GetUtcNow());
         var (fields, noteId) = SafeFields(data, error);
         TryQueue(() => Insert(time, level, message, noteId, fields));
     }
@@ -236,6 +241,17 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         {
             operation();
         }
+
+        // Closed by the owning thread once everything queued is written, so a close that checkpoints the
+        // database holds up no caller: closing waits only within its own bound.
+        try
+        {
+            _connection?.Dispose();
+        }
+        catch
+        {
+            // Best effort on the way out.
+        }
     }
 
     /// <summary>Queues <paramref name="operation"/> for the owning thread; false once the logger is closed.</summary>
@@ -252,7 +268,10 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     }
 
     /// <summary>Waits, within a bound, until every entry logged so far is written.</summary>
-    public void Flush()
+    public void Flush() => Flush(FlushWait);
+
+    /// <summary>Waits up to <paramref name="bound"/> until every entry logged so far is written.</summary>
+    public void Flush(TimeSpan bound)
     {
         if (Thread.CurrentThread == _owner)
         {
@@ -263,7 +282,7 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         var drained = new ManualResetEventSlim();
         if (TryQueue(drained.Set))
         {
-            drained.Wait(FlushWait);
+            drained.Wait(bound);
         }
     }
 
@@ -408,7 +427,14 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     /// Writes what is queued, within a bound, and closes the database. Entries logged afterwards are
     /// dropped.
     /// </summary>
-    public void Dispose()
+    public void Dispose() => Close(CloseWait);
+
+    /// <summary>
+    /// Stops taking entries and waits up to <paramref name="bound"/> while the owning thread writes what is
+    /// queued and closes the database. Past the bound the thread carries on, and what it has not written
+    /// ends with the process. Entries logged afterwards are dropped.
+    /// </summary>
+    public void Close(TimeSpan bound)
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1)
         {
@@ -416,18 +442,6 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         }
 
         _queue.CompleteAdding();
-        if (!_owner.Join(CloseWait))
-        {
-            return;
-        }
-
-        try
-        {
-            _connection?.Dispose();
-        }
-        catch
-        {
-            // Best effort on the way out.
-        }
+        _owner.Join(bound);
     }
 }

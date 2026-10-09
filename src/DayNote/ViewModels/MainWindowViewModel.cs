@@ -102,7 +102,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // until its result is applied, and an open or a reload holds it around its read, so no two of them
     // ever act on the file or the baseline at once: two saves never overlap on the file, and a save never
     // lands on top of content a reload is reading. It is never held while a question is open. The UI
-    // thread stays the only place that takes or releases it.
+    // thread stays the only place that takes or releases it. Waits for it have no bound: a write that
+    // never returns leaves a binder switch waiting, but the window stays usable and a quit is bounded and
+    // offers Quit anyway, while a timeout could not stop the write it would abandon.
     private readonly SemaphoreSlim _binderFileLock = new(1, 1);
 
     // Completes when the open question about a binder changed outside DayNote is answered and applied. A
@@ -441,21 +443,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// <summary>Runs after the window is shown, so dialogs have an owner.</summary>
     public async Task InitializeAsync()
     {
-        // A settings file that stopped startup is reported once the window can own the dialog
-        // (store-recovery-conventions).
-        if (_configLoadError is { } configError)
+        try
         {
-            await _dialogs.ShowErrorAsync(
-                Message.Of("failure.startupDataTitle"),
-                FailurePresentation.StartupSettings(_paths.ConfigFile, configError));
-            return;
-        }
+            // A settings file that stopped startup is reported once the window can own the dialog
+            // (store-recovery-conventions).
+            if (_configLoadError is { } configError)
+            {
+                await _dialogs.ShowErrorAsync(
+                    Message.Of("failure.startupDataTitle"),
+                    FailurePresentation.StartupSettings(_paths.ConfigFile, configError));
+                return;
+            }
 
-        if (!string.IsNullOrEmpty(_state.CurrentBinderPath)
-            && _config.Binders.Any(binder => PathKey.Equal(binder.Path, _state.CurrentBinderPath))
-            && File.Exists(_state.CurrentBinderPath))
+            var reopen = _state.CurrentBinderPath;
+            if (!string.IsNullOrEmpty(reopen)
+                && _config.Binders.Any(binder => PathKey.Equal(binder.Path, reopen))
+                && await Task.Run(() => File.Exists(reopen)))
+            {
+                await OpenBinderPathAsync(reopen, isNew: false, selectNoteId: _state.CurrentNoteId);
+            }
+        }
+        catch (Exception ex)
         {
-            await OpenBinderPathAsync(_state.CurrentBinderPath!, isNew: false, selectNoteId: _state.CurrentNoteId);
+            // The window calls this without waiting on it, so a failure is recorded here rather than lost.
+            _log.Error("Startup could not finish", new { settingsUnreadable = _configLoadError is not null }, ex);
         }
     }
 
@@ -504,9 +515,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             await GiveUpImportsForSessionEndAsync();
         }
-        else
+        else if (!await WaitForImportsAsync())
         {
-            await WaitForImportsAsync();
+            _shuttingDown = false;
+            _autosaveTimer.Start();
+            return false;
         }
 
         // The state goes first, while the binder is still open: tearing it down clears the selection,
@@ -535,6 +548,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// </summary>
     public async Task<bool> QuitAsync()
     {
+        // Attachments still being added finish first. A wait whose dialog cannot be shown cancels the quit,
+        // and DayNote stays open as it was.
+        if (!await WaitForImportsAsync())
+        {
+            _shuttingDown = false;
+            _autosaveTimer.Start();
+            return false;
+        }
+
         while (!await ShutdownAsync())
         {
             // A binder a newer DayNote rewrote was closed instead of saved; its notice is showing and
@@ -545,7 +567,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return false;
             }
 
-            switch (await _dialogs.AskQuitWithUnsavedBinderAsync(TitleFor(binder.Path)))
+            UnsavedQuitChoice choice;
+            try
+            {
+                choice = await _dialogs.AskQuitWithUnsavedBinderAsync(TitleFor(binder.Path));
+            }
+            catch (Exception ex)
+            {
+                // A required question that cannot be shown cancels the quit the user started: the app stays
+                // open with the binder and its edits (modal-dialog conventions).
+                _log.Error("Could not show the quit question; the quit is cancelled", new { path = binder.Path }, ex);
+                return false;
+            }
+
+            switch (choice)
             {
                 case UnsavedQuitChoice.Retry:
                     continue;
@@ -589,6 +624,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     // The binder's pending edits, within the quit's bound. A save still running at the bound carries on
     // and settles as any save does; the quit treats its outcome as unknown, so the edits count as unsaved.
+    // A quit that goes ahead anyway may end the process mid-write and leave that write's temp file beside
+    // the binder: nothing after a forced exit from a stalled volume can promise to remove it.
     private async Task<bool> SaveBinderForQuitAsync()
     {
         try
@@ -701,7 +738,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     [RelayCommand]
     private async Task OpenKnownBinder(BinderListItemViewModel item)
     {
-        if (!File.Exists(item.Path))
+        if (!await Task.Run(() => File.Exists(item.Path)))
         {
             // The row owns this: it is the narrowest surviving owner, it already shows the path,
             // and several missing binders each say it once instead of replacing one shared card.
@@ -866,7 +903,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         await Task.WhenAll(adding.Select(import => import.Copying));
         if (ReferenceEquals(_current, binder))
         {
-            DeleteNoteAssets(binder.Path, note, saved);
+            await DeleteNoteAssetsAsync(binder.Path, note, saved);
         }
     }
 
@@ -876,12 +913,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// can resolve once the note is gone. Files left behind are reported, whether the save failed or the
     /// delete did, because the user asked for those files to go.
     /// </summary>
-    private void DeleteNoteAssets(string binderPath, Note note, bool removalSaved)
+    /// <remarks>The folder is checked and deleted off the UI thread: it can hold large files on a slow or
+    /// vanished volume.</remarks>
+    private async Task DeleteNoteAssetsAsync(string binderPath, Note note, bool removalSaved)
     {
         var directory = BinderStore.NoteAssetsDirectory(binderPath, note.Id);
         try
         {
-            if (!Directory.Exists(directory))
+            if (!await Task.Run(() => Directory.Exists(directory)))
             {
                 return;
             }
@@ -893,7 +932,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
             }
 
-            _deleteDirectory(directory);
+            await Task.Run(() => _deleteDirectory(directory));
         }
         catch (Exception ex)
         {
@@ -1107,18 +1146,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         if (note.Locked && outcome.AddedNames.Count > 0)
         {
             _log.Info("Discarding attachment-add result: note was locked", new { noteId, copied = outcome.AddedNames.Count });
-            foreach (var name in outcome.AddedNames)
-            {
-                var copy = Path.Combine(directory, name);
-                try
-                {
-                    _deleteFile(copy);
-                }
-                catch (Exception ex)
-                {
-                    _log.Warn("Could not remove an attachment copy the lock left unattached", new { noteId, path = copy }, ex);
-                }
-            }
+            await DeleteCopiesAsync(directory, outcome.AddedNames);
 
             if (shown)
             {
@@ -1383,31 +1411,39 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// shows it, and after a few seconds the user may stop waiting: the adds still running are then given
     /// up, their copies removed, and the user is told which files were not added.
     /// </summary>
-    private async Task WaitForImportsAsync()
+    /// <returns>False when the wait's dialog could not be shown; the caller then cancels what it was
+    /// doing, since nothing tells the user why it is waiting.</returns>
+    private async Task<bool> WaitForImportsAsync()
     {
         var waiting = _imports.ToArray();
         if (waiting.Length == 0)
         {
-            return;
+            return true;
         }
 
         var settled = Task.WhenAll(waiting.Select(import => import.Settled));
         await Task.WhenAny(settled, Task.Delay(ImportWaitNoticeDelay, _clock));
         if (settled.IsCompleted)
         {
-            return;
+            return true;
         }
 
         _log.Info("Waiting for attachments being added", new { adds = waiting.Length });
-        if (!await _dialogs.WaitForAttachmentsAsync(settled, ImportStopOfferDelay))
+        bool stop;
+        try
         {
-            return;
+            stop = await _dialogs.WaitForAttachmentsAsync(settled, ImportStopOfferDelay);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Could not show the wait for attachments being added", new { adds = waiting.Length }, ex);
+            return settled.IsCompleted;
         }
 
-        var stopped = waiting.Where(import => !import.Settled.IsCompleted).ToArray();
+        var stopped = stop ? waiting.Where(import => !import.Settled.IsCompleted).ToArray() : [];
         if (stopped.Length == 0)
         {
-            return;
+            return true;
         }
 
         _ = GiveUpImports(stopped);
@@ -1417,6 +1453,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             OperationResultKind.Warning,
             Message.Of("attachments.stopped", ("names", SummarizeFileNames(names))),
             AttachmentStoppedResultKey);
+        return true;
     }
 
     /// <summary>
@@ -1546,21 +1583,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // leaves a reopened binder pointing at a deleted file. A binder reloaded or closed meanwhile may
         // still refer to it, so it stays.
         var saved = await SaveCurrentAsync();
-        if (!ReferenceEquals(_current, binder) || !File.Exists(fullPath))
+        if (!ReferenceEquals(_current, binder))
         {
-            return;
-        }
-
-        if (!saved)
-        {
-            _log.Warn("Kept a removed attachment's file: its removal was not saved", new { noteId = note.Id, path = fullPath });
-            ShowFileLeft();
             return;
         }
 
         try
         {
-            _deleteFile(fullPath);
+            // The binder's folder can be on a slow or vanished volume, so the file is checked and deleted
+            // off the UI thread.
+            if (!await Task.Run(() => File.Exists(fullPath)))
+            {
+                return;
+            }
+
+            if (!saved)
+            {
+                _log.Warn("Kept a removed attachment's file: its removal was not saved", new { noteId = note.Id, path = fullPath });
+                ShowFileLeft();
+                return;
+            }
+
+            await Task.Run(() => _deleteFile(fullPath));
         }
         catch (Exception ex)
         {
@@ -1695,7 +1739,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     private async Task OpenBinderPathAsync(string path, bool isNew, string? selectNoteId = null)
     {
-        if (!IsReady)
+        // Nothing opens once a quit has begun, including an open whose own checks were still running.
+        if (!IsReady || _shuttingDown)
         {
             return;
         }
@@ -1804,8 +1849,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         _log.Info("Closing binder", new { path = _current.Path });
 
-        // Attachments still being added finish first, so the flush below carries them.
-        await WaitForImportsAsync();
+        // Attachments still being added finish first, so the flush below carries them. A wait whose dialog
+        // cannot be shown keeps the binder open, as a failed flush does.
+        if (!await WaitForImportsAsync())
+        {
+            return false;
+        }
+
         if (_current is null)
         {
             return true;
@@ -2063,6 +2113,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             choice = await _dialogs.AskExternalChangeAsync(TitleFor(path));
         }
+        catch (Exception ex)
+        {
+            // Not shown, so not answered: both versions stay, and the edits stay unsaved for the next save.
+            _log.Error("Could not show the question about a binder changed on disk", new { path }, ex);
+            choice = ExternalChangeChoice.Unanswered;
+        }
         finally
         {
             _changedOnDiskQuestion = null;
@@ -2209,17 +2265,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// <summary>Rebuilds the master binders list from config, then applies the current filter.</summary>
     private void RebuildBinders()
     {
+        // Each row keeps what is last known about its file until the check below answers, so a rebuild
+        // neither waits on the disk nor flashes its markers.
+        var known = _allBinders.ToDictionary(item => item.Path, item => item.IsMissing, StringComparer.Ordinal);
         _allBinders.Clear();
         foreach (var entry in _config.Binders)
         {
             _allBinders.Add(new BinderListItemViewModel(entry.Path)
             {
-                IsMissing = !File.Exists(entry.Path),
+                IsMissing = known.GetValueOrDefault(entry.Path),
                 Title = TitleFor(entry.Path),
             });
         }
 
         ApplyBinderFilter();
+        _ = RefreshKnownBinders();
     }
 
     /// <summary>
@@ -2314,21 +2374,68 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// <summary>
     /// Re-reads which known binders are still on disk, so a file deleted or restored outside the app shows
     /// on its row: the row that wants removing says so without being opened first. Runs when the main
-    /// window is activated and when a binder closes, not on a timer. The open binder is left out: while it
-    /// is open, its next save writes it again.
+    /// window is activated, when the list is rebuilt and when a binder closes, not on a timer, and not
+    /// during a quit. The open binder is left out: while it is open, its next save writes it again.
     /// </summary>
-    internal void RefreshKnownBinders()
+    /// <remarks>
+    /// Known binders can sit on a network or removable volume, where a check of a file that is gone can
+    /// stall, so the checks run off the UI thread, one round at a time: a refresh asked for while one runs
+    /// starts another round once it ends, instead of piling up threads behind a stalled volume. Returns the
+    /// running round.
+    /// </remarks>
+    internal Task RefreshKnownBinders()
     {
-        foreach (var item in _allBinders)
+        if (_shuttingDown)
         {
-            var missing = _current is not null && PathKey.Equal(_current.Path, item.Path)
-                ? false
-                : !File.Exists(item.Path);
-            if (item.IsMissing != missing)
+            return Task.CompletedTask;
+        }
+
+        if (!_binderCheck.IsCompleted)
+        {
+            _binderCheckAgain = true;
+            return _binderCheck;
+        }
+
+        return _binderCheck = CheckKnownBindersAsync();
+    }
+
+    private Task _binderCheck = Task.CompletedTask;
+    private bool _binderCheckAgain;
+
+    private async Task CheckKnownBindersAsync()
+    {
+        do
+        {
+            _binderCheckAgain = false;
+            var paths = _allBinders.Select(item => item.Path).ToArray();
+            var exists = await Task.Run(() => Array.ConvertAll(paths, File.Exists));
+            if (_shuttingDown)
             {
-                item.IsMissing = missing;
+                return;
+            }
+
+            var found = new Dictionary<string, bool>(StringComparer.Ordinal);
+            for (var i = 0; i < paths.Length; i++)
+            {
+                found[paths[i]] = exists[i];
+            }
+
+            foreach (var item in _allBinders)
+            {
+                if (!found.TryGetValue(item.Path, out var onDisk))
+                {
+                    // Added after this round read the list; the next round covers it.
+                    continue;
+                }
+
+                var missing = !onDisk && !(_current is not null && PathKey.Equal(_current.Path, item.Path));
+                if (item.IsMissing != missing)
+                {
+                    item.IsMissing = missing;
+                }
             }
         }
+        while (_binderCheckAgain);
     }
 
     /// <summary>The master binder order, hidden rows included, for restoring a cancelled drag.</summary>
@@ -2676,6 +2783,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
+    /// <remarks>
+    /// Written on the UI thread, as the state is (<see cref="PersistState"/>): both are small files in
+    /// DayNote's own local folder, written on a user's action, and the callers act on the outcome at once,
+    /// Settings included. Moving them off the thread would make those callers asynchronous for no slow case
+    /// seen in practice; a binder's folder, which can be on any volume, never goes through here.
+    /// </remarks>
     private bool TrySaveConfig(AppConfig config)
     {
         try

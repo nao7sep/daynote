@@ -296,7 +296,7 @@ public partial class MainWindow : Window
 
     // Coming back to DayNote is when a binder deleted or restored in another app is worth showing on its row.
     private void OnWindowActivated(object? sender, EventArgs e) =>
-        (DataContext as MainWindowViewModel)?.RefreshKnownBinders();
+        _ = (DataContext as MainWindowViewModel)?.RefreshKnownBinders();
 
     public void RestoreWindowGeometry()
     {
@@ -378,6 +378,7 @@ public partial class MainWindow : Window
             // the window closes whatever it did. A quit the user started and that is still running ends
             // with it.
             _shutdownComplete = true;
+            Program.SessionEnding = true;
             PrepareQuit(vm);
             RunUntilDone(vm.EndSessionAsync());
             base.OnClosing(e);
@@ -434,7 +435,7 @@ public partial class MainWindow : Window
 
     // Keeps the dispatcher running, so the work's own continuations can run, until the work is done. The
     // work carries its own bounds.
-    private static void RunUntilDone(Task work)
+    internal static void RunUntilDone(Task work)
     {
         if (work.IsCompleted)
         {
@@ -444,7 +445,10 @@ public partial class MainWindow : Window
         try
         {
             var frame = new DispatcherFrame();
-            work.ContinueWith(_ => frame.Continue = false, TaskScheduler.Default);
+            // Ended on the UI thread, whose loop the frame runs, so the loop notices it at once.
+            work.ContinueWith(
+                _ => Dispatcher.UIThread.Post(() => frame.Continue = false, DispatcherPriority.Send),
+                TaskScheduler.Default);
             Dispatcher.UIThread.PushFrame(frame);
         }
         catch (Exception ex)

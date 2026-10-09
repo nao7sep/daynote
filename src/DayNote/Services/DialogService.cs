@@ -149,8 +149,10 @@ public sealed class DialogService : IDialogService
             Message.Of("quit.unsavedMessage", ("name", binderName)),
             new[]
             {
-                // Retry keeps the edits, so it takes focus; quitting without them is the destructive
-                // choice. Escape answers neither and leaves the app open.
+                // Cancel keeps the app open with the binder and its edits, so it is the labelled way out
+                // and takes focus; Escape does the same. Retry keeps the edits too; quitting without them is
+                // the destructive choice.
+                new DialogButton("common.cancel", "cancel"),
                 new DialogButton("quit.retry", "retry"),
                 new DialogButton("quit.quitAnyway", "quit", DialogButtonKind.Destructive),
             });
