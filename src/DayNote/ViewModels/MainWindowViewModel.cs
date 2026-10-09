@@ -1195,8 +1195,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
                 var existingEntries = Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName)!;
                 var name = UniqueFileName.Pick(existingEntries!, Path.GetFileName(source));
-                // not recorded: attachments are copied binary content; the binder text records the
-                // durable attachment reference, while binary writes stay outside the text history.
+                // The copy is recorded in the backup history once, as it is added: attachments are files the
+                // user adds, and removing one or deleting its note deletes the file permanently after a
+                // confirmation, so the history is what can bring it back. The user's original stays where
+                // it was, untouched.
                 _copyFile(source, Path.Combine(directory, name));
                 addedNames.Add(name);
                 hashes[hash] = name;

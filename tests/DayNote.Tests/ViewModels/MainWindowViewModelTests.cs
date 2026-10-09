@@ -1523,6 +1523,29 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task An_added_attachment_is_recorded_once_and_a_duplicate_adds_nothing()
+    {
+        var vm = await OpenNewBinderAsync();
+        var photo = Path.Combine(_home, "photo.bin");
+        File.WriteAllBytes(photo, [1, 2, 3]);
+        var sameBytes = Path.Combine(_home, "copy-of-photo.bin");
+        File.WriteAllBytes(sameBytes, [1, 2, 3]);
+
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        _dialogs.AttachmentPaths = [photo];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        _dialogs.AttachmentPaths = [sameBytes];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+
+        var added = Path.Combine(BinderStore.NoteAssetsDirectory(BinderPath, note.Id), "photo.bin");
+        BackupStore.Close();
+        Assert.Equal(1, RowCountFor(new AppPaths().BackupStoreFile, added));
+        Assert.Single(Directory.GetFiles(BinderStore.NoteAssetsDirectory(BinderPath, note.Id)));
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Deleting_a_note_takes_its_attachment_folder_with_it()
     {
         var vm = await OpenNewBinderAsync();

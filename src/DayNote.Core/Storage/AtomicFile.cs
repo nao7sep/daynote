@@ -81,20 +81,41 @@ public static partial class AtomicFile
     /// copy. <see cref="File.Copy(string, string)"/> keeps the source's modified time and the metadata the
     /// destination volume supports (content-lifecycle-conventions). A failed copy removes its temp.
     /// </summary>
+    /// <remarks>
+    /// The copy is a file the user adds, such as an attachment, which the backup history protects once, when
+    /// it is added (data-backup-conventions). Its bytes are read from DayNote's own temp before it is
+    /// published, never from the published name, and handed to the history after the publish succeeds. A
+    /// failure to read them is the history's to report; it never fails the copy.
+    /// </remarks>
     /// <exception cref="IOException">The destination already exists, or the copy failed.</exception>
     public static void CopyNew(string source, string destination)
     {
         var fullPath = Path.GetFullPath(destination);
         var tempPath = TempPathFor(fullPath);
+        byte[]? bytes = null;
         try
         {
             File.Copy(source, tempPath);
+            try
+            {
+                bytes = File.ReadAllBytes(tempPath);
+            }
+            catch (Exception ex)
+            {
+                BackupStore.Warn("backup store: could not read an added file to record it", fullPath, ex);
+            }
+
             File.Move(tempPath, fullPath, overwrite: false);
         }
         catch
         {
             TryDelete(tempPath);
             throw;
+        }
+
+        if (bytes is not null)
+        {
+            BackupStore.Record(fullPath, bytes);
         }
     }
 

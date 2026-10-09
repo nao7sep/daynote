@@ -287,6 +287,10 @@ public static class BackupStore
         return _connection;
     }
 
+    /// <summary>Reports a write the history could not take, such as an added file whose bytes could not be
+    /// read for it. Never throws.</summary>
+    internal static void Warn(string message, string path, Exception error) => WarnSafely(message, path, error);
+
     // The warn sink is itself an edge dependency. A broken sink cannot be allowed to undo the
     // backup layer's absolute never-breaks-a-save guarantee.
     private static void WarnSafely(string message, string path, Exception error)

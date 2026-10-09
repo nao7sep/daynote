@@ -137,6 +137,54 @@ public sealed class AtomicFileTests : IDisposable
     }
 
     [Fact]
+    public void A_copy_is_recorded_once_byte_identically()
+    {
+        var source = Path.Combine(_directory, "photo.bin");
+        File.WriteAllBytes(source, [0, 0xFF, 0x0D, 0x0A, 7]);
+        var copy = Path.Combine(_directory, "assets", "photo.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+
+        AtomicFile.CopyNew(source, copy);
+        BackupStore.Close();
+
+        Assert.Equal(new byte[] { 0, 0xFF, 0x0D, 0x0A, 7 }, Assert.Single(BackupContents(copy)));
+        Assert.Empty(BackupContents(source));
+    }
+
+    [Fact]
+    public void A_failed_copy_records_nothing()
+    {
+        var source = Path.Combine(_directory, "source.bin");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        var taken = Path.Combine(_directory, "taken.bin");
+        File.WriteAllBytes(taken, [9]);
+
+        Assert.ThrowsAny<IOException>(() => AtomicFile.CopyNew(source, taken));
+        AtomicFile.WriteAllText(_path, "opens the history");
+        BackupStore.Close();
+
+        Assert.Empty(BackupContents(taken));
+    }
+
+    private List<byte[]> BackupContents(string path)
+    {
+        var contents = new List<byte[]>();
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            $"Data Source={new AppPaths().BackupStoreFile};Mode=ReadOnly;Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT content FROM backups WHERE path = $path ORDER BY id";
+        command.Parameters.AddWithValue("$path", Path.GetFullPath(path));
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            contents.Add((byte[])reader["content"]);
+        }
+
+        return contents;
+    }
+
+    [Fact]
     public void A_copy_never_replaces_an_existing_file_and_removes_its_temp_file()
     {
         var source = Path.Combine(_directory, "source.bin");
