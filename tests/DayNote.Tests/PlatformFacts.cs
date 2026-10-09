@@ -21,3 +21,19 @@ public sealed class MacOnlyFactAttribute : FactAttribute
             Skip = "Runs on macOS only.";
     }
 }
+
+/// <summary>
+/// A <see cref="FactAttribute"/> that runs only on Windows, reported as skipped elsewhere, for behavior
+/// only Windows has, such as its case-insensitive paths.
+/// </summary>
+public sealed class WindowsOnlyFactAttribute : FactAttribute
+{
+    public WindowsOnlyFactAttribute(
+        [CallerFilePath] string? sourceFilePath = null,
+        [CallerLineNumber] int sourceLineNumber = -1)
+        : base(sourceFilePath, sourceLineNumber)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            Skip = "Runs on Windows only.";
+    }
+}

@@ -59,6 +59,50 @@ public sealed class SingleInstanceLeaseTests
         }
     }
 
+    [WindowsOnlyFact]
+    public void RootsDifferingOnlyInLetterCaseAreOneRootOnWindows()
+    {
+        // Windows paths ignore case, so two spellings of one storage root are the same folder and must share
+        // one lease: a second DayNote on the other spelling would write the same files.
+        var root = Path.Combine(Path.GetTempPath(), "DayNote-Instance-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        using var acquired = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        Exception? ownerFailure = null;
+        var ownerThread = new Thread(() =>
+        {
+            try
+            {
+                Assert.True(SingleInstanceLease.TryAcquire(root, out var owner));
+                using (owner)
+                {
+                    acquired.Set();
+                    release.Wait(TimeSpan.FromSeconds(10));
+                }
+            }
+            catch (Exception ex)
+            {
+                ownerFailure = ex;
+                acquired.Set();
+            }
+        });
+        try
+        {
+            ownerThread.Start();
+            Assert.True(acquired.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            Assert.Null(ownerFailure);
+
+            Assert.False(SingleInstanceLease.TryAcquire(root.ToLowerInvariant(), out var other));
+            Assert.Null(other);
+        }
+        finally
+        {
+            release.Set();
+            ownerThread.Join(TimeSpan.FromSeconds(10));
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public void ActivationRouterRetainsAnEarlyRequest()
     {
