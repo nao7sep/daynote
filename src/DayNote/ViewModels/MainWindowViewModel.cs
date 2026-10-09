@@ -1431,7 +1431,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         if (!await CloseCurrentAsync(clearSelection: false))
         {
-            // The current binder's edits couldn't be flushed; keep it open rather than switch away.
+            // The current binder's edits couldn't be flushed; keep it open rather than switch away, and
+            // move the highlight back from the row that was clicked to the binder still open.
+            ApplyBinderFilter();
             return;
         }
 

@@ -962,6 +962,34 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_switch_refused_by_a_failed_save_leaves_the_open_binder_selected()
+    {
+        var store = new GatedBinderStore();
+        var vm = NewViewModel(binderStore: store);
+        var travel = Path.Combine(_home, "travel.daynote");
+        _dialogs.BinderToCreate = travel;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        vm.Editor.Body = "unsaved";
+        store.SaveFailure = new IOException("No space left on device");
+
+        // Clicking the other row selects it, and the switch it starts is refused.
+        var other = vm.Binders.Single(binder => PathKey.Equal(binder.Path, travel));
+        vm.SelectedBinder = other;
+        await vm.OpenKnownBinderCommand.ExecuteAsync(other);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(vm.HasBinder);
+        Assert.Equal("unsaved", vm.Editor.Body);
+        Assert.True(PathKey.Equal(BinderPath, vm.SelectedBinder!.Path));
+        store.SaveFailure = null;
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Closing_the_main_window_runs_the_same_quit_and_stays_open_when_the_user_keeps_it()
     {
         var (vm, store, _) = await OpenWithUnsavedEditAsync("kept by closing the question");
