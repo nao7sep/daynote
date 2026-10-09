@@ -92,8 +92,8 @@ public static class BackupStore
     private static bool _initialized;
 
     // SQLite holds at most 1,000,000,000 bytes in one value (SQLITE_MAX_LENGTH, the bundled build's limit),
-    // so an added file larger than one part is stored as parts in backup_parts: every attachment is
-    // protected whatever its size (data-backup-conventions), which one BLOB per row cannot do.
+    // so an added file larger than one part is stored as parts in backup_parts, as data-backup-conventions
+    // (The store) describe: every attachment is protected whatever its size, which one BLOB per row cannot do.
     internal static long PartSize { get; set; } = 256L * 1024 * 1024;
 
     // A save's exact bytes, or an added file to read from its published path: Bytes is null and Sha256 is
@@ -124,7 +124,8 @@ public static class BackupStore
     /// path of the published copy and <paramref name="sha256"/> the lowercase hex SHA-256 of what was copied.
     /// The owner thread streams the file from that path, so a file of any size is recorded without being held
     /// in memory, and keeps it only if it still hashes to <paramref name="sha256"/>: content another writer
-    /// put there is never recorded as DayNote's. A file removed before the owner reaches it is not recorded.
+    /// put there is never recorded as DayNote's (data-backup-conventions, Capture). A file removed before the
+    /// owner reaches it is not recorded.
     /// Returns at once. Never throws.
     /// </summary>
     public static void RecordAdded(string absolutePath, string sha256) => Enqueue(absolutePath, bytes: null, sha256);
