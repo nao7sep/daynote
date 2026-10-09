@@ -93,7 +93,7 @@
   "failure.settingsSave": "Settings could not be saved. Your changes are still here; try again.",
   "failure.startupDataTitle": "Load failed",
   "failure.startupSettings": "DayNote couldn’t read its settings file at {path}, so it stopped before changing anything. The file was left in place. Check its permissions or move it aside, then restart DayNote.",
-  "failure.startupSettingsMalformed": "DayNote’s settings file at {path} isn’t in a form DayNote can read, so it stopped before changing anything. The file was left in place. Fix the file, or move it aside to start with default settings and an empty binder list, then restart DayNote.",
+  "failure.startupSettingsMalformed": "DayNote’s settings file at {path} isn’t in a format DayNote can read, so DayNote stopped before changing anything. The file was left in place. Fix the file and restart DayNote, or move the file aside and restart DayNote, which then starts with default settings and an empty binder list. Your binders and notes are not affected.",
   "failure.startupSettingsNewer": "DayNote’s settings file at {path} was written by a newer version of DayNote, so this version stopped before changing anything. The file was left in place. Use the newer version of DayNote, or move the file aside, then restart DayNote.",
   "failure.startupStorage": "DayNote could not open its storage location. Check that the location exists and is writable, then restart DayNote.",
   "failure.textStyleSave": "The text style could not be changed because the settings could not be saved. The editor keeps its current style; try again.",

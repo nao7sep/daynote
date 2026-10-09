@@ -88,7 +88,7 @@
   "failure.settingsSave": "无法保存设置。你的更改仍然保留，请重试。",
   "failure.startupDataTitle": "载入失败",
   "failure.startupSettings": "DayNote 无法读取位于 {path} 的设置文件，因此在做出任何更改之前就停止了。该文件仍留在原处。请检查它的访问权限，或将它移到别处，然后重新启动 DayNote。",
-  "failure.startupSettingsMalformed": "位于 {path} 的设置文件不是 DayNote 能读取的格式，因此 DayNote 在做出任何更改之前就停止了。该文件仍留在原处。请修正该文件，或将它移到别处，以默认设置和空的笔记本列表开始，然后重新启动 DayNote。",
+  "failure.startupSettingsMalformed": "位于 {path} 的设置文件不是 DayNote 能读取的格式，因此 DayNote 在做出任何更改之前就停止了。该文件仍留在原处。请修正该文件后重新启动 DayNote；也可以将该文件移到别处后重新启动，DayNote 将以默认设置和空的笔记本列表启动。你的笔记本和笔记不受影响。",
   "failure.startupSettingsNewer": "位于 {path} 的设置文件是由较新版本的 DayNote 写入的，因此此版本在做出任何更改之前就停止了。该文件仍留在原处。请使用较新版本的 DayNote，或将该文件移到别处，然后重新启动 DayNote。",
   "failure.startupStorage": "DayNote 无法打开其存储位置。请确认该位置存在且可写，然后重新启动 DayNote。",
   "failure.textStyleSave": "无法保存设置，因此未能切换文本样式。编辑器保持当前样式；请重试。",
