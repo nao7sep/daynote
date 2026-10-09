@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using DayNote.Core.Identity;
 using DayNote.Core.Storage;
 using DayNote.Core.Time;
 using Microsoft.Data.Sqlite;
@@ -6,42 +7,43 @@ using Microsoft.Data.Sqlite;
 namespace DayNote.Core.Backup;
 
 /// <summary>
-/// The write-through data-backup store (data-backup conventions). It owns one add-only SQLite file,
-/// <c>backups.sqlite3</c>, directly under DayNote's storage root (<c>DAYNOTE_DATA_DIR</c> or <c>~/.daynote</c>,
-/// resolved in one place by <see cref="AppPaths"/> — never a hardcoded path). Every managed <em>text</em>
-/// save records the exact bytes it just wrote here, strictly AFTER its atomic rename lands, so the history
-/// is always as current as the last save. There is no startup scan, no periodic pass, no restore path.
+/// The backup history (data-backup-conventions): one add-only SQLite file, <c>backups.sqlite3</c>, directly
+/// under DayNote's storage root (<c>DAYNOTE_DATA_DIR</c> or <c>~/.daynote</c>, resolved by
+/// <see cref="AppPaths"/>). It keeps the last version of each protected file saved in each session, so a bug
+/// that damages or deletes a binder, the settings or an attachment leaves an earlier version to restore by
+/// hand. There is no startup scan, no timer, no exit capture and no restore path.
 /// </summary>
 /// <remarks>
 /// <para>
-/// SQLite binding: <c>Microsoft.Data.Sqlite</c> — the .NET-native managed provider with a bundled native
-/// <c>e_sqlite3</c> (via SQLitePCLRaw), so it needs no native rebuild and adds no packaging churn. A BLOB
-/// round-trips through <c>byte[]</c>, so CR/LF, a BOM, and non-UTF-8 bytes are stored byte-identically.
+/// Callers hand over the exact bytes they just published and return at once: one owner thread applies the
+/// writes in the order they were recorded, so a save never waits on SQLite, and neither does the UI thread
+/// a settings save runs on. A path recorded again before its earlier write is applied keeps only the newest
+/// bytes. Ordinary quit drains the pending writes within a short bound (<see cref="Drain"/>); when the
+/// operating system ends the session they are skipped, and the background thread ends with the process.
 /// </para>
-/// <para>Two absolute musts drive every line below (they are not best-effort aspirations):</para>
-/// <list type="bullet">
-///   <item>It never breaks a save and never crashes the app. The save has already succeeded — the file is
-///   on disk before <see cref="Record"/> is called — so any failure here (the DB is locked, the disk is
-///   full, an insert throws) is caught, logged once at <c>warn</c>, and swallowed. A lost record self-heals
-///   on the next save of that file, whose content will differ from the last recorded row.</item>
-///   <item>It logs only failures. A successful record logs NOTHING; a line per save would flood the log.</item>
-/// </list>
 /// <para>
-/// The store is a process-wide singleton opened once, best-effort. The one edge concern it carries — the
-/// warn log on failure — is injected as a delegate so DayNote.Core stays UI- and logger-framework-free;
-/// the desktop app installs its logger once at startup via <see cref="ConfigureWarn"/>.
+/// A session is one launch, identified by an id generated when the process starts. Each path keeps one row
+/// per session: the session's first save of a path inserts it, later saves replace its content, and a first
+/// save equal to the latest row from an earlier session writes nothing. Rows of earlier sessions are never
+/// changed. The single-instance lease means one session writes at a time, and SQLite's locking covers the
+/// rest.
+/// </para>
+/// <para>
+/// It never breaks a save and never crashes the app. The save has already succeeded before
+/// <see cref="Record"/> is called, so any failure here is logged once at <c>warn</c> and swallowed; a store
+/// that cannot be opened disables recording for the session. Success logs nothing.
 /// </para>
 /// </remarks>
 public static class BackupStore
 {
-    /// <summary>The one add-only table. <c>content</c> is a BLOB of the exact bytes written — never
-    /// decoded text — so CR/LF, a BOM, and non-UTF-8 bytes are stored byte-identically. <c>written_at_utc</c>
-    /// is the serialized ISO-8601-ms form (<c>2026-07-06T04:05:12.345Z</c>), a data value — NEVER the
-    /// <c>yyyymmdd-hhmmss-fff-utc</c> filename stamp. The <c>(path, id)</c> index serves the latest-row-per-
-    /// path dedup lookup.</summary>
+    /// <summary>The one table. <c>content</c> is a BLOB of the exact bytes written, never decoded text.
+    /// <c>written_at_utc</c> is the time of the latest save in the row, in the serialized ISO-8601-ms form
+    /// (<c>2026-07-06T04:05:12.345Z</c>), a data value, never a filename stamp. <c>session_id</c> is null on
+    /// rows recorded before sessions, which stay as earlier history.</summary>
     private const string Schema = """
         CREATE TABLE IF NOT EXISTS backups (
           id             INTEGER PRIMARY KEY,
+          session_id     TEXT,
           path           TEXT NOT NULL,
           content        BLOB NOT NULL,
           content_sha256 TEXT NOT NULL,
@@ -49,28 +51,34 @@ public static class BackupStore
           written_at_utc TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_backups_path_id ON backups (path, id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_backups_path_session ON backups (path, session_id);
         """;
 
+    // Format 1 kept a row per changed save; format 2 adds the session, keeping every earlier row.
+    private const string AddSessions = """
+        ALTER TABLE backups ADD COLUMN session_id TEXT;
+        """;
+
+    // Guards the pending writes, the owner's state and the session.
     private static readonly object Gate = new();
+    private static readonly Dictionary<string, PendingWrite> Pending = new(StringComparer.Ordinal);
+    private static readonly Queue<string> Order = new();
+    private static Thread? _owner;
+    private static bool _writing;
+    private static string _session = IdGenerator.New();
 
     // Best-effort warn sink: (message, absolutePath, error). Null until the app installs one; a failure
     // before that is silently swallowed (the store must never depend on a logger being wired to be safe).
     private static Action<string, string, Exception>? _warn;
 
-    // The single connection, opened once. Null means recording is disabled for this session — either not
-    // yet opened, or the open failed (a single warn was already logged) — so every later Record becomes a
-    // no-op rather than retrying (and re-logging) a broken open on every save.
+    // Touched only by the owner thread, and by Close while the owner is idle. Null means recording is
+    // disabled for this session: not yet opened, or the open failed and its one warn was logged.
     private static SqliteConnection? _connection;
     private static bool _initialized;
 
-    /// <summary>
-    /// Runs on the recording thread, with the path being recorded, right before <see cref="Record"/>
-    /// requests SQLite's write reservation, so a test knows everything before the reservation has
-    /// happened. Null in the app.
-    /// </summary>
-    internal static Action<string>? BeforeWriteReservation { get; set; }
+    private sealed record PendingWrite(byte[] Bytes, DateTimeOffset WrittenAt, string Session);
 
-    /// <summary>Installs the warn sink the store uses to log a record/open failure once. Called once at
+    /// <summary>Installs the warn sink the store uses to log a record or open failure once. Called once at
     /// app startup, before any managed save. Optional: with no sink installed, a failure is swallowed
     /// silently rather than logged, but recording is never affected.</summary>
     public static void ConfigureWarn(Action<string, string, Exception> warn)
@@ -82,81 +90,138 @@ public static class BackupStore
     }
 
     /// <summary>
-    /// Record one managed-text write: <paramref name="absolutePath"/> is the FULL absolute path of the
-    /// file as written; <paramref name="bytes"/> is the exact raw bytes just written (the caller already
-    /// holds them — never re-read the file).
+    /// Records one protected file the caller just published: <paramref name="absolutePath"/> is the full
+    /// absolute path of the file as written, and <paramref name="bytes"/> the exact bytes written (the caller
+    /// already holds them; the file is never reread). Returns at once; the owner thread applies the write.
+    /// Never throws.
     /// </summary>
-    /// <remarks>
-    /// Dedup by content hash per path: the new content's SHA-256 is compared against the latest row for
-    /// the same <c>path</c>, and the insert is SKIPPED when they are equal. This collapses consecutive
-    /// identical saves (an autosave with no real change writes no row) while still recording every
-    /// genuinely distinct version — including a revert, whose content differs from the immediately
-    /// preceding row. Best-effort and silent on success; any failure is caught, logged once at
-    /// <c>warn</c> (path + reason), and swallowed. It never throws, never crashes the app, never breaks
-    /// the save.
-    /// </remarks>
     public static void Record(string absolutePath, byte[] bytes)
     {
+        var writtenAt = DateTimeOffset.UtcNow;
         lock (Gate)
         {
-            try
+            if (!Pending.ContainsKey(absolutePath))
             {
-                // The save has already landed before Record is called, so the never-breaks-a-save
-                // boundary covers opening and path resolution too — not just the SQL operations.
-                var connection = EnsureOpen();
-                if (connection is null)
-                {
-                    return; // open failed earlier; disabled for the session (already warned once)
-                }
-
-                var hash = Sha256Hex(bytes);
-
-                // Reserve SQLite's cross-process write lane before reading the predecessor. WAL
-                // serializes eventual writes, but without this immediate transaction two processes
-                // can both read the same predecessor and later append the same successor.
-                BeforeWriteReservation?.Invoke(absolutePath);
-                using var transaction = connection.BeginTransaction(deferred: false);
-
-                using (var latest = connection.CreateCommand())
-                {
-                    latest.Transaction = transaction;
-                    latest.CommandText =
-                        "SELECT content_sha256 FROM backups WHERE path = $path ORDER BY id DESC LIMIT 1";
-                    latest.Parameters.AddWithValue("$path", absolutePath);
-                    if (latest.ExecuteScalar() is string previousHash && previousHash == hash)
-                    {
-                        transaction.Commit();
-                        return; // unchanged since the last recorded version — dedup skip
-                    }
-                }
-
-                using var insert = connection.CreateCommand();
-                insert.Transaction = transaction;
-                insert.CommandText =
-                    "INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc) " +
-                    "VALUES ($path, $content, $hash, $size, $writtenAt)";
-                insert.Parameters.AddWithValue("$path", absolutePath);
-                insert.Parameters.AddWithValue("$content", bytes);
-                insert.Parameters.AddWithValue("$hash", hash);
-                insert.Parameters.AddWithValue("$size", bytes.LongLength);
-                insert.Parameters.AddWithValue("$writtenAt", DayNoteTime.ToIso(DateTimeOffset.UtcNow));
-                insert.ExecuteNonQuery();
-                transaction.Commit();
+                Order.Enqueue(absolutePath);
             }
-            catch (Exception ex)
+
+            Pending[absolutePath] = new PendingWrite(bytes, writtenAt, _session);
+            if (_owner is null)
             {
-                WarnSafely("backup store: failed to record a managed write", absolutePath, ex);
+                _owner = new Thread(Own) { IsBackground = true, Name = "backups" };
+                _owner.Start();
             }
+
+            Monitor.PulseAll(Gate);
         }
     }
 
     /// <summary>
-    /// Open and initialize the store once (check its format version, create the table if absent, switch on
-    /// WAL and a busy timeout).
-    /// Best-effort: on any failure it logs ONE warn, leaves recording disabled for the session, and never
-    /// throws. WAL plus the immediate record transaction let the tolerated two-instance case (two DayNote
-    /// windows writing at once) serialize without a separate cross-process lock; the busy timeout makes a
-    /// contended writer wait rather than immediately failing and dropping that record.
+    /// Waits up to <paramref name="bound"/> for every write recorded so far to be applied. Returns false when
+    /// the bound passed first; the writes then carry on until the process ends. Ordinary quit calls this; an
+    /// ending OS session does not.
+    /// </summary>
+    public static bool Drain(TimeSpan bound)
+    {
+        var deadline = DateTime.UtcNow + bound;
+        lock (Gate)
+        {
+            while (Order.Count > 0 || _writing)
+            {
+                var remaining = deadline - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    return false;
+                }
+
+                Monitor.Wait(Gate, remaining);
+            }
+
+            return true;
+        }
+    }
+
+    // The owner thread: applies pending writes in the order they were first recorded.
+    private static void Own()
+    {
+        while (true)
+        {
+            string path;
+            PendingWrite write;
+            lock (Gate)
+            {
+                while (Order.Count == 0)
+                {
+                    _writing = false;
+                    Monitor.PulseAll(Gate);
+                    Monitor.Wait(Gate);
+                }
+
+                _writing = true;
+                path = Order.Dequeue();
+                write = Pending[path];
+                Pending.Remove(path);
+            }
+
+            Write(path, write);
+        }
+    }
+
+    private static void Write(string path, PendingWrite write)
+    {
+        try
+        {
+            // The save has already landed, so the never-breaks-a-save boundary covers opening and path
+            // resolution too, not just the SQL statements.
+            var connection = EnsureOpen();
+            if (connection is null)
+            {
+                return;
+            }
+
+            var hash = Sha256Hex(write.Bytes);
+            using var transaction = connection.BeginTransaction(deferred: false);
+            using (var latest = connection.CreateCommand())
+            {
+                latest.Transaction = transaction;
+                latest.CommandText =
+                    "SELECT content_sha256 FROM backups WHERE path = $path ORDER BY id DESC LIMIT 1";
+                latest.Parameters.AddWithValue("$path", path);
+                if (latest.ExecuteScalar() is string previousHash && previousHash == hash)
+                {
+                    // Unchanged since the latest recorded version, this session's or an earlier one's.
+                    transaction.Commit();
+                    return;
+                }
+            }
+
+            using var upsert = connection.CreateCommand();
+            upsert.Transaction = transaction;
+            upsert.CommandText =
+                "INSERT INTO backups (session_id, path, content, content_sha256, byte_size, written_at_utc) " +
+                "VALUES ($session, $path, $content, $hash, $size, $writtenAt) " +
+                "ON CONFLICT (path, session_id) DO UPDATE SET content = excluded.content, " +
+                "content_sha256 = excluded.content_sha256, byte_size = excluded.byte_size, " +
+                "written_at_utc = excluded.written_at_utc";
+            upsert.Parameters.AddWithValue("$session", write.Session);
+            upsert.Parameters.AddWithValue("$path", path);
+            upsert.Parameters.AddWithValue("$content", write.Bytes);
+            upsert.Parameters.AddWithValue("$hash", hash);
+            upsert.Parameters.AddWithValue("$size", write.Bytes.LongLength);
+            upsert.Parameters.AddWithValue("$writtenAt", DayNoteTime.ToIso(write.WrittenAt));
+            upsert.ExecuteNonQuery();
+            transaction.Commit();
+        }
+        catch (Exception ex)
+        {
+            WarnSafely("backup store: failed to record a managed write", path, ex);
+        }
+    }
+
+    /// <summary>
+    /// Opens and initializes the store once: checks its format version, converts a format-1 store, creates
+    /// the table if absent, and switches on WAL and a short busy timeout. On any failure it logs one warn and
+    /// leaves recording disabled for the session; it never throws.
     /// </summary>
     private static SqliteConnection? EnsureOpen()
     {
@@ -172,32 +237,36 @@ public static class BackupStore
         {
             var paths = new AppPaths();
             file = paths.BackupStoreFile;
-            // The first writer under the root does the mkdir -p (storage-path convention); the store may
-            // be the first thing written on a fresh root. Routed through the one root resolver's
-            // EnsureCreated (rather than mkdir'ing the parent directly) so the root still gets created —
-            // and, on POSIX, tightened to owner-only (0700) — the same way on every path, even when the
-            // store happens to be first.
-            // not recorded: backups.sqlite3 is the store itself — binary, and written by this backup layer,
-            // not through the managed-text atomic-write path — so it never records itself. No recursion,
-            // no special case (data-backup conventions: "A binary store, excluded from itself").
+            // The store may be the first thing written under a fresh root; the root resolver creates it
+            // (owner-only on POSIX) the same way on every path. The store is binary and written here, not
+            // through the managed-text atomic write, so it never records itself.
             paths.EnsureCreated();
 
             connection = new SqliteConnection($"Data Source={file}");
             connection.Open();
 
-            // First, before WAL or the schema can change the file: a store written by a newer DayNote is
-            // left exactly as it is, and recording stays disabled for the session.
-            SqliteFormatVersion.Claim(connection, FormatVersions.Backups, "backups.sqlite3");
+            // First, before WAL or the schema can change the file: a store written by a newer DayNote, or one
+            // DayNote did not write, is left exactly as it is, and recording stays disabled for the session.
+            var found = SqliteFormatVersion.Claim(connection, FormatVersions.Backups, "backups.sqlite3");
 
             using (var pragma = connection.CreateCommand())
             {
                 pragma.CommandText = "PRAGMA journal_mode = WAL;";
                 pragma.ExecuteNonQuery();
-                // busy_timeout: under the tolerated two-instance case, a contended write waits up to this
-                // long (~5s) for SQLite's write lock instead of immediately failing with SQLITE_BUSY and
-                // dropping that record.
-                pragma.CommandText = "PRAGMA busy_timeout = 5000;";
+                // Off the save path, a brief wait for the write lock costs nothing; longer contention skips
+                // the write with one warn rather than holding the owner.
+                pragma.CommandText = "PRAGMA busy_timeout = 1000;";
                 pragma.ExecuteNonQuery();
+            }
+
+            if (found == 1)
+            {
+                using var transaction = connection.BeginTransaction(deferred: false);
+                using var convert = connection.CreateCommand();
+                convert.Transaction = transaction;
+                convert.CommandText = AddSessions + $"PRAGMA user_version = {FormatVersions.Backups};";
+                convert.ExecuteNonQuery();
+                transaction.Commit();
             }
 
             using (var schema = connection.CreateCommand())
@@ -222,9 +291,15 @@ public static class BackupStore
     // backup layer's absolute never-breaks-a-save guarantee.
     private static void WarnSafely(string message, string path, Exception error)
     {
+        Action<string, string, Exception>? warn;
+        lock (Gate)
+        {
+            warn = _warn;
+        }
+
         try
         {
-            _warn?.Invoke(message, path, error);
+            warn?.Invoke(message, path, error);
         }
         catch
         {
@@ -233,14 +308,20 @@ public static class BackupStore
     }
 
     /// <summary>
-    /// Close the store (best-effort). For tests that need to release the file handle between throwaway
-    /// roots; the app itself lets the process exit close it. Resets the singleton so the next
-    /// <see cref="Record"/> re-opens against the current <c>DAYNOTE_DATA_DIR</c>.
+    /// Applies every pending write, closes the store and starts a new session. For tests, which need the
+    /// rows written, the file handle released between throwaway roots, and a later launch modeled; the app
+    /// itself lets the process exit close it. The next <see cref="Record"/> reopens against the current
+    /// <c>DAYNOTE_DATA_DIR</c>.
     /// </summary>
     public static void Close()
     {
         lock (Gate)
         {
+            while (Order.Count > 0 || _writing)
+            {
+                Monitor.Wait(Gate);
+            }
+
             try
             {
                 _connection?.Close();
@@ -248,11 +329,12 @@ public static class BackupStore
             }
             catch
             {
-                // best-effort: a close failure on shutdown/teardown is harmless
+                // Best effort: a close failure on teardown is harmless.
             }
 
             _connection = null;
             _initialized = false;
+            _session = IdGenerator.New();
             // Microsoft.Data.Sqlite pools connections by connection string; clear the pool so the file
             // handle is actually released before a test deletes its throwaway root.
             SqliteConnection.ClearAllPools();

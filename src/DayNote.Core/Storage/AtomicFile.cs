@@ -16,8 +16,9 @@ namespace DayNote.Core.Storage;
 /// <remarks>
 /// The app's one atomic text write: config.json and state.json through <see cref="JsonStore{T}"/>, and
 /// every binder <c>.daynote</c> file through <see cref="BinderStore"/>. It is therefore where each write
-/// reaches the backup history (data-backup-conventions, see <see cref="BackupStore.Record"/>), unless the
-/// caller opts out, as state.json does.
+/// reaches the backup history (data-backup-conventions, see <see cref="BackupStore.Record"/>): binders and
+/// the settings are what the user creates and maintains, so they are recorded; state.json opts out, since
+/// placement and selection are state, never the user's work.
 /// </remarks>
 public static partial class AtomicFile
 {
@@ -63,13 +64,11 @@ public static partial class AtomicFile
             throw;
         }
 
-        // After the rename and directory flush: the file is exactly where it belongs, so record the exact
-        // bytes we just wrote (data-backup conventions — strictly AFTER the rename lands, so the history
-        // never holds a version that never reached disk). We reuse the in-hand `bytes` buffer; the file is
-        // never re-read (which could capture a concurrent writer's content). This sits OUTSIDE the write's
-        // try/catch on purpose: the save has already fully succeeded, so a backup problem must never route
-        // into the temp-delete-and-rethrow path. Record is itself best-effort — it catches, logs once, and
-        // swallows every failure — so it can never throw here or break the save.
+        // After the rename and directory flush: the file is exactly where it belongs, so hand the history
+        // the exact bytes we just wrote (data-backup-conventions: strictly after the rename lands, so the
+        // history never holds a version that never reached disk, and from the in-hand buffer, never a
+        // reread that could capture another writer's content). Record only queues them for the history's
+        // own thread and never throws, so the save neither waits on the history nor fails because of it.
         if (recordBackup)
         {
             BackupStore.Record(fullPath, bytes);

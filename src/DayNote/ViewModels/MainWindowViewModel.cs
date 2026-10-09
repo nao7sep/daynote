@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
 using DayNote.Core.Identity;
 using DayNote.Core.Models;
@@ -463,6 +464,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // How long each step of a quit may take (unsaved-edits-conventions, Quitting).
     internal static readonly TimeSpan QuitBinderSaveBound = TimeSpan.FromSeconds(2);
     internal static readonly TimeSpan QuitStateWriteBound = TimeSpan.FromMilliseconds(500);
+    internal static readonly TimeSpan QuitBackupDrainBound = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// Starts a quit. An open still reading its file is superseded, as a later open would supersede it,
@@ -537,13 +539,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 case UnsavedQuitChoice.QuitAnyway:
                     _log.Warn("Quitting with the binder's edits unsaved", new { path = binder.Path });
                     BeginShutdown();
+                    await DrainBackupsForQuitAsync();
                     return true;
                 default:
                     return false;
             }
         }
 
+        await DrainBackupsForQuitAsync();
         return true;
+    }
+
+    // The backup history's pending writes, within the ordinary quit's bound (data-backup-conventions). They
+    // are optional: one still running at the bound ends with the process. An ending OS session skips this.
+    private async Task DrainBackupsForQuitAsync()
+    {
+        if (!await Task.Run(() => BackupStore.Drain(QuitBackupDrainBound)))
+        {
+            _log.Warn("Backup history did not finish within the quit's bound", new { boundMs = QuitBackupDrainBound.TotalMilliseconds });
+        }
     }
 
     /// <summary>

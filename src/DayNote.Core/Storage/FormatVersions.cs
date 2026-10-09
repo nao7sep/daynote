@@ -19,6 +19,7 @@ public static class FormatVersions
     /// <summary><c>records.sqlite3</c> (<c>PRAGMA user_version</c>).</summary>
     public const int Records = 1;
 
-    /// <summary><c>backups.sqlite3</c> (<c>PRAGMA user_version</c>).</summary>
-    public const int Backups = 1;
+    /// <summary><c>backups.sqlite3</c> (<c>PRAGMA user_version</c>). Format 2 keeps one row per path per
+    /// session; a format-1 store is converted on open, keeping its rows.</summary>
+    public const int Backups = 2;
 }

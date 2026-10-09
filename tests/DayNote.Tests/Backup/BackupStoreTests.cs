@@ -16,17 +16,18 @@ using Xunit;
 namespace DayNote.Tests.Backup;
 
 /// <summary>
-/// The write-through data-backup store (data-backup conventions), pinned to the guarantees that make it a
-/// trustworthy safety net: <c>content</c> is a byte-identical BLOB (CR/LF and a non-UTF-8 byte survive),
-/// <c>written_at_utc</c> is the serialized ISO-8601-ms form (NOT the filename stamp), dedup skips an
-/// unchanged re-save while a changed save and a revert each insert a row, and the whole thing is
-/// best-effort — an injected store failure never throws, logs one warn, and never breaks the save.
+/// The backup history (data-backup-conventions), pinned to the guarantees that make it a trustworthy
+/// safety net: <c>content</c> is a byte-identical BLOB (CR/LF and a non-UTF-8 byte survive),
+/// <c>written_at_utc</c> is the serialized ISO-8601-ms form (not the filename stamp), each path keeps one
+/// row per session holding its last save, a session adds a row only when the content changed, earlier rows
+/// are never changed, and the whole thing is best effort: a store failure never throws, logs one warn, and
+/// never breaks or delays the save.
 /// </summary>
 /// <remarks>
-/// Records reach the store only through the atomic writer, so each test drives a real
-/// <see cref="AtomicFile.WriteAllText"/> under a throwaway <c>DAYNOTE_DATA_DIR</c> and reads the resulting
-/// <c>backups.sqlite3</c> back with a direct read-only connection. Joined to the AppPaths collection so the
-/// process-wide env var never races; the store singleton is closed in teardown so it re-opens per root.
+/// Each test drives a real <see cref="AtomicFile.WriteAllText"/> under a throwaway <c>DAYNOTE_DATA_DIR</c>
+/// and reads <c>backups.sqlite3</c> back with a direct read-only connection after <see cref="BackupStore.Close"/>,
+/// which applies the pending writes and starts a new session, as a later launch would. Joined to the AppPaths
+/// collection so the process-wide env var never races.
 /// </remarks>
 [Collection(AppPathsEnvironment.CollectionName)]
 public sealed class BackupStoreTests : IDisposable
@@ -136,100 +137,79 @@ public sealed class BackupStoreTests : IDisposable
         Assert.True(DateTimeOffset.TryParse(row.WrittenAtUtc, out _));
     }
 
-    // ----- Dedup ---------------------------------------------------------------------------------
+    // ----- One row per path per session ---------------------------------------------------------
 
     [Fact]
-    public void An_unchanged_re_save_is_deduped_and_writes_no_new_row()
-    {
-        AtomicFile.WriteAllText(TargetPath, "same content");
-        AtomicFile.WriteAllText(TargetPath, "same content");
-        AtomicFile.WriteAllText(TargetPath, "same content");
-
-        Assert.Equal(1, RowCount(TargetPath));
-    }
-
-    [Fact]
-    public async Task A_concurrent_writer_committing_the_same_successor_is_deduped_across_connections()
-    {
-        var before = Encoding.UTF8.GetBytes("before");
-        var successor = Encoding.UTF8.GetBytes("successor");
-        BackupStore.Record(TargetPath, before);
-
-        // Model a second DayNote process with its own connection. It has inserted the same successor
-        // but has not committed while this process begins Record. Reading the predecessor before
-        // acquiring SQLite's write reservation lets both processes observe `before` and eventually
-        // append `successor`; taking the reservation first makes this process wait, then dedup against
-        // the row the other process committed.
-        using var other = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = _paths.BackupStoreFile,
-            Mode = SqliteOpenMode.ReadWrite,
-            Pooling = false,
-        }.ToString());
-        other.Open();
-        using var otherTransaction = other.BeginTransaction(deferred: false);
-        using (var insert = other.CreateCommand())
-        {
-            insert.Transaction = otherTransaction;
-            insert.CommandText =
-                "INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc) " +
-                "VALUES ($path, $content, $hash, $size, $writtenAt)";
-            insert.Parameters.AddWithValue("$path", Path.GetFullPath(TargetPath));
-            insert.Parameters.AddWithValue("$content", successor);
-            insert.Parameters.AddWithValue(
-                "$hash",
-                Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(successor)));
-            insert.Parameters.AddWithValue("$size", successor.LongLength);
-            insert.Parameters.AddWithValue("$writtenAt", DayNoteTime.ToIso(DateTimeOffset.UtcNow));
-            insert.ExecuteNonQuery();
-        }
-
-        // Everything Record does before its reservation has happened once this is set; the reservation
-        // itself then waits for the other process's transaction, which still holds the write lock.
-        var reserving = new ManualResetEventSlim();
-        BackupStore.BeforeWriteReservation = path =>
-        {
-            if (path == TargetPath)
-            {
-                reserving.Set();
-            }
-        };
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var competingRecord = Task.Run(() => BackupStore.Record(TargetPath, (byte[])successor.Clone()), cancellationToken);
-        Assert.True(reserving.Wait(TimeSpan.FromSeconds(2), cancellationToken));
-        Assert.False(competingRecord.IsCompleted);
-
-        otherTransaction.Commit();
-        await competingRecord.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
-
-        Assert.Equal(2, RowCount(TargetPath));
-        Assert.Equal(successor, LatestRow(TargetPath)!.Content);
-    }
-
-    [Fact]
-    public void A_changed_save_inserts_a_new_row()
+    public void Saves_in_one_session_leave_one_row_holding_the_last_content()
     {
         AtomicFile.WriteAllText(TargetPath, "version one");
         AtomicFile.WriteAllText(TargetPath, "version two");
+        AtomicFile.WriteAllText(TargetPath, "version three");
 
+        Assert.Equal(1, RowCount(TargetPath));
+        Assert.Equal("version three", Encoding.UTF8.GetString(LatestRow(TargetPath)!.Content));
+    }
+
+    [Fact]
+    public void A_later_session_adds_a_row_only_when_the_content_changed()
+    {
+        AtomicFile.WriteAllText(TargetPath, "A");
+        BackupStore.Close(); // the next launch
+
+        AtomicFile.WriteAllText(TargetPath, "A");
+        BackupStore.Close();
+        Assert.Equal(1, RowCount(TargetPath));
+
+        AtomicFile.WriteAllText(TargetPath, "B");
         Assert.Equal(2, RowCount(TargetPath));
     }
 
     [Fact]
-    public void A_revert_to_an_earlier_value_inserts_a_row_because_it_differs_from_the_preceding()
+    public void A_later_session_never_changes_an_earlier_sessions_row()
     {
-        AtomicFile.WriteAllText(TargetPath, "A");
-        AtomicFile.WriteAllText(TargetPath, "B");
-        AtomicFile.WriteAllText(TargetPath, "A"); // reverts to the first value
+        AtomicFile.WriteAllText(TargetPath, "first launch");
+        BackupStore.Close();
 
-        // Dedup compares only against the immediately preceding row (B), so the revert to A is recorded
-        // as the distinct version it is — three rows, not two.
-        Assert.Equal(3, RowCount(TargetPath));
-        Assert.Equal("A", Encoding.UTF8.GetString(LatestRow(TargetPath)!.Content));
+        AtomicFile.WriteAllText(TargetPath, "second launch, first save");
+        AtomicFile.WriteAllText(TargetPath, "second launch, last save");
+
+        Assert.Equal(new[] { "first launch", "second launch, last save" }, Contents(TargetPath));
     }
 
     [Fact]
-    public void Different_paths_dedup_independently()
+    public void Writes_to_one_path_apply_in_save_order()
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            BackupStore.Record(Path.GetFullPath(TargetPath), Encoding.UTF8.GetBytes($"save {i}"));
+        }
+
+        Assert.Equal("save 49", Encoding.UTF8.GetString(LatestRow(TargetPath)!.Content));
+    }
+
+    [Fact]
+    public void A_save_does_not_wait_while_another_connection_holds_the_write_lock()
+    {
+        AtomicFile.WriteAllText(TargetPath, "opens the store");
+        Assert.True(BackupStore.Drain(TimeSpan.FromSeconds(5)));
+
+        using var other = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False");
+        other.Open();
+        using var held = other.BeginTransaction(deferred: false);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        AtomicFile.WriteAllText(TargetPath, "saved while the history is locked");
+        stopwatch.Stop();
+
+        Assert.Equal("saved while the history is locked", File.ReadAllText(TargetPath));
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(500), $"the save took {stopwatch.Elapsed}");
+        // The drain is bounded: the history's own wait for the lock outlasts it.
+        Assert.False(BackupStore.Drain(TimeSpan.FromMilliseconds(200)));
+        held.Rollback();
+    }
+
+    [Fact]
+    public void Different_paths_keep_their_own_rows()
     {
         var other = Path.Combine(_home, "state.json");
         AtomicFile.WriteAllText(TargetPath, "shared");
@@ -265,6 +245,7 @@ public sealed class BackupStoreTests : IDisposable
         BackupStore.ConfigureWarn((message, _, _) => warnings.Add(message));
 
         var exception = Record.Exception(() => AtomicFile.WriteAllText(TargetPath, "the save must survive"));
+        Assert.True(BackupStore.Drain(TimeSpan.FromSeconds(5)));
 
         Assert.Null(exception); // never throws
         Assert.Equal("the save must survive", File.ReadAllText(TargetPath)); // the save landed
@@ -273,6 +254,7 @@ public sealed class BackupStoreTests : IDisposable
 
         // A second save while the store is still broken must NOT log again (disabled for the session).
         AtomicFile.WriteAllText(TargetPath, "and a second save too");
+        Assert.True(BackupStore.Drain(TimeSpan.FromSeconds(5)));
         Assert.Equal("and a second save too", File.ReadAllText(TargetPath));
         Assert.Single(warnings); // still one — no re-log of the broken open
     }
@@ -284,6 +266,7 @@ public sealed class BackupStoreTests : IDisposable
         BackupStore.ConfigureWarn((_, _, _) => throw new InvalidOperationException("broken warn sink"));
 
         var exception = Record.Exception(() => AtomicFile.WriteAllText(TargetPath, "the save must survive"));
+        Assert.True(BackupStore.Drain(TimeSpan.FromSeconds(5)));
 
         Assert.Null(exception);
         Assert.Equal("the save must survive", File.ReadAllText(TargetPath));
@@ -303,6 +286,7 @@ public sealed class BackupStoreTests : IDisposable
         try
         {
             var exception = Record.Exception(() => AtomicFile.WriteAllText(TargetPath, "the save must survive"));
+            Assert.True(BackupStore.Drain(TimeSpan.FromSeconds(5)));
 
             Assert.Null(exception);
             Assert.Equal("the save must survive", File.ReadAllText(TargetPath));
@@ -355,6 +339,33 @@ public sealed class BackupStoreTests : IDisposable
         Assert.False(File.Exists(_paths.BackupStoreFile + "-wal"));
     }
 
+    [Fact]
+    public void A_format_1_store_is_converted_keeping_its_rows()
+    {
+        using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE backups (id INTEGER PRIMARY KEY, path TEXT NOT NULL, content BLOB NOT NULL,
+                  content_sha256 TEXT NOT NULL, byte_size INTEGER NOT NULL, written_at_utc TEXT NOT NULL);
+                CREATE INDEX idx_backups_path_id ON backups (path, id);
+                INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc)
+                  VALUES ($path, X'6F6C64', 'x', 3, '2026-07-06T04:05:12.345Z'),
+                         ($path, X'6F6C646572', 'y', 5, '2026-07-07T04:05:12.345Z');
+                PRAGMA user_version = 1;
+                """;
+            command.Parameters.AddWithValue("$path", Path.GetFullPath(TargetPath));
+            command.ExecuteNonQuery();
+        }
+
+        AtomicFile.WriteAllText(TargetPath, "new");
+        AtomicFile.WriteAllText(TargetPath, "newer");
+
+        Assert.Equal(new[] { "old", "older", "newer" }, Contents(TargetPath));
+        Assert.Equal(FormatVersions.Backups, UserVersion());
+    }
+
     private long UserVersion()
     {
         BackupStore.Close();
@@ -368,6 +379,24 @@ public sealed class BackupStoreTests : IDisposable
     // ----- Reading the store ---------------------------------------------------------------------
 
     private sealed record BackupRow(string Path, byte[] Content, string ContentSha256, long ByteSize, string WrittenAtUtc);
+
+    private string[] Contents(string path)
+    {
+        BackupStore.Close();
+        using var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Mode=ReadOnly;Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT content FROM backups WHERE path = $path ORDER BY id";
+        command.Parameters.AddWithValue("$path", Path.GetFullPath(path));
+        using var reader = command.ExecuteReader();
+        var contents = new List<string>();
+        while (reader.Read())
+        {
+            contents.Add(Encoding.UTF8.GetString((byte[])reader["content"]));
+        }
+
+        return contents.ToArray();
+    }
 
     private BackupRow? LatestRow(string path)
     {
@@ -406,7 +435,6 @@ public sealed class BackupStoreTests : IDisposable
     {
         // Restore the default (no-op) warn sink so an injected sink from one test never leaks into another.
         BackupStore.ConfigureWarn((_, _, _) => { });
-        BackupStore.BeforeWriteReservation = null;
         BackupStore.Close();
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _previousHome);
         try
