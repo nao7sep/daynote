@@ -13,9 +13,9 @@
   },
   "attachments.closeResult": "添付ファイルの結果を閉じる",
   "attachments.drop": "ドロップして添付",
-  "attachments.duplicates": "すでに添付されています: {names}。",
+  "attachments.duplicates": "すでに添付されています：{names}。",
   "attachments.empty": "添付ファイルはまだありません。",
-  "attachments.failed": "追加できませんでした: {names}。ファイルとバインダーのフォルダが利用できることを確認して、もう一度お試しください。",
+  "attachments.failed": "追加できませんでした：{names}。ファイルとバインダーのフォルダが利用できることを確認して、もう一度お試しください。",
   "attachments.folderFailed": "添付ファイル用のフォルダを準備できませんでした。バインダーの保存場所に書き込めることを確認して、もう一度お試しください。",
   "attachments.join": "{first}{rest}",
   "attachments.lockedWhileAdding": "ファイルの追加中にノートがロックされたため、ファイルは添付されませんでした。",
@@ -26,7 +26,7 @@
   "attachments.removeMessage": "「{name}」を削除しますか？ファイルも削除されます。",
   "attachments.removeTitle": "添付ファイルを削除",
   "attachments.stop": "中止",
-  "attachments.stopped": "追加を中止したため、次のファイルは添付されませんでした: {names}。",
+  "attachments.stopped": "追加を中止したため、次のファイルは添付されませんでした：{names}。",
   "attachments.unreadable": {
     "other": "{count} 個の項目は読み込めるローカルファイルではありません。"
   },
@@ -186,7 +186,7 @@
   "settings.bold": "太字",
   "settings.defaultBadge": "既定",
   "settings.fontFamily": "フォント",
-  "settings.fontFamilyPlaceholder": "フォント（例: Menlo）",
+  "settings.fontFamilyPlaceholder": "フォント（例：Menlo）",
   "settings.fontSize": "サイズ",
   "settings.italic": "斜体",
   "settings.language": "言語",
@@ -238,5 +238,5 @@
   "status.published": "公開済み",
   "status.retired": "公開終了",
   "status.verified": "検証済み",
-  "textStyle.applied": "テキストスタイル: {style}"
+  "textStyle.applied": "テキストスタイル：{style}"
 }
