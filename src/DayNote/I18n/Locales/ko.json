@@ -64,9 +64,10 @@
     "other": "{count}단어"
   },
   "counts.x": "X {count}/{limit}",
-  "dialog.discard": "폐기",
-  "dialog.discardMessage": "저장하지 않은 변경 사항이 있습니다. 폐기하고 닫으시겠습니까?",
-  "dialog.discardTitle": "변경 사항 폐기",
+  "dialog.discard": "버리기",
+  "dialog.discardMessage": "저장하지 않은 변경 사항이 있습니다. 버리고 닫으시겠습니까?",
+  "dialog.discardTitle": "변경 사항을 버리시겠습니까?",
+  "dialog.keepEditing": "계속 편집",
   "editor.empty": "노트를 선택하거나 새로 만드십시오.",
   "editor.locked": "잠금",
   "editor.lockedHint": "이 노트의 제목, 본문, 첨부 파일을 편집할 수 없게 잠급니다. 상태 변경과 삭제는 계속할 수 있습니다.",

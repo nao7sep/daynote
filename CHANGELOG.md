@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A binder with a missing, malformed or repeated id, an attachment that is not a plain file name, an unknown status, a time that is not a time, or status times its status contradicts no longer opens with those values replaced or dropped. The message names the binder, and the file is left as it is.
 - When a quit cannot save the open binder, DayNote stays open and asks whether to retry the save, quit anyway or cancel, instead of only showing the error. Cancel, or closing the question, keeps DayNote open with the changes.
 
+- Closing Settings with unsaved edits asks "Discard changes?" with Keep editing and Discard, the wording DayNote's sibling apps share, instead of "Discard Changes" with Cancel. Its Russian and Korean wording no longer reads as undoing the changes or as disposal.
+
 ### Fixed
 
 - A question DayNote could not show while quitting, switching binders or saving made DayNote exit with an error, losing changes not yet saved. The quit or switch is now cancelled and DayNote stays open with the changes; a save whose question could not be shown writes nothing.

@@ -137,7 +137,9 @@ public partial class DialogBase : Window
             I18n.Message.Of("dialog.discardTitle"),
             I18n.Message.Of("dialog.discardMessage"),
             [
-                new DialogButton("common.cancel", "cancel"),
+                // "Keep editing", not Cancel, so it cannot be mistaken for the Cancel of the form beneath it
+                // (the fleet's discard wording).
+                new DialogButton("dialog.keepEditing", "cancel"),
                 new DialogButton("dialog.discard", "discard", DialogButtonKind.Destructive),
             ]);
         await dialog.ShowBoundedAsync(this);
