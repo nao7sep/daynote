@@ -9,6 +9,13 @@ public static class ConfigSets
     private static readonly JsonElement BuiltIns = JsonSerializer.SerializeToElement(new AppConfig(), DayNoteJson.Options);
     public static IEnumerable<string> Keys => BuiltIns.EnumerateObject().Select(property => property.Name);
 
+    // Sets the user builds up by hand: the binder list and the text-style presets. One that fails its
+    // check still reads as its built-in, but its stored value is kept on disk until the user changes the
+    // set, since a fallback must not silently replace authored choices (config-sets-conventions). The
+    // other sets are presentation preferences whose built-in is a harmless fallback, normalized by the
+    // next save.
+    private static readonly HashSet<string> Authored = ["binders", "textStyles"];
+
     public static AppConfig Read(IReadOnlyDictionary<string, JsonElement> stored, Action<string> warn)
     {
         var effective = new Dictionary<string, JsonElement>();
@@ -34,6 +41,16 @@ public static class ConfigSets
 
         return JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(effective), DayNoteJson.Options)!;
     }
+
+    /// <summary>
+    /// The stored entries a save must keep as they are: keys this build does not know, which may belong
+    /// to another DayNote, and authored sets that failed their check.
+    /// </summary>
+    public static Dictionary<string, JsonElement> Kept(IReadOnlyDictionary<string, JsonElement> stored) =>
+        stored
+            .Where(entry => !BuiltIns.TryGetProperty(entry.Key, out _)
+                || (Authored.Contains(entry.Key) && !IsValid(entry.Key, entry.Value)))
+            .ToDictionary(entry => entry.Key, entry => entry.Value.Clone());
 
     /// <summary>The keys of the sets the draft holds differently from the baseline.</summary>
     public static IReadOnlyList<string> ChangedKeys(AppConfig draft, AppConfig baseline)

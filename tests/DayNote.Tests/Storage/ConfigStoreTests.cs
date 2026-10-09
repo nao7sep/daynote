@@ -49,10 +49,11 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public void One_set_uses_built_ins_for_every_absent_set_and_drops_unknown_keys_on_write()
+    public void One_set_uses_built_ins_for_every_absent_set_and_keeps_unknown_keys_on_write()
     {
         File.WriteAllText(ConfigPath, """{ "formatVersion": 1, "theme": "dark", "version": 2, "future": true }""");
-        var config = Store.Load();
+        var store = Store;
+        var config = store.Load();
         var builtIns = new AppConfig();
         Assert.Equal(ThemePreference.Dark, config.Theme);
         Assert.Equal(builtIns.Language, config.Language);
@@ -61,10 +62,64 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal(builtIns.TimeZone, config.TimeZone);
         Assert.Equal(JsonSerializer.Serialize(builtIns.TextStyles), JsonSerializer.Serialize(config.TextStyles));
         config.UiFontFamily = "Inter";
-        Store.Save(config);
+        store.Save(config);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "formatVersion", "uiFontFamily", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "formatVersion", "uiFontFamily", "theme", "version", "future" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(2, saved.RootElement.GetProperty("version").GetInt32());
+        Assert.True(saved.RootElement.GetProperty("future").GetBoolean());
         Assert.Equal("Inter", Store.Load().UiFontFamily);
+    }
+
+    [Theory]
+    [InlineData("textStyles", "[{\"fontFamily\":\"A\"}]")]
+    [InlineData("binders", "[{\"path\":\"x\"}]")]
+    public void An_invalid_authored_set_and_an_unknown_key_survive_other_saves_unchanged(string key, string value)
+    {
+        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"{key}\":{value},\"future\":{{\"a\":[1,2]}}}}");
+        var store = Store;
+        var config = store.Load();
+
+        config.Theme = ThemePreference.Dark;
+        store.Save(config);
+        config.Binders.Add(new KnownBinder { Path = "/tmp/other.daynote", Title = "Other" });
+        config.Binders.Clear();
+        config.UiFontFamily = "Menlo";
+        store.Save(config);
+
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(value).RootElement, saved.RootElement.GetProperty(key)));
+        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse("""{"a":[1,2]}""").RootElement, saved.RootElement.GetProperty("future")));
+        Assert.Equal("dark", saved.RootElement.GetProperty("theme").GetString());
+    }
+
+    [Fact]
+    public void Changing_an_invalid_authored_set_replaces_its_stored_value()
+    {
+        File.WriteAllText(ConfigPath, """{"formatVersion":1,"textStyles":[{"fontFamily":"A"}]}""");
+        var store = Store;
+        var config = store.Load();
+
+        config.TextStyles[0].FontSize = 22;
+        store.Save(config);
+        config.Theme = ThemePreference.Dark;
+        store.Save(config);
+
+        Assert.Equal(22, Store.Load().TextStyles[0].FontSize);
+        Assert.Single(_warnings);
+    }
+
+    [Fact]
+    public void An_invalid_preference_is_normalized_by_the_next_save()
+    {
+        File.WriteAllText(ConfigPath, """{"formatVersion":1,"theme":"sepia","language":"xx","autosaveDelaySeconds":3}""");
+        var store = Store;
+        var config = store.Load();
+
+        config.AutosaveDelaySeconds = 4;
+        store.Save(config);
+
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        Assert.Equal(new[] { "formatVersion", "autosaveDelaySeconds" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     [Theory]
