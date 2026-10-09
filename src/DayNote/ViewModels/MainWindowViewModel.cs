@@ -86,8 +86,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private TimeZoneInfo _displayZone = TimeZoneInfo.Local;
     private AppState _state = new();
 
-    // Why the settings file could not be used at launch: it could not be read or set aside, or a newer
-    // DayNote wrote it. While set, nothing is saved.
+    // Why the settings file could not be used at launch: it could not be read, it is not a settings
+    // file this build can read, or a newer DayNote wrote it. While set, nothing is saved.
     private Exception? _configLoadError;
 
     private LoadedBinder? _current;
@@ -144,6 +144,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _binderStore = binderStore ?? new BinderStore();
         _copyFile = copyFile ?? AtomicFile.CopyNew;
         _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
+        // Not recorded in the backup history: placement and selection are state, never the user's work.
         _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
 
         // All startup I/O (directory creation, reading config/state) is gated here, rather than
@@ -439,26 +440,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// <summary>Runs after the window is shown, so dialogs have an owner.</summary>
     public async Task InitializeAsync()
     {
-        // Material recovery is reported once the window can own the dialog (store-recovery-conventions).
-        var quarantined = QuarantineJournal.Drain();
-        foreach (var path in quarantined)
-        {
-            _log.Warn("Unreadable file set aside", new { path });
-        }
-
+        // A settings file that stopped startup is reported once the window can own the dialog
+        // (store-recovery-conventions).
         if (_configLoadError is { } configError)
         {
             await _dialogs.ShowErrorAsync(
                 Message.Of("failure.startupDataTitle"),
                 FailurePresentation.StartupSettings(_paths.ConfigFile, configError));
             return;
-        }
-
-        if (FailurePresentation.SetAsideConfig(quarantined, _paths.ConfigFile) is { } configCopy)
-        {
-            await _dialogs.ShowErrorAsync(
-                Message.Of("quarantine.settingsTitle"),
-                FailurePresentation.SettingsReset(configCopy));
         }
 
         if (!string.IsNullOrEmpty(_state.CurrentBinderPath)
@@ -2412,8 +2401,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    // Each store recovers on its own path (store-recovery-conventions): the settings halt, the
-    // disposable view state is logged and replaced. A newer file of either is never written this session.
+    // Each store recovers on its own path (store-recovery-conventions). Settings that cannot be used,
+    // whether unreadable, malformed or newer, halt and stay untouched: they may hold the binder list and
+    // authored text styles. The view state is disposable: any failure is logged, defaults apply, and the
+    // next state save replaces the file.
     private void LoadConfigAndState()
     {
         try

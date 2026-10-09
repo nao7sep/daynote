@@ -293,6 +293,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     private static void MakeReadable(string path) =>
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
 
+    // Nothing in the data folder but the stores DayNote itself keeps: no set-aside copies.
     private string[] SetAsideCopies() => Directory.GetFiles(_home, "*.invalid");
 
     [AvaloniaFact]
@@ -300,7 +301,6 @@ public sealed class MainWindowViewModelTests : IDisposable
     public async Task An_unreadable_state_file_keeps_the_settings_and_opens_on_the_default_view()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
-        QuarantineJournal.Drain();
         Directory.CreateDirectory(_home);
         File.WriteAllText(ConfigPath, """{"formatVersion":1,"theme":"dark"}""");
         WriteUnreadable(StatePath, """{"bindersPaneWidth":333}""");
@@ -329,7 +329,6 @@ public sealed class MainWindowViewModelTests : IDisposable
     public async Task An_unreadable_settings_file_halts_names_its_path_and_is_left_in_place()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
-        QuarantineJournal.Drain();
         const string content = """{"formatVersion":1,"theme":"dark"}""";
         WriteUnreadable(ConfigPath, content);
         try
@@ -352,29 +351,33 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(content, File.ReadAllText(ConfigPath));
     }
 
-    [AvaloniaFact]
-    public async Task A_corrupt_settings_file_is_set_aside_and_the_notice_names_the_copy()
+    [AvaloniaTheory]
+    [InlineData("{ not json")]
+    [InlineData("""{"theme":"dark"}""")] // no format version
+    [InlineData("""{"formatVersion":1,"theme":"dark","theme":"light"}""")] // a repeated key
+    public async Task A_malformed_settings_file_halts_names_its_path_and_is_left_byte_identical(string content)
     {
-        QuarantineJournal.Drain();
         Directory.CreateDirectory(_home);
-        File.WriteAllText(ConfigPath, "{ not json");
+        File.WriteAllText(ConfigPath, content);
+        var before = File.ReadAllBytes(ConfigPath);
 
         var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
         await vm.InitializeAsync();
 
-        Assert.True(vm.IsReady);
-        var copy = Assert.Single(SetAsideCopies());
-        Assert.StartsWith("config-", Path.GetFileName(copy), StringComparison.Ordinal);
+        Assert.False(vm.IsReady);
         var (title, message) = Assert.Single(_dialogs.Errors);
-        Assert.Equal("quarantine.settingsTitle", title.Key);
-        Assert.Contains(copy, English.Of(message), StringComparison.Ordinal);
+        Assert.Equal("failure.startupDataTitle", title.Key);
+        Assert.Equal("failure.startupSettingsMalformed", message.Key);
+        Assert.Contains(ConfigPath, English.Of(message), StringComparison.Ordinal);
         await vm.ShutdownAsync();
+
+        Assert.Empty(SetAsideCopies());
+        Assert.Equal(before, File.ReadAllBytes(ConfigPath));
     }
 
     [AvaloniaFact]
-    public async Task A_corrupt_state_file_is_set_aside_without_a_notice()
+    public async Task A_corrupt_state_file_opens_on_the_default_view_and_the_next_state_save_replaces_it()
     {
-        QuarantineJournal.Drain();
         Directory.CreateDirectory(_home);
         File.WriteAllText(StatePath, "{ not json");
         var log = new RecordingLogger();
@@ -383,10 +386,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.InitializeAsync();
 
         Assert.True(vm.IsReady);
-        Assert.StartsWith("state-", Path.GetFileName(Assert.Single(SetAsideCopies())), StringComparison.Ordinal);
+        Assert.Equal(new AppState().BindersPaneWidth, vm.BindersPaneWidth);
         Assert.Empty(_dialogs.Errors);
-        Assert.Contains(log.Entries, entry => entry == ("warn", "Unreadable file set aside"));
+        Assert.Single(log.Entries, entry => entry.Level == "warn");
         await vm.ShutdownAsync();
+
+        Assert.Empty(SetAsideCopies());
+        Assert.NotNull(new JsonStore<AppState>(StatePath, FormatVersions.State).Load());
     }
 
     // ----- Stores written by a newer DayNote are reported and never written ------------------------
@@ -394,7 +400,6 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task A_newer_settings_file_halts_names_its_path_and_is_left_byte_identical()
     {
-        QuarantineJournal.Drain();
         Directory.CreateDirectory(_home);
         File.WriteAllText(ConfigPath, $$"""{"formatVersion":{{FormatVersions.Config + 1}},"theme":"dark"}""");
         var before = File.ReadAllBytes(ConfigPath);
@@ -414,9 +419,8 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task A_newer_state_file_opens_on_the_default_view_with_one_warning_and_is_never_written()
+    public async Task A_newer_state_file_opens_on_the_default_view_with_one_warning_and_is_replaced()
     {
-        QuarantineJournal.Drain();
         Directory.CreateDirectory(_home);
         File.WriteAllText(StatePath, $$"""{"formatVersion":{{FormatVersions.State + 1}},"bindersPaneWidth":333}""");
         var before = File.ReadAllBytes(StatePath);
@@ -427,7 +431,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(vm.IsReady);
         Assert.Equal(new AppState().BindersPaneWidth, vm.BindersPaneWidth);
 
-        // Every path that persists the view state leaves the newer file alone.
+        // The view state is disposable: the next state save replaces the newer file.
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         await vm.ShutdownAsync();
@@ -435,7 +439,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(_dialogs.Errors);
         Assert.Single(log.Entries, entry => entry.Level == "warn");
         Assert.Empty(SetAsideCopies());
-        Assert.Equal(before, File.ReadAllBytes(StatePath));
+        Assert.NotEqual(before, File.ReadAllBytes(StatePath));
+        Assert.Equal(BinderPath, new JsonStore<AppState>(StatePath, FormatVersions.State).Load()!.CurrentBinderPath);
     }
 
     private string NewerBinderText =>

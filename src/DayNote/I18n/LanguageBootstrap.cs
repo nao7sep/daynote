@@ -13,7 +13,7 @@ namespace DayNote.I18n;
 /// created, which Avalonia does as it starts. So the language is resolved and handed to AppKit before
 /// the app is built, from the saved preference read straight out of <c>config.json</c>.
 ///
-/// The read is deliberately its own, and forgiving: the real store quarantines a file it cannot
+/// The read is deliberately its own, and forgiving: the real store stops startup on a file it cannot
 /// parse, and that decision belongs to the app's startup path, not to a language lookup. A file that
 /// cannot be read here simply means System, and the startup-failure surfaces then speak the
 /// computer's language, which is what the localization conventions ask of them.

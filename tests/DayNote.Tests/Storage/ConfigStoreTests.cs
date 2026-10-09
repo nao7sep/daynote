@@ -27,24 +27,25 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public void Missing_and_quarantined_config_use_built_ins_without_writing()
+    public void A_missing_config_uses_built_ins_without_writing()
     {
         Assert.Equal("system", Store.Load().Language);
         Assert.False(File.Exists(ConfigPath));
-        File.WriteAllText(ConfigPath, "{ broken");
-        Assert.Equal("system", Store.Load().Language);
-        Assert.False(File.Exists(ConfigPath));
-        Assert.Single(Directory.GetFiles(_directory, "*.invalid"));
     }
 
-    [Fact]
-    public void A_config_without_a_format_version_is_set_aside_and_reads_as_built_ins()
+    [Theory]
+    [InlineData("{ broken")]
+    [InlineData("""{ "theme": "dark" }""")] // no format version
+    [InlineData("""{ "formatVersion": 1, "theme": "dark", "theme": "light" }""")] // a repeated key
+    public void A_malformed_config_throws_and_is_left_byte_identical(string json)
     {
-        File.WriteAllText(ConfigPath, """{ "theme": "dark" }""");
+        File.WriteAllText(ConfigPath, json);
+        var before = File.ReadAllBytes(ConfigPath);
 
-        Assert.Equal(ThemePreference.System, Store.Load().Theme);
-        Assert.False(File.Exists(ConfigPath));
-        Assert.Single(Directory.GetFiles(_directory, "*.invalid"));
+        Assert.Throws<InvalidDataException>(() => Store.Load());
+
+        Assert.Equal(before, File.ReadAllBytes(ConfigPath));
+        Assert.Single(Directory.GetFiles(_directory));
     }
 
     [Fact]
@@ -112,7 +113,6 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Empty(ConfigSets.UserSets(config));
         Assert.Equal(key, Assert.Single(_warnings));
         Assert.True(File.Exists(ConfigPath));
-        Assert.Empty(Directory.GetFiles(_directory, "*.invalid"));
     }
 
     [Theory]
@@ -174,7 +174,6 @@ public sealed class ConfigStoreTests : IDisposable
         File.WriteAllText(ConfigPath, "{ broken");
         config.Theme = ThemePreference.Dark;
         store.Save(config);
-        Assert.Empty(Directory.GetFiles(_directory, "*.invalid"));
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
         Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }

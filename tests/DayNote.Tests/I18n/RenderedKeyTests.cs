@@ -122,7 +122,7 @@ public class RenderedKeyTests : WindowTest
             Message.Join("note.deleteJoin", [Message.Of("note.deleteNamed", ("title", "Plans")), Message.Of("note.deleteAttachments", ("count", 3))]),
             [new DialogButton("common.cancel", "cancel"), new DialogButton("common.delete", "confirm", DialogButtonKind.Destructive)])));
         AssertNoKeys(Show(new MessageDialog(
-            Message.Of("quarantine.settingsTitle"), FailurePresentation.SettingsReset("config-20261002-101500-000-utc.invalid"),
+            Message.Of("failure.startupDataTitle"), FailurePresentation.StartupSettings("config.json", new InvalidDataException("broken")),
             [new DialogButton("common.ok", "ok", DialogButtonKind.Primary)])));
     }
 

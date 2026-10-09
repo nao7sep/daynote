@@ -13,24 +13,16 @@ public static class FailurePresentation
 {
     public static Message StartupStorage() => Message.Of("failure.startupStorage");
 
-    public static Message StartupSettings(string configFile, Exception error) => error is NewerFormatException
-        ? Message.Of("failure.startupSettingsNewer", ("path", configFile))
-        : Message.Of("failure.startupSettings", ("path", configFile));
-
     /// <summary>
-    /// The set-aside copy of the config file among <paramref name="quarantined"/>, if any; only that
-    /// copy is reported to the user, per the store-recovery-conventions.
+    /// Why the settings file stopped startup. Every case leaves the file untouched: it may hold the binder
+    /// list and authored text styles, so DayNote never replaces it with defaults (store-recovery-conventions).
     /// </summary>
-    public static string? SetAsideConfig(IEnumerable<string> quarantined, string configFile)
+    public static Message StartupSettings(string configFile, Exception error) => Message.Of(error switch
     {
-        var directory = Path.GetDirectoryName(configFile);
-        var prefix = Path.GetFileNameWithoutExtension(configFile) + "-";
-        return quarantined.LastOrDefault(path => Path.GetDirectoryName(path) == directory
-            && Path.GetFileName(path).StartsWith(prefix, StringComparison.Ordinal));
-    }
-
-    public static Message SettingsReset(string setAsidePath) =>
-        Message.Of("quarantine.settingsBody", ("path", setAsidePath));
+        NewerFormatException => "failure.startupSettingsNewer",
+        InvalidDataException => "failure.startupSettingsMalformed",
+        _ => "failure.startupSettings",
+    }, ("path", configFile));
 
     public static Message OpenBinder(Exception error, string binderTitle) => error switch
     {

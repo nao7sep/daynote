@@ -90,21 +90,15 @@ public sealed class JsonStoreTests : IDisposable
     }
 
     [Fact]
-    public void Load_quarantines_corrupt_json_and_returns_null()
+    public void Load_refuses_corrupt_json_and_leaves_it_in_place()
     {
-        // Config and state are rebuildable, so a corrupt file is set aside —
-        // bytes preserved under the .invalid name — and the load proceeds with
-        // null without writing a replacement.
+        // A load only reads: the caller decides what an unusable file means, and the bytes stay put.
         File.WriteAllText(_path, "{ this is not valid json");
-        QuarantineJournal.Drain(); // isolate from other tests
 
-        Assert.Null(_store.Load());
+        Assert.Throws<InvalidDataException>(() => _store.Load());
 
-        Assert.False(File.Exists(_path));
-        var quarantined = Directory.GetFiles(Path.GetDirectoryName(_path)!, "*.invalid");
-        Assert.Single(quarantined);
-        Assert.Equal("{ this is not valid json", File.ReadAllText(quarantined[0]));
-        Assert.Equal(quarantined[0], Assert.Single(QuarantineJournal.Drain()));
+        Assert.Equal("{ this is not valid json", File.ReadAllText(_path));
+        Assert.Single(Directory.GetFiles(_directory));
     }
 
     [Fact]
@@ -127,20 +121,17 @@ public sealed class JsonStoreTests : IDisposable
     }
 
     [Fact]
-    public void A_newer_file_is_refused_never_set_aside_and_never_written()
+    public void A_newer_file_is_refused_and_left_in_place()
     {
         var newer = $$"""{"formatVersion":{{FormatVersions.Config + 1}},"timeZone":["Europe/London"]}""";
         File.WriteAllText(_path, newer);
         var before = File.ReadAllBytes(_path);
-        QuarantineJournal.Drain();
 
         var error = Assert.Throws<NewerFormatException>(() => _store.Load());
-        _store.Save(new AppConfig { TimeZone = "Asia/Tokyo" });
 
         Assert.Equal(FormatVersions.Config + 1, error.Found);
         Assert.Equal(before, File.ReadAllBytes(_path));
-        Assert.Empty(Directory.GetFiles(_directory, "*.invalid"));
-        Assert.Empty(QuarantineJournal.Drain());
+        Assert.Single(Directory.GetFiles(_directory));
     }
 
     [Theory]
@@ -150,15 +141,13 @@ public sealed class JsonStoreTests : IDisposable
     [InlineData("""{"formatVersion":1.5}""")]
     [InlineData("""{"formatVersion":"1"}""")]
     [InlineData("null")]
-    public void A_file_without_a_positive_integer_format_version_is_set_aside(string json)
+    public void A_file_without_a_positive_integer_format_version_is_refused_and_left_in_place(string json)
     {
         File.WriteAllText(_path, json);
-        QuarantineJournal.Drain();
 
-        Assert.Null(_store.Load());
+        Assert.Throws<InvalidDataException>(() => _store.Load());
 
-        Assert.False(File.Exists(_path));
-        Assert.Equal(json, File.ReadAllText(Assert.Single(QuarantineJournal.Drain())));
+        Assert.Equal(json, File.ReadAllText(_path));
     }
 
     public void Dispose()

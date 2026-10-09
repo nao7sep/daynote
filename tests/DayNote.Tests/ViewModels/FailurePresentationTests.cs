@@ -13,25 +13,6 @@ public sealed class FailurePresentationTests
     private const string Hostile = "EACCES Error invoking remote method IPC /private/tmp/hostile-sentinel";
 
     [Fact]
-    public void Only_a_set_aside_config_is_reported()
-    {
-        var home = Path.Combine(Path.GetTempPath(), "daynote-home");
-        var config = Path.Combine(home, "config-20261002-101500-000-utc.invalid");
-        var state = Path.Combine(home, "state-20261002-101500-000-utc.invalid");
-
-        Assert.Equal(config, FailurePresentation.SetAsideConfig([state, config], Path.Combine(home, "config.json")));
-        Assert.Null(FailurePresentation.SetAsideConfig([state], Path.Combine(home, "config.json")));
-    }
-
-    [Fact]
-    public void A_set_aside_config_from_another_folder_is_not_this_one()
-    {
-        var other = Path.Combine(Path.GetTempPath(), "another-home", "config-20261002-101500-000-utc.invalid");
-
-        Assert.Null(FailurePresentation.SetAsideConfig([other], Path.Combine(Path.GetTempPath(), "daynote-home", "config.json")));
-    }
-
-    [Fact]
     public void The_load_failed_notice_names_the_settings_file_and_says_it_was_left_in_place()
     {
         var config = Path.Combine(Path.GetTempPath(), "daynote-home", "config.json");
@@ -44,11 +25,16 @@ public sealed class FailurePresentationTests
     }
 
     [Fact]
-    public void The_settings_reset_notice_names_the_set_aside_copy()
+    public void A_malformed_settings_file_is_named_left_in_place_and_says_what_to_do()
     {
-        var copy = Path.Combine(Path.GetTempPath(), "daynote-home", "config-20261002-101500-000-utc.invalid");
+        var config = Path.Combine(Path.GetTempPath(), "daynote-home", "config.json");
 
-        Assert.Contains(copy, English.Of(FailurePresentation.SettingsReset(copy)), StringComparison.Ordinal);
+        var text = English.Of(FailurePresentation.StartupSettings(config, new InvalidDataException(Hostile)));
+
+        Assert.Contains(config, text, StringComparison.Ordinal);
+        Assert.Contains("left in place", text, StringComparison.Ordinal);
+        Assert.Contains("Fix the file", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(Hostile, text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -65,11 +51,9 @@ public sealed class FailurePresentationTests
         var link = English.Of(FailurePresentation.OpenExternalLink(error));
         var startup = English.Of(FailurePresentation.StartupSettings("config.json", error));
         var startupStorage = English.Of(FailurePresentation.StartupStorage());
-        var recovery = English.Of(FailurePresentation.SettingsReset("config.invalid"));
 
         Assert.DoesNotContain(Hostile, startup, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, startupStorage, StringComparison.Ordinal);
-        Assert.DoesNotContain(Hostile, recovery, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, open, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, save, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, newBinderPicker, StringComparison.Ordinal);
