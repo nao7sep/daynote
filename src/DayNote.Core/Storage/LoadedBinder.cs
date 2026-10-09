@@ -3,8 +3,8 @@ using DayNote.Core.Models;
 namespace DayNote.Core.Storage;
 
 /// <summary>
-/// A binder read from disk together with the content hash captured at load time, used later to
-/// detect external modification.
+/// A binder read from disk together with the content hash of the version read, which the next save
+/// expects to find on disk.
 /// </summary>
 public sealed record LoadedBinder(
     Binder Binder,

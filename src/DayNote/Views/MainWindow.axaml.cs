@@ -283,6 +283,7 @@ public partial class MainWindow : Window
         // While the window is open it answers a language change for its view model's words, which
         // markup cannot hold a key for. Only while it is open, so a closed window is never written to.
         Localizer.Changed += OnLanguageChanged;
+        Activated += OnWindowActivated;
         RememberNormalGeometry();
         if (DataContext is MainWindowViewModel vm)
         {
@@ -292,6 +293,10 @@ public partial class MainWindow : Window
     }
 
     private void OnScreensChanged(object? sender, EventArgs e) => ApplyNativeMinimum();
+
+    // Coming back to DayNote is when a binder deleted or restored in another app is worth showing on its row.
+    private void OnWindowActivated(object? sender, EventArgs e) =>
+        (DataContext as MainWindowViewModel)?.RefreshKnownBinders();
 
     public void RestoreWindowGeometry()
     {
@@ -504,6 +509,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         Localizer.Changed -= OnLanguageChanged;
+        Activated -= OnWindowActivated;
         if (DataContext is MainWindowViewModel vm)
         {
             vm.NoteCreated -= OnNoteCreated;

@@ -6,15 +6,21 @@ using DayNote.Core.Toml;
 namespace DayNote.Core.Storage;
 
 /// <summary>
-/// Reads and writes <c>.daynote</c> binder files, capturing the content hash needed for
-/// external-change detection, and manages the matching <c>-assets</c> directory.
-/// This is the edge where binder file I/O lives; serialization itself is pure and lives in
-/// <see cref="BinderTomlReader"/> and <see cref="BinderTomlWriter"/>. The write and the external-change
-/// read are virtual so a test can hold one at its file I/O while it starts a competing action.
+/// Reads and writes <c>.daynote</c> binder files, capturing the content hash of each version it loads or
+/// writes, and manages the matching <c>-assets</c> directory. This is the edge where binder file I/O lives;
+/// serialization itself is pure and lives in <see cref="BinderTomlReader"/> and <see cref="BinderTomlWriter"/>.
+/// The load and the write are virtual so a test can hold one at its file I/O while it starts a competing
+/// action.
 /// </summary>
+/// <remarks>
+/// A change made outside DayNote is noticed when DayNote next saves, not by watching the file: the save
+/// reads the file it is about to replace and compares it with the version DayNote last loaded or wrote. The
+/// read was needed anyway, to leave a file a newer DayNote wrote untouched (store-recovery-conventions), so
+/// protecting an outside edit from being overwritten without a choice costs no monitoring at all.
+/// </remarks>
 public class BinderStore
 {
-    /// <summary>Loads a binder and records the content-hash baseline for external-change detection.</summary>
+    /// <summary>Loads a binder and the content hash of the version it read.</summary>
     /// <exception cref="NewerFormatException">The binder was written by a newer DayNote; it is left untouched.</exception>
     public virtual LoadedBinder Load(string path)
     {
@@ -24,59 +30,51 @@ public class BinderStore
         return new LoadedBinder(binder, fullPath, ContentHash.Sha256Hex(raw));
     }
 
-    /// <summary>Serializes and atomically writes a binder, returning the new baseline and text.</summary>
-    /// <exception cref="NewerFormatException">The file was written by a newer DayNote; it is left untouched.</exception>
-    public SavedBinder Save(string path, Binder binder) => SaveText(path, Serialize(binder));
+    /// <summary>Serializes and atomically writes a new binder, returning its content hash and text.</summary>
+    /// <exception cref="NewerFormatException">A file a newer DayNote wrote is already there; it is left untouched.</exception>
+    public SavedBinder Save(string path, Binder binder) => SaveText(path, Serialize(binder), expectedHash: null);
 
     /// <summary>Serializes a binder to its TOML text — pure and in-memory, no I/O.</summary>
     public static string Serialize(Binder binder) => BinderTomlWriter.Write(binder);
 
     /// <summary>
-    /// Atomically writes already-serialized binder text and returns the new baseline. Split out from
-    /// <see cref="Save"/> so a caller can serialize the (mutable, UI-owned) <see cref="Binder"/> to an
-    /// immutable string synchronously and then move only the I/O — the atomic write, fsync, and backup
-    /// insert — to a background thread, with no risk of a concurrent edit touching the binder while it
-    /// is being written. A file a newer DayNote wrote in the meantime, such as one a sync client just
-    /// delivered, is intact data this build cannot read, so it is never written over
-    /// (store-recovery-conventions).
+    /// Atomically writes already-serialized binder text over the version DayNote last loaded or wrote, whose
+    /// content hash is <paramref name="expectedHash"/>, and returns the new version's hash. Split from
+    /// <see cref="Save"/> so a caller can serialize the (mutable, UI-owned) <see cref="Binder"/> on its own
+    /// thread and move only the I/O to a background thread. When the file on disk is no longer that version,
+    /// nothing is written: a file a newer DayNote wrote is intact data this build cannot read, and any other
+    /// is a change the user decides about. A missing file is written again. With no
+    /// <paramref name="expectedHash"/> (a new binder), only a newer DayNote's file is refused.
     /// </summary>
     /// <exception cref="NewerFormatException">The file was written by a newer DayNote; it is left untouched.</exception>
-    public virtual SavedBinder SaveText(string path, string text)
+    /// <exception cref="BinderChangedOnDiskException">The file changed outside DayNote; it is left untouched.</exception>
+    public virtual SavedBinder SaveText(string path, string text, string? expectedHash)
     {
         var fullPath = Path.GetFullPath(path);
-        if (File.Exists(fullPath) && NewerVersion(File.ReadAllText(fullPath, Encoding.UTF8)) is { } newer)
+        var existed = File.Exists(fullPath);
+        if (existed)
         {
-            throw new NewerFormatException("binder", newer, FormatVersions.Binder);
+            var raw = File.ReadAllText(fullPath, Encoding.UTF8);
+            var diskHash = ContentHash.Sha256Hex(raw);
+            if (expectedHash is null || diskHash != expectedHash)
+            {
+                if (NewerVersion(raw) is { } newer)
+                {
+                    throw new NewerFormatException("binder", newer, FormatVersions.Binder);
+                }
+
+                if (expectedHash is not null)
+                {
+                    throw new BinderChangedOnDiskException(fullPath, diskHash);
+                }
+            }
         }
 
         AtomicFile.WriteAllText(fullPath, text);
-        return new SavedBinder(fullPath, ContentHash.Sha256Hex(text), text);
+        return new SavedBinder(fullPath, ContentHash.Sha256Hex(text), text, Recreated: expectedHash is not null && !existed);
     }
 
-    /// <summary>
-    /// Compares the file on disk against a load-time content-hash baseline. The hash is always
-    /// computed (modification time is not used as a short-circuit), so an external edit that lands
-    /// within the same coarse filesystem timestamp tick is still detected.
-    /// </summary>
-    public virtual ExternalChange CheckExternalChange(string path, string loadedHash)
-    {
-        var fullPath = Path.GetFullPath(path);
-        if (!File.Exists(fullPath))
-        {
-            return ExternalChange.Deleted;
-        }
-
-        var raw = File.ReadAllText(fullPath, Encoding.UTF8);
-        if (ContentHash.Sha256Hex(raw) == loadedHash)
-        {
-            return ExternalChange.None;
-        }
-
-        return NewerVersion(raw) is null ? ExternalChange.Modified : ExternalChange.Newer;
-    }
-
-    // The version a newer DayNote recorded, if one did. A file that is not a binder at all is not newer:
-    // a reload reports it, and a save replaces it.
+    // The version a newer DayNote recorded, if one did. A file that is not a binder at all is not newer.
     private static long? NewerVersion(string raw)
     {
         try
@@ -89,10 +87,6 @@ public class BinderStore
             return null;
         }
     }
-
-    /// <summary>The content hash of the file on disk, used to (re)establish an external-change baseline.</summary>
-    public string ComputeHash(string path) =>
-        ContentHash.Sha256Hex(File.ReadAllText(Path.GetFullPath(path), Encoding.UTF8));
 
     /// <summary>The <c>&lt;basename&gt;-assets</c> directory beside the binder file.</summary>
     public static string AssetsDirectory(string binderPath)

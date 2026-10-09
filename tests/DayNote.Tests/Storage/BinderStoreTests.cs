@@ -52,32 +52,57 @@ public sealed class BinderStoreTests : IDisposable
     }
 
     [Fact]
-    public void CheckExternalChange_reports_none_when_the_file_is_unchanged()
+    public void A_save_over_the_expected_version_writes_and_returns_the_new_hash()
     {
         var saved = _store.Save(_path, Sample());
+        var text = File.ReadAllText(_path, Encoding.UTF8) + "\n";
 
-        Assert.Equal(ExternalChange.None, _store.CheckExternalChange(_path, saved.ContentHash));
+        var next = _store.SaveText(_path, text, saved.ContentHash);
+
+        Assert.Equal(text, File.ReadAllText(_path, Encoding.UTF8));
+        Assert.Equal(_store.Load(_path).ContentHash, next.ContentHash);
+        Assert.False(next.Recreated);
     }
 
     [Fact]
-    public void CheckExternalChange_reports_modified_after_an_external_edit()
+    public void A_save_over_an_outside_edit_writes_nothing_and_reports_the_version_found()
     {
         var saved = _store.Save(_path, Sample());
-
-        // Simulate an edit by another program: the bytes differ, so the hash differs, even though
-        // the file was just rewritten within the same coarse filesystem timestamp tick.
+        // An edit by another program: the bytes differ, so the hash differs, even within the same coarse
+        // filesystem timestamp tick.
         File.WriteAllText(_path, File.ReadAllText(_path, Encoding.UTF8) + "\n# external edit\n", Encoding.UTF8);
+        var outside = File.ReadAllBytes(_path);
 
-        Assert.Equal(ExternalChange.Modified, _store.CheckExternalChange(_path, saved.ContentHash));
+        var error = Assert.Throws<BinderChangedOnDiskException>(() => _store.SaveText(_path, "replacement", saved.ContentHash));
+
+        Assert.Equal(outside, File.ReadAllBytes(_path));
+        Assert.Equal(_store.Load(_path).ContentHash, error.DiskHash);
+        // Saving over the version found is what keeping the local edits means.
+        _store.SaveText(_path, File.ReadAllText(_path, Encoding.UTF8) + "\n", error.DiskHash);
     }
 
     [Fact]
-    public void CheckExternalChange_reports_newer_when_a_newer_DayNote_rewrote_the_file()
+    public void A_save_over_a_file_a_newer_DayNote_wrote_meanwhile_is_refused_as_newer()
     {
         var saved = _store.Save(_path, Sample());
         File.WriteAllText(_path, NewerBinderText);
+        var before = File.ReadAllBytes(_path);
 
-        Assert.Equal(ExternalChange.Newer, _store.CheckExternalChange(_path, saved.ContentHash));
+        Assert.Throws<NewerFormatException>(() => _store.SaveText(_path, "replacement", saved.ContentHash));
+
+        Assert.Equal(before, File.ReadAllBytes(_path));
+    }
+
+    [Fact]
+    public void A_save_of_a_binder_whose_file_was_deleted_writes_it_again()
+    {
+        var saved = _store.Save(_path, Sample());
+        File.Delete(_path);
+
+        var again = _store.SaveText(_path, saved.Text, saved.ContentHash);
+
+        Assert.True(again.Recreated);
+        Assert.Equal(saved.Text, File.ReadAllText(_path, Encoding.UTF8));
     }
 
     [Fact]
@@ -105,15 +130,6 @@ public sealed class BinderStoreTests : IDisposable
 
     private static string NewerBinderText =>
         $"format_version = {FormatVersions.Binder + 1}\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
-
-    [Fact]
-    public void CheckExternalChange_reports_deleted_when_the_file_is_gone()
-    {
-        var saved = _store.Save(_path, Sample());
-        File.Delete(_path);
-
-        Assert.Equal(ExternalChange.Deleted, _store.CheckExternalChange(_path, saved.ContentHash));
-    }
 
     [Fact]
     public void ResolveAttachments_builds_paths_under_the_note_assets_directory()

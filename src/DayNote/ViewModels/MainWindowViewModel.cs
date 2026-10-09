@@ -22,9 +22,9 @@ namespace DayNote.ViewModels;
 /// <summary>
 /// Orchestrates the main window: the four panes (binders, notes, editor, attachments),
 /// load-gated configuration and state, opening/closing binders, autosave with per-note dirty
-/// tracking, external-modification detection, and the known-binders list. One GUI process owns a
-/// storage root at a time; external-change detection still reconciles edits from other tools and
-/// sync clients. Side-effecting file work is delegated to the Core storage layer; dialogs and the
+/// tracking, and the known-binders list. One GUI process owns a storage root at a time; a binder
+/// changed by another tool or a sync client is noticed when DayNote next saves it, and the user chooses
+/// which version wins. Side-effecting file work is delegated to the Core storage layer; dialogs and the
 /// native file picker go through <see cref="IDialogService"/>.
 /// </summary>
 public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowHost
@@ -56,7 +56,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     private readonly DispatcherTimer _autosaveTimer;
     private readonly DispatcherTimer _textStyleStatusTimer;
-    private readonly DispatcherTimer _externalTimer;
 
     private readonly List<NoteListItemViewModel> _allNotes = new();
     private readonly List<BinderListItemViewModel> _allBinders = new();
@@ -92,20 +91,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private Exception? _configLoadError;
 
     private LoadedBinder? _current;
+    // The content hash of the version DayNote last loaded or wrote: what the next save expects to find on
+    // disk before replacing it.
     private string _baselineHash = string.Empty;
     private bool _dirty;
-    private bool _externalChangeAcknowledged;
     private SaveState _saveState = SaveState.Saved;
 
     // The one owner of the open binder's file and its baseline hash. A save holds it from its snapshot
-    // until its result is applied, and the external-change check holds it from its read until its
-    // reload or re-baseline is applied, so neither ever acts on the file or the baseline while the
-    // other is between its I/O and its result: two saves never overlap on the file, a check never
-    // mistakes the app's own in-flight write for an external edit, and a save never lands on top of
-    // content the check just reloaded. A save that arrives during a check, conflict question included,
-    // waits its turn, so a quit or a switch is never refused for it. The UI thread stays the only place
-    // that takes or releases it.
+    // until its result is applied, and an open or a reload holds it around its read, so no two of them
+    // ever act on the file or the baseline at once: two saves never overlap on the file, and a save never
+    // lands on top of content a reload is reading. It is never held while a question is open. The UI
+    // thread stays the only place that takes or releases it.
     private readonly SemaphoreSlim _binderFileLock = new(1, 1);
+
+    // Completes when the open question about a binder changed outside DayNote is answered and applied. A
+    // save arriving meanwhile waits for it and then saves as the answer left things, instead of asking again.
+    private Task? _changedOnDiskQuestion;
 
     // Bumped by every MarkDirty call. A save snapshots this right before it hands its text to the
     // background writer; if it changes before that write returns, an edit landed mid-save, and the
@@ -200,13 +201,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 // are retried rather than stranded.
                 _autosaveTimer.Start();
             }
-        };
-
-        _externalTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        _externalTimer.Tick += async (_, _) =>
-        {
-            RefreshKnownBinders();
-            await CheckExternalChangeAsync();
         };
 
         if (_configLoadError is null)
@@ -457,8 +451,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             await OpenBinderPathAsync(_state.CurrentBinderPath!, isNew: false, selectNoteId: _state.CurrentNoteId);
         }
-
-        _externalTimer.Start();
     }
 
     // How long each step of a quit may take (unsaved-edits-conventions, Quitting).
@@ -468,8 +460,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     /// <summary>
     /// Starts a quit. An open still reading its file is superseded, as a later open would supersede it,
-    /// so it cannot adopt a binder or write state after the app has shut down; the autosave and the
-    /// external-change check stop; and state changes wait for the quit's own write. The view calls it
+    /// so it cannot adopt a binder or write state after the app has shut down; the autosave stops; and
+    /// state changes wait for the quit's own write. The view calls it
     /// before closing the windows whose placement that write records.
     /// </summary>
     public void BeginShutdown()
@@ -482,7 +474,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _shuttingDown = true;
         _openGeneration++;
         _autosaveTimer.Stop();
-        _externalTimer.Stop();
     }
 
     /// <summary>
@@ -502,7 +493,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             _shuttingDown = false;
             _autosaveTimer.Start();
-            _externalTimer.Start();
             return false;
         }
 
@@ -1041,7 +1031,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // The binder may have been reloaded or closed while the batch was hashed and copied in the
         // background. The files already landed safely under the note's own id either way; there is
         // just no live note left to attach them to, so the UI update is dropped rather than mutating
-        // a stale object (same rule CheckExternalChangeAsync/RemoveAttachment follow for a late result).
+        // a stale object (same rule ReloadFromDiskAsync/RemoveAttachment follow for a late result).
         if (!IsLiveNote(note))
         {
             _log.Info("Discarding attachment-add result: note is no longer live", new { noteId });
@@ -1455,9 +1445,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             // The binder's own read (JSON parse) or write (new-binder create) is genuine file I/O, so it
             // runs off the UI thread; only building the empty Binder for a new file — trivial, in-memory —
-            // stays here. The work shares the save lock with SaveCurrentAsync/CheckExternalChangeAsync/
-            // ReloadFromDiskAsync so it can never touch this file while one of those still has its write
-            // or read of it in flight.
+            // stays here. The work shares the save lock with SaveCurrentAsync/ReloadFromDiskAsync so it
+            // can never touch this file while one of those still has its write or read of it in flight.
             await _binderFileLock.WaitAsync();
             try
             {
@@ -1566,6 +1555,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         SetSaveState(SaveState.Saved);
         // What the closed binder's file did on disk no longer concerns the open workspace.
         ResolveShellResult(BinderFileResultKey);
+        RefreshKnownBinders();
 
         if (clearSelection)
         {
@@ -1611,6 +1601,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return true;
         }
 
+        if (_changedOnDiskQuestion is { } question)
+        {
+            // The open binder's file changed outside DayNote and the user is being asked about it; this
+            // save goes ahead once that answer is applied. An ending session does not wait for an answer.
+            if (_sessionEnding)
+            {
+                return false;
+            }
+
+            await question;
+            return await SaveCurrentAsync();
+        }
+
+        BinderChangedOnDiskException? changedOnDisk = null;
+        var savingBinder = _current;
+
         // A second call arriving while one save's background I/O is still in flight (the autosave tick
         // and a manual Ctrl+S can land back to back) queues here instead of starting an overlapping write
         // to the same file. Awaited before touching any save state, so the UI thread is never blocked —
@@ -1629,6 +1635,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             SetSaveState(SaveState.Saving);
             var binder = _current.Binder;
             var path = _current.Path;
+            savingBinder = _current;
             _log.Info("Saving binder", new { path, noteCount = binder.Notes.Count });
 
             // Each changed note's Modified was set when it was edited; one whose content is back to what
@@ -1652,15 +1659,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
             // Serializing the binder to text is pure, in-memory work over the (UI-owned, mutable)
             // Binder object, so it stays on the UI thread; only the text — an immutable snapshot — and
-            // the I/O that writes it (the atomic write, fsync, and backup insert) move to a background
-            // thread, so a keystroke landing mid-save can never race a background reader of the binder.
+            // the I/O that writes it (the read of the version it replaces and the atomic write) move to a
+            // background thread, so a keystroke landing mid-save can never race a background reader of
+            // the binder.
             var text = BinderStore.Serialize(binder);
             var generationAtSnapshot = _dirtyGeneration;
             var modifiedAtSnapshot = binder.Modified;
+            var expectedHash = _baselineHash;
 
             try
             {
-                var saved = await Task.Run(() => _binderStore.SaveText(path, text));
+                var saved = await Task.Run(() => _binderStore.SaveText(path, text, expectedHash));
                 _baselineHash = saved.ContentHash;
                 foreach (var (id, savedNote) in written)
                 {
@@ -1669,8 +1678,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
                 _savedNoteIds = noteIds;
                 _savedBinderModified = modifiedAtSnapshot;
-
-                _externalChangeAcknowledged = false;
 
                 // Only clear the dirty flags when nothing edited the binder while this save's background
                 // write was in flight. A newer edit already re-set them (MarkDirty), possibly re-adding a
@@ -1688,16 +1695,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 RefreshSelectedListItem();
                 SetSaveState(settled ? SaveState.Saved : SaveState.Unsaved);
                 ResolveShellResult(SaveFailureResultKey);
-                // The file now holds this version, which settles any deletion or reload problem.
+                // The file now holds this version, which settles any reload problem.
                 ResolveShellResult(BinderFileResultKey);
+                if (saved.Recreated)
+                {
+                    _log.Warn("Binder file was missing on disk; written again", new { path });
+                }
+
                 _log.Info("Binder saved", new { path = saved.Path, chars = saved.Text.Length, durationMs = stopwatch.ElapsedMilliseconds });
                 return true;
             }
             catch (NewerFormatException ex)
             {
-                // A newer DayNote rewrote the file since the last check, so this save would replace it.
+                // A newer DayNote rewrote the file since it was loaded, so this save would replace it.
                 CloseNewerBinder(path, ex);
                 return false;
+            }
+            catch (BinderChangedOnDiskException ex)
+            {
+                // Nothing was written. The question is asked once the lock is released below, so no other
+                // operation on the file waits on the user.
+                _log.Warn("Binder changed on disk since it was loaded or last saved; not written", new { path });
+                SetSaveState(SaveState.Unsaved);
+                changedOnDisk = ex;
             }
             catch (Exception ex)
             {
@@ -1716,124 +1736,83 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             _binderFileLock.Release();
         }
+
+        return await ResolveChangedOnDiskAsync(savingBinder, changedOnDisk.DiskHash);
     }
 
-    internal async Task CheckExternalChangeAsync()
+    /// <summary>
+    /// A save found the open binder's file changed outside DayNote and wrote nothing. Outside a quit, the
+    /// user chooses: Keep mine replaces the version they were asked about, and only that version (a further
+    /// change asks again); Reload adopts the file on disk and discards the unsaved edits. During a quit the
+    /// change counts as a failed save, so ordinary quit offers Retry, Quit anyway or Cancel, and an ending
+    /// OS session leaves the outside version in place. Returns true when nothing is left to save.
+    /// </summary>
+    private async Task<bool> ResolveChangedOnDiskAsync(LoadedBinder changedBinder, string diskHash)
     {
-        if (!IsReady || _current is null || _externalChangeAcknowledged)
+        if (_shuttingDown || _sessionEnding)
         {
-            return;
+            return false;
         }
 
-        // A save is writing this file and has not yet recorded its new baseline, so the file would read
-        // as changed by someone else; or an earlier check is still running. Skip this tick; the next one
-        // compares against the baseline the holder leaves.
-        if (!_binderFileLock.Wait(0))
+        if (_changedOnDiskQuestion is { } open)
         {
-            return;
+            await open;
+            return await SaveCurrentAsync();
         }
 
-        var checkedBinder = _current;
+        // Waiting saves resume only after this one has applied the answer and, for either choice, taken
+        // the binder file lock again, so they never find the same change and ask a second time.
+        var answered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _changedOnDiskQuestion = answered.Task;
+        var path = changedBinder.Path;
+        ExternalChangeChoice choice;
         try
         {
-            // The whole-file read and SHA-256 hash are the slow part (not the property reads above),
-            // so only that step moves to a background thread; the path and baseline are plain strings
-            // captured on the UI thread, so there is nothing left for the background call to race.
-            var path = checkedBinder.Path;
-            var baselineHash = _baselineHash;
-            var change = await Task.Run(() => _binderStore.CheckExternalChange(path, baselineHash));
-            if (!ReferenceEquals(_current, checkedBinder))
-            {
-                // The binder was closed or switched while its file was being read.
-                return;
-            }
-
-            switch (change)
-            {
-                case ExternalChange.None:
-                    return;
-
-                case ExternalChange.Deleted:
-                    _externalChangeAcknowledged = true;
-                    _log.Warn("Binder file was deleted on disk", new { path });
-                    ShowResult(
-                        OperationResultKind.Warning,
-                        Message.Of("binder.deleted"),
-                        resultKey: BinderFileResultKey);
-                    return;
-
-                case ExternalChange.Newer:
-                    CloseNewerBinder(path);
-                    return;
-
-                case ExternalChange.Modified when !_dirty:
-                    _log.Info("Binder changed on disk; reloading", new { path });
-                    if (await ReloadFromDiskAsync(checkedBinder))
-                    {
-                        ShowResult(
-                            OperationResultKind.Info,
-                            Message.Of("binder.reloaded"),
-                            resultKey: BinderFileResultKey);
-                    }
-                    return;
-
-                case ExternalChange.Modified:
-                    var choice = await _dialogs.AskExternalChangeAsync(TitleFor(path));
-                    if (!ReferenceEquals(_current, checkedBinder))
-                    {
-                        return;
-                    }
-
-                    if (choice == ExternalChangeChoice.ReloadFromDisk)
-                    {
-                        _log.Info("External change: reloading from disk, discarding local edits", new { path });
-                        await ReloadFromDiskAsync(checkedBinder);
-                    }
-                    else
-                    {
-                        // Keep the in-memory edits: re-baseline to the current on-disk content so the
-                        // next save overwrites it, and so any *further* external change is still
-                        // detected rather than silently suppressed.
-                        _log.Info("External change: keeping local edits", new { path });
-                        var diskHash = await Task.Run(() => _binderStore.ComputeHash(path));
-                        if (ReferenceEquals(_current, checkedBinder))
-                        {
-                            _baselineHash = diskHash;
-                        }
-                    }
-
-                    return;
-            }
-        }
-        catch (Exception ex)
-        {
-            // A transient read failure during polling (the file briefly locked by a sync client,
-            // antivirus, or an external editor) must not crash the app; skip this tick and retry.
-            _log.Debug("External-change check skipped", new { path = checkedBinder.Path }, ex);
+            choice = await _dialogs.AskExternalChangeAsync(TitleFor(path));
         }
         finally
         {
-            _binderFileLock.Release();
+            _changedOnDiskQuestion = null;
+            answered.SetResult();
         }
+
+        if (!ReferenceEquals(_current, changedBinder) || _shuttingDown || _sessionEnding)
+        {
+            // The binder was closed or the app began quitting while the user decided; nothing is changed.
+            return false;
+        }
+
+        if (choice == ExternalChangeChoice.ReloadFromDisk)
+        {
+            _log.Info("External change: reloading from disk, discarding local edits", new { path });
+            await ReloadFromDiskAsync(changedBinder);
+            return !_dirty;
+        }
+
+        // Keep the in-memory edits: the version just asked about is the one this save may replace.
+        _log.Info("External change: keeping local edits", new { path });
+        _baselineHash = diskHash;
+        return await SaveCurrentAsync();
     }
 
     /// <summary>
     /// Reads the binder file on a background thread and adopts it only if the same binder is still open.
-    /// An edit typed while the file is being read cancels adoption, including an explicit Reload: that
-    /// choice permits discarding earlier edits, never input entered after the read begins.
+    /// An edit typed while the file is being read cancels adoption: the Reload choice permits discarding
+    /// earlier edits, never input entered after the read begins.
     /// </summary>
     private async Task<bool> ReloadFromDiskAsync(LoadedBinder reloading)
     {
         var path = reloading.Path;
         var generation = _dirtyGeneration;
         LoadedBinder loaded;
+        await _binderFileLock.WaitAsync();
         try
         {
             loaded = await Task.Run(() => _binderStore.Load(path));
         }
         catch (NewerFormatException ex)
         {
-            // Rewritten by a newer DayNote since the check read it.
+            // Rewritten by a newer DayNote since the save read it.
             if (ReferenceEquals(_current, reloading))
             {
                 CloseNewerBinder(path, ex);
@@ -1854,6 +1833,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
             return false;
         }
+        finally
+        {
+            _binderFileLock.Release();
+        }
 
         if (!ReferenceEquals(_current, reloading) || _dirtyGeneration != generation)
         {
@@ -1871,7 +1854,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         _current = loaded;
         _baselineHash = loaded.ContentHash;
-        _externalChangeAcknowledged = false;
         _dirty = false;
         _dirtyNoteIds.Clear();
         _saved.Clear();
@@ -2028,10 +2010,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     /// <summary>
-    /// Re-reads which known binders are still on disk, so a file deleted or restored outside the app
-    /// shows on its row within a tick: the row that wants removing says so without being opened
-    /// first. The open binder is left out — while it is open, its file's fate is reported with the
-    /// recovery that goes with it, and one condition is reported in one place.
+    /// Re-reads which known binders are still on disk, so a file deleted or restored outside the app shows
+    /// on its row: the row that wants removing says so without being opened first. Runs when the main
+    /// window is activated and when a binder closes, not on a timer. The open binder is left out: while it
+    /// is open, its next save writes it again.
     /// </summary>
     internal void RefreshKnownBinders()
     {
@@ -2277,28 +2259,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     private void RefreshSelectedListItem() => SelectedNote?.Refresh(_displayZone);
 
-    private static readonly TimeSpan TransientResultLifetime = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TextStyleStatusLifetime = TimeSpan.FromSeconds(5);
 
     public void DismissResult(OperationResultViewModel result) => Results.Remove(result);
 
     /// <summary>
     /// Shows the current result for one subject. A subject holds at most one result: a later one
-    /// replaces it where it stands, and a new subject goes on top. Information needs no action, so
-    /// it clears itself; a warning or error stays until the user dismisses it or its owner resolves
-    /// it, and a result for another subject never removes it.
+    /// replaces it where it stands, and a new subject goes on top. Every result the window shows is a
+    /// warning or a failure, so it stays until the user dismisses it or its owner resolves it, and a
+    /// result for another subject never removes it.
     /// </summary>
     private void ShowResult(OperationResultKind kind, Message message, string resultKey)
     {
-        var isPersistent = kind != OperationResultKind.Info;
         var existing = Results.FirstOrDefault(result => result.ResultKey == resultKey);
-        if (isPersistent && existing is not null && existing.Kind == kind && existing.Text == Localizer.Of(message))
+        if (existing is not null && existing.Kind == kind && existing.Text == Localizer.Of(message))
         {
             // The same unresolved problem again: it is already on screen and already announced.
             return;
         }
 
-        var result = new OperationResultViewModel(kind, message, isPersistent, resultKey);
+        var result = new OperationResultViewModel(kind, message, isPersistent: true, resultKey);
         AnnouncedResult = result;
         if (existing is null)
         {
@@ -2308,19 +2288,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             Results[Results.IndexOf(existing)] = result;
         }
-
-        if (isPersistent)
-        {
-            return;
-        }
-
-        var timer = new DispatcherTimer { Interval = TransientResultLifetime };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            Results.Remove(result);
-        };
-        timer.Start();
     }
 
     private void ResolveShellResult(string resultKey)

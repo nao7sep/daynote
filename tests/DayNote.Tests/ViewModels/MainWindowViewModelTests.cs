@@ -187,9 +187,13 @@ public sealed class MainWindowViewModelTests : IDisposable
     public async Task Failed_external_reload_never_publishes_success()
     {
         var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
         File.WriteAllText(BinderPath, "not valid DayNote data");
+        vm.Editor.Body = "local edit";
+        _dialogs.ExternalChoice = ExternalChangeChoice.ReloadFromDisk;
 
-        await vm.CheckExternalChangeAsync();
+        await vm.SaveNowCommand.ExecuteAsync(null);
 
         var result = Assert.Single(
             vm.Results,
@@ -520,7 +524,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task An_open_binder_rewritten_by_a_newer_DayNote_is_closed_and_never_written(bool unsavedEdits)
+    public async Task An_open_binder_rewritten_by_a_newer_DayNote_is_never_written(bool unsavedEdits)
     {
         var vm = await OpenNewBinderAsync();
         vm.NewNoteCommand.Execute(null);
@@ -529,17 +533,22 @@ public sealed class MainWindowViewModelTests : IDisposable
         var before = File.ReadAllBytes(BinderPath);
         if (unsavedEdits)
         {
-            vm.Editor.Body = "typed before the check";
+            vm.Editor.Body = "typed after the rewrite";
         }
 
-        await vm.CheckExternalChangeAsync();
         await vm.SaveNowCommand.ExecuteAsync(null);
 
-        Assert.False(vm.HasBinder);
+        // Nothing watches the file: an unedited binder stays open until its next save, which is the
+        // moment the newer file is found and closed without being written.
+        Assert.Equal(!unsavedEdits, vm.HasBinder);
         Assert.Equal(0, _dialogs.ExternalChangeQuestions);
-        var result = Assert.Single(vm.Results);
-        Assert.Equal(OperationResultKind.Error, result.Kind);
-        Assert.Contains("newer version of DayNote", result.Text, StringComparison.Ordinal);
+        if (unsavedEdits)
+        {
+            var result = Assert.Single(vm.Results);
+            Assert.Equal(OperationResultKind.Error, result.Kind);
+            Assert.Contains("newer version of DayNote", result.Text, StringComparison.Ordinal);
+        }
+
         await vm.ShutdownAsync();
 
         Assert.Equal(before, File.ReadAllBytes(BinderPath));
@@ -618,66 +627,158 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
     }
 
-    [AvaloniaFact]
-    public async Task An_external_change_check_waits_out_a_save_in_flight_instead_of_acting_on_it()
-    {
-        // The file differs from the baseline twice over while a save is writing: someone else changed
-        // it, and the save is about to replace it. A check that ran now would ask about a conflict and,
-        // on Reload, adopt a file the in-flight save then overwrites with the older text, reporting
-        // Saved over content the user chose to keep. The check skips the tick instead.
-        var gated = new GatedBinderStore();
-        var vm = await OpenNewBinderAsync(gated);
-        vm.NewNoteCommand.Execute(null);
-        await vm.SaveNowCommand.ExecuteAsync(null);
+    // ----- A binder changed outside DayNote is noticed when DayNote next saves it -----------------------
 
+    private void ChangeOutside(string title)
+    {
         var store = new BinderStore();
         var outside = store.Load(BinderPath).Binder;
-        outside.Notes[0].Title = "Changed outside";
+        outside.Notes[0].Title = title;
         store.Save(BinderPath, outside);
+    }
 
+    [AvaloniaFact]
+    public async Task An_outside_change_is_asked_about_before_anything_is_written_and_keep_mine_writes_once()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        ChangeOutside("Changed outside");
+        var outside = File.ReadAllBytes(BinderPath);
+
+        var answer = new TaskCompletionSource<ExternalChangeChoice>();
+        _dialogs.ExternalAnswer = () =>
+        {
+            // While the question is open, nothing has replaced the outside version.
+            Assert.Equal(outside, File.ReadAllBytes(BinderPath));
+            return answer.Task;
+        };
         vm.Editor.Body = "local edit";
-        _dialogs.ExternalChoice = ExternalChangeChoice.ReloadFromDisk;
-        var writing = gated.HoldNextSave();
         var save = vm.SaveNowCommand.ExecuteAsync(null);
-        await writing.Entered.Task;
-        await vm.CheckExternalChangeAsync();
+        var secondSave = vm.SaveNowCommand.ExecuteAsync(null);
         Assert.False(save.IsCompleted);
-        writing.Release();
+        answer.SetResult(ExternalChangeChoice.KeepMine);
         await save;
+        await secondSave;
 
-        Assert.Equal(0, _dialogs.ExternalChangeQuestions);
+        // One question for one change, however many saves found it; the local version wins.
+        Assert.Equal(1, _dialogs.ExternalChangeQuestions);
+        var saved = new BinderStore().Load(BinderPath).Binder.Notes[0];
+        Assert.Equal("local edit", saved.Body);
         Assert.Equal("Saved", vm.SaveStateText);
-        Assert.Equal("local edit", store.Load(BinderPath).Binder.Notes[0].Body);
 
-        // The next tick compares against the save's own baseline, so the app's write is not news.
-        await vm.CheckExternalChangeAsync();
-        Assert.Equal(0, _dialogs.ExternalChangeQuestions);
-        Assert.Empty(vm.Results);
-
+        // The app's own write is the new baseline, so the next save asks nothing.
+        vm.Editor.Body = "another local edit";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(1, _dialogs.ExternalChangeQuestions);
         await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]
-    public async Task Quitting_while_an_external_check_reads_the_file_waits_for_it_and_saves()
+    public async Task Keep_mine_replaces_only_the_version_it_asked_about()
     {
-        // The poll's read is still in flight when the quit arrives. The quit waits its turn for the file
-        // and flushes the edit, rather than refusing and leaving the window open.
-        var gated = new GatedBinderStore();
-        var vm = await OpenNewBinderAsync(gated);
+        var vm = await OpenNewBinderAsync();
         vm.NewNoteCommand.Execute(null);
-        vm.Editor.Body = "typed just before quitting";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        ChangeOutside("First outside change");
+        var answers = 0;
+        _dialogs.ExternalAnswer = () =>
+        {
+            if (++answers == 1)
+            {
+                // Another change lands while the user decides about the first.
+                ChangeOutside("Second outside change");
+            }
 
-        var reading = gated.HoldNextCheck();
-        var check = vm.CheckExternalChangeAsync();
-        await reading.Entered.Task;
-        var quit = vm.ShutdownAsync();
-        Assert.False(quit.IsCompleted);
-        reading.Release();
-        await check;
-        Assert.True(await quit);
+            return Task.FromResult(answers == 1 ? ExternalChangeChoice.KeepMine : ExternalChangeChoice.ReloadFromDisk);
+        };
 
-        Assert.False(vm.HasBinder);
-        Assert.Equal("typed just before quitting", new BinderStore().Load(BinderPath).Binder.Notes[0].Body);
+        vm.Editor.Body = "local edit";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, _dialogs.ExternalChangeQuestions);
+        Assert.Equal("Second outside change", new BinderStore().Load(BinderPath).Binder.Notes[0].Title);
+        Assert.Equal("Second outside change", vm.Editor.Title);
+        Assert.Equal("Saved", vm.SaveStateText);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Reload_adopts_the_outside_version_and_discards_the_unsaved_edit()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        ChangeOutside("Changed outside");
+        var outside = File.ReadAllBytes(BinderPath);
+        _dialogs.ExternalChoice = ExternalChangeChoice.ReloadFromDisk;
+
+        vm.Editor.Body = "local edit";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.Equal("Changed outside", vm.Editor.Title);
+        Assert.Equal(string.Empty, vm.Editor.Body);
+        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal(outside, File.ReadAllBytes(BinderPath));
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_binder_file_deleted_outside_is_written_again_by_the_next_save()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        File.Delete(BinderPath);
+        vm.Editor.Title = "Written again";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.Equal("Written again", new BinderStore().Load(BinderPath).Binder.Notes[0].Title);
+        Assert.Equal(0, _dialogs.ExternalChangeQuestions);
+        Assert.Empty(vm.Results);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_quit_that_finds_an_outside_change_writes_nothing_and_asks_whether_to_quit()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        ChangeOutside("Changed outside");
+        var outside = File.ReadAllBytes(BinderPath);
+        vm.Editor.Body = "typed before quitting";
+
+        // Stay: the quit is cancelled with nothing written, and no Keep or Reload question is asked.
+        Assert.False(await vm.QuitAsync());
+        Assert.Single(_dialogs.QuitQuestions);
+        Assert.Equal(0, _dialogs.ExternalChangeQuestions);
+        Assert.Equal(outside, File.ReadAllBytes(BinderPath));
+        Assert.True(vm.HasBinder);
+
+        // Back in the app, the next save asks which version wins.
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(1, _dialogs.ExternalChangeQuestions);
+        Assert.Equal("typed before quitting", new BinderStore().Load(BinderPath).Binder.Notes[0].Body);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task An_ending_session_leaves_an_outside_change_in_place_and_asks_nothing()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        ChangeOutside("Changed outside");
+        var outside = File.ReadAllBytes(BinderPath);
+        vm.Editor.Body = "typed before logout";
+
+        await vm.EndSessionAsync();
+
+        Assert.Empty(_dialogs.QuitQuestions);
+        Assert.Equal(0, _dialogs.ExternalChangeQuestions);
+        Assert.Equal(outside, File.ReadAllBytes(BinderPath));
     }
 
     // ----- Quitting (unsaved-edits-conventions, Quitting) -----
@@ -1468,24 +1569,19 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.NewNoteCommand.Execute(null);
         await vm.SaveNowCommand.ExecuteAsync(null);
 
-        // Someone else edits the file while this window holds no unsaved work.
-        var store = new BinderStore();
-        var outside = store.Load(BinderPath).Binder;
-        outside.Notes[0].Title = "Changed outside";
-        store.Save(BinderPath, outside);
-        await vm.CheckExternalChangeAsync();
-
-        var reloaded = Assert.Single(vm.Results);
-        Assert.Equal(OperationResultKind.Info, reloaded.Kind);
-        Assert.False(reloaded.IsPersistent);
-        Assert.Same(reloaded, vm.AnnouncedResult);
+        // A binder that opens but cannot be remembered is a warning that stays.
+        await ShowBinderNotRememberedAsync(vm);
+        var notRemembered = Assert.Single(vm.Results);
+        Assert.Equal(OperationResultKind.Warning, notRemembered.Kind);
+        Assert.True(notRemembered.IsPersistent);
+        Assert.Same(notRemembered, vm.AnnouncedResult);
 
         // Another subject goes on top and leaves the first card where it stands.
         _dialogs.OpenBinderPickerError = new IOException("picker unavailable");
         await vm.OpenBinderCommand.ExecuteAsync(null);
         var picker = vm.Results[0];
         Assert.Equal(2, vm.Results.Count);
-        Assert.Same(reloaded, vm.Results[1]);
+        Assert.Same(notRemembered, vm.Results[1]);
         Assert.Same(picker, vm.AnnouncedResult);
 
         // Repeating that failure is neither a second card nor a second announcement.
@@ -1494,18 +1590,24 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(2, vm.Results.Count);
         Assert.Same(picker, vm.Results[0]);
 
-        // A later message replaces its subject's card in place, whatever its severity: the file is
-        // one subject whether it was reloaded or is gone.
-        File.Delete(BinderPath);
-        await vm.CheckExternalChangeAsync();
+        // A later message replaces its subject's card in place, whatever its severity: the settings
+        // file is one subject whether a binder could not be remembered or a rename could not be saved.
+        var configFile = Path.Combine(_home, "config.json");
+        File.Delete(configFile);
+        Directory.CreateDirectory(configFile);
+        var row = vm.Binders.Single(binder => PathKey.Equal(binder.Path, BinderPath));
+        row.IsEditing = true;
+        vm.ApplyBinderRename(row, "Renamed");
         var warning = vm.Results[1];
-        Assert.Equal(OperationResultKind.Warning, warning.Kind);
+        Assert.Equal(OperationResultKind.Error, warning.Kind);
         Assert.True(warning.IsPersistent);
 
         // The same unresolved problem again is neither a second card nor a second announcement.
-        await vm.CheckExternalChangeAsync();
+        row.IsEditing = true;
+        vm.ApplyBinderRename(row, "Renamed");
         Assert.Same(warning, vm.Results[1]);
         Assert.Equal(2, vm.Results.Count);
+        Directory.Delete(configFile);
 
         // A result that leaves stops being the announcement, so the same failure after a dismissal
         // is a new card and a new announcement.
@@ -1986,7 +2088,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Body = "discard authorized";
         _dialogs.ExternalChoice = ExternalChangeChoice.ReloadFromDisk;
         var hold = store.HoldNextLoad();
-        var reload = vm.CheckExternalChangeAsync();
+        var reload = vm.SaveNowCommand.ExecuteAsync(null);
         try
         {
             await hold.Entered.Task;
@@ -2100,7 +2202,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(missing.IsMissing);
         Assert.Empty(vm.Results);
 
-        // The open binder's file is reported with its recovery instead, so the row stays quiet.
+        // The open binder's row stays quiet: its next save writes the file again.
         File.Delete(BinderPath);
         vm.RefreshKnownBinders();
         Assert.False(open.IsMissing);
@@ -2214,34 +2316,6 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task A_save_or_close_resolves_what_the_binder_file_did_on_disk()
-    {
-        var vm = await OpenNewBinderAsync();
-        vm.NewNoteCommand.Execute(null);
-        await vm.SaveNowCommand.ExecuteAsync(null);
-
-        File.Delete(BinderPath);
-        await vm.CheckExternalChangeAsync();
-        Assert.Equal(OperationResultKind.Warning, Assert.Single(vm.Results).Kind);
-
-        // Saving recreates the file, which is exactly what the warning promised.
-        vm.Editor.Title = "Recreated";
-        await vm.SaveNowCommand.ExecuteAsync(null);
-        Assert.True(File.Exists(BinderPath));
-        Assert.Empty(vm.Results);
-
-        // Once the binder is closed, its file's fate no longer concerns the workspace.
-        File.Delete(BinderPath);
-        await vm.CheckExternalChangeAsync();
-        Assert.Single(vm.Results);
-        await vm.CloseBinderCommand.ExecuteAsync(null);
-        Assert.False(vm.HasBinder);
-        Assert.Empty(vm.Results);
-
-        await vm.ShutdownAsync();
-    }
-
-    [AvaloniaFact]
     public async Task Shell_results_float_over_the_panes_without_moving_them_or_reserving_window_space()
     {
         var (vm, window) = await OpenWindowWithNoteAsync();
@@ -2339,8 +2413,13 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var (vm, window) = await OpenWindowWithNoteAsync();
         await ShowEveryShellResultAsync(vm, window);
+        // Every message the window reports runs to a sentence or two; a short one shows the one-line case.
+        var shortResult = new OperationResultViewModel(OperationResultKind.Warning, Message.Of("common.cancel"), isPersistent: true, "short");
+        vm.Results.Insert(0, shortResult);
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
         var cards = ResultCards(window);
-        var oneLine = cards.Single(card => card.DataContext == vm.Results.Single(r => r.Kind == OperationResultKind.Info));
+        var oneLine = cards.Single(card => card.DataContext == shortResult);
         var wrapped = cards.Single(card => card.DataContext is OperationResultViewModel { Text: var m }
             && m.StartsWith("Your changes are still in DayNote", StringComparison.Ordinal));
 
@@ -2380,7 +2459,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var corner = attachments.BottomRight - new Vector(40, 30);
         Assert.False(HitsResults(corner));
 
-        await ReloadFromOutsideAsync(vm);
+        await ShowBinderNotRememberedAsync(vm);
         Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();
         var card = BoundsIn(window, Assert.Single(ResultCards(window)));
@@ -2400,10 +2479,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         var host = Assert.IsType<Panel>(window.FindControl<Panel>("ResultsHost"));
         Assert.Null(AutomationProperties.GetName(host));
 
-        await ReloadFromOutsideAsync(vm);
-        var reloaded = Assert.Single(vm.Results);
+        await ShowBinderNotRememberedAsync(vm);
+        var notRemembered = Assert.Single(vm.Results);
         Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(host));
-        Assert.Equal(reloaded.Text, AutomationProperties.GetName(host));
+        Assert.Equal(notRemembered.Text, AutomationProperties.GetName(host));
 
         File.Delete(BinderPath);
         Directory.CreateDirectory(BinderPath);
@@ -2514,6 +2593,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.NewBinderCommand.ExecuteAsync(null);
         vm.NewNoteCommand.Execute(null);
         await vm.SaveNowCommand.ExecuteAsync(null);
+        // First, since a successful open settles the picker failures below.
+        await ShowBinderNotRememberedAsync(vm);
 
         var pickerFailure = new IOException("picker unavailable");
         _dialogs.OpenBinderPickerError = pickerFailure;
@@ -2523,7 +2604,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.OpenBinderPickerError = null;
         _dialogs.NewBinderPickerError = null;
 
-        await ReloadFromOutsideAsync(vm);
         // A directory at the binder path makes every save fail until the test removes it.
         File.Delete(BinderPath);
         Directory.CreateDirectory(BinderPath);
@@ -2536,16 +2616,23 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     /// <summary>
-    /// Edits the open binder's file from outside and lets the window notice it, which is the shell's
-    /// one piece of information: everything else it reports is a warning or a failure.
+    /// Opens a binder DayNote does not know yet while its settings file cannot be written, so the binder
+    /// opens but is not remembered: a warning. The test's own binder is open again afterwards, and the
+    /// settings file can be written again.
     /// </summary>
-    private async Task ReloadFromOutsideAsync(MainWindowViewModel vm)
+    private async Task ShowBinderNotRememberedAsync(MainWindowViewModel vm)
     {
-        var store = new BinderStore();
-        var outside = store.Load(BinderPath).Binder;
-        outside.Notes[0].Title = "Changed outside";
-        store.Save(BinderPath, outside);
-        await vm.CheckExternalChangeAsync();
+        var unremembered = Path.Combine(_home, "unremembered.daynote");
+        var now = DateTimeOffset.UtcNow;
+        new BinderStore().Save(unremembered, new Binder { Id = IdGenerator.New(), Created = now, Modified = now });
+        var configFile = Path.Combine(_home, "config.json");
+        File.Delete(configFile);
+        Directory.CreateDirectory(configFile);
+        _dialogs.BinderToOpen = unremembered;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        Directory.Delete(configFile);
+        await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(binder => PathKey.Equal(binder.Path, BinderPath)));
+        Assert.True(PathKey.Equal(vm.Binders.Single(binder => binder.IsCurrent).Path, BinderPath));
     }
 
     private static IReadOnlyList<Border> ResultCards(MainWindow window) =>
@@ -2659,10 +2746,12 @@ public sealed class MainWindowViewModelTests : IDisposable
             return Task.FromResult(SettingsApplied && trySave(config));
         }
         public int ExternalChangeQuestions { get; private set; }
+        /// <summary>When set, answers the question instead of <see cref="ExternalChoice"/>, possibly later.</summary>
+        public Func<Task<ExternalChangeChoice>>? ExternalAnswer { get; set; }
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
         {
             ExternalChangeQuestions++;
-            return Task.FromResult(ExternalChoice);
+            return ExternalAnswer?.Invoke() ?? Task.FromResult(ExternalChoice);
         }
         /// <summary>The binder named by each quit question, in order.</summary>
         public List<string> QuitQuestions { get; } = [];
@@ -2686,18 +2775,15 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     /// <summary>
-    /// A binder store whose next write or external-change read, once armed, stops at its file I/O until
-    /// the test releases it, so a competing action provably lands while that I/O is in flight.
+    /// A binder store whose next write or load, once armed, stops at its file I/O until the test releases
+    /// it, so a competing action provably lands while that I/O is in flight.
     /// </summary>
     private sealed class GatedBinderStore : BinderStore
     {
         private Hold? _nextSave;
-        private Hold? _nextCheck;
         private Hold? _nextLoad;
 
         public Hold HoldNextSave() => _nextSave = new Hold();
-
-        public Hold HoldNextCheck() => _nextCheck = new Hold();
 
         public Hold HoldNextLoad() => _nextLoad = new Hold();
 
@@ -2710,7 +2796,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         /// <summary>While set, every write fails with it, as a full disk or a vanished volume would.</summary>
         public Exception? SaveFailure { get; set; }
 
-        public override SavedBinder SaveText(string path, string text)
+        public override SavedBinder SaveText(string path, string text, string? expectedHash)
         {
             Interlocked.Exchange(ref _nextSave, null)?.Wait();
             if (SaveFailure is { } failure)
@@ -2718,13 +2804,7 @@ public sealed class MainWindowViewModelTests : IDisposable
                 throw failure;
             }
 
-            return base.SaveText(path, text);
-        }
-
-        public override ExternalChange CheckExternalChange(string path, string loadedHash)
-        {
-            Interlocked.Exchange(ref _nextCheck, null)?.Wait();
-            return base.CheckExternalChange(path, loadedHash);
+            return base.SaveText(path, text, expectedHash);
         }
 
         public sealed class Hold

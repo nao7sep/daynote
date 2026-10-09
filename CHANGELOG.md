@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- DayNote no longer checks the open binder's file every three seconds. A change made outside DayNote is noticed when DayNote next saves the binder: nothing is written, and DayNote asks whether to keep your version or reload the file. An unedited binder is no longer reloaded silently, and a deleted binder file is written again by the next save. When quitting finds such a change, nothing is written and DayNote asks whether to retry, quit anyway or stay; when the computer logs out or shuts down, the outside version is kept.
 - A settings file DayNote cannot parse stops DayNote at launch with a message naming it, and the file is left as it is, instead of being set aside for a fresh start with default settings and an empty binder list. Fix the file, or move it aside to start fresh.
 - A damaged `state.json` (window placement, pane widths and the selection) is no longer set aside: DayNote opens with the default view and replaces the file.
 - The backup history in `backups.sqlite3` keeps the last version of each file saved in each session instead of a row for every changed save, so a long editing session adds one row per binder rather than one per autosave. Earlier rows stay as they are. The history is written on its own thread, so a busy history file no longer delays a save or the interface, and quitting waits at most a second for it.
@@ -28,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Quitting, closing a binder or opening another one while DayNote was checking the open binder for outside changes, or asking about one, could do nothing. It now waits for the check, saves, and goes ahead.
 - A note's modified time changes only when its title, text or attachments change. Changing its status, locking it, an edit undone before the save, and whitespace the save removes no longer move it.
 - A note's modified time is the time of its last edit, not the time the edit was saved.
 - A note or binder whose created or modified time is missing from the file takes another time the file records, rather than the time the file was opened. A note uses its own status times before its binder's.
