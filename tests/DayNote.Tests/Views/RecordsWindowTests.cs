@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using DayNote.Logging;
 using DayNote.Tests.ViewModels;
 using DayNote.ViewModels;
@@ -63,6 +64,39 @@ public sealed class RecordsWindowTests : WindowTest
             new VectorEventArgs { RoutedEvent = Thumb.DragCompletedEvent, Vector = new Vector(50, 0) });
 
         Assert.Equal([500.0], _host.SavedListWidths);
+    }
+
+    [AvaloniaFact]
+    public void The_list_splitter_moves_by_keyboard_and_saves_once_when_the_key_is_released()
+    {
+        _host.RecordsListWidth = 450;
+        var window = Show(Create());
+        window.Width = 1200;
+        Dispatcher.UIThread.RunJobs();
+        var splitter = window.FindControl<GridSplitter>("ListSplitter")!;
+        splitter.Focus(NavigationMethod.Tab);
+        Assert.True(splitter.IsFocused);
+
+        // Each arrow moves it 16 px; a held key saves nothing until it is released.
+        splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Right });
+        splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Right });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(482, ListColumn(window).ActualWidth, precision: 0);
+        Assert.Empty(_host.SavedListWidths);
+        splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.Right });
+        Assert.Equal([482.0], _host.SavedListWidths);
+
+        // Home and End go to the bounds; leaving the splitter saves what the keys left.
+        splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Home });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(RecordsLayout.ListMin, ListColumn(window).ActualWidth, precision: 0);
+        window.GetVisualDescendants().OfType<TextBox>().First().Focus(NavigationMethod.Tab);
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(splitter.IsFocused);
+        Assert.Equal([482.0, RecordsLayout.ListMin], _host.SavedListWidths);
+        splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.End });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(RecordsLayout.ListMax, ListColumn(window).ActualWidth, precision: 0);
     }
 
     [AvaloniaFact]

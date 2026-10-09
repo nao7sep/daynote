@@ -66,6 +66,15 @@ public partial class RecordsWindow : Window
                 ClampListToWindow();
         };
         ListSplitter.AddHandler(Thumb.DragCompletedEvent, OnListSplitterDragCompleted);
+        SplitterKeyboard.Attach(ListSplitter, Avalonia.Layout.Orientation.Horizontal, paneBefore: true,
+            () => (RecordsLayout.ListWidth(_listWidthIntent, ClientSize.Width), RecordsLayout.ListMin,
+                RecordsLayout.ListWidth(RecordsLayout.ListMax, ClientSize.Width)),
+            width =>
+            {
+                _listWidthIntent = width;
+                ClampListToWindow();
+            },
+            () => _vm.SaveListWidth(_listWidthIntent));
         RecordsList.TemplateApplied += (_, _) => AttachListScroll();
         FiltersBand.SizeChanged += (_, _) => MinHeight = RecordsLayout.MinHeight(FiltersBand.Bounds.Height);
     }
