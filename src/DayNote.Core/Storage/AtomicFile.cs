@@ -40,7 +40,15 @@ public static partial class AtomicFile
 
         try
         {
-            using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            // Restrict access at creation, not after writing: a private binder must never have
+            // a broadly readable staging copy. Existing final modes are restored below;
+            // new text files stay private. Windows retains the runtime's ordinary access model.
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+            if (OperatingSystem.IsMacOS())
+            {
+                options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            }
+            using (var stream = new FileStream(tempPath, options))
             {
                 stream.Write(bytes, 0, bytes.Length);
                 stream.Flush(flushToDisk: true);

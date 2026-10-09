@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On macOS, text saves create private temporary files before writing any content. Existing files keep their permissions; new binders and settings files are owner-only.
 - A window saved with only a corner left on a screen, for example after a display was removed, came back where its title bar could not be grabbed. DayNote now restores a window only where its title bar can be reached, and opens it at the default place otherwise.
 - A question DayNote could not show while quitting, switching binders or saving made DayNote exit with an error, losing changes not yet saved. The quit or switch is now cancelled and DayNote stays open with the changes; a save whose question could not be shown writes nothing.
 - A binder in the list on a disconnected network or removable drive could freeze the window each time DayNote came to the front, while DayNote checked whether its file was still there. The check now runs in the background, and so does deleting attachment files.

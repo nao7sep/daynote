@@ -120,6 +120,42 @@ public sealed class AtomicFileTests : IDisposable
         Assert.NotEqual(earlier, File.GetLastWriteTimeUtc(_path));
     }
 
+    [MacOnlyFact]
+    [SupportedOSPlatform("macos")]
+    public void New_text_files_are_private_and_existing_shared_modes_are_preserved()
+    {
+        AtomicFile.WriteAllText(_path, "private");
+        const UnixFileMode ownerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        Assert.Equal(ownerOnly, File.GetUnixFileMode(_path));
+
+        var shared = ownerOnly | UnixFileMode.GroupRead | UnixFileMode.OtherRead;
+        File.SetUnixFileMode(_path, shared);
+        AtomicFile.WriteAllText(_path, "still shared");
+        Assert.Equal(shared, File.GetUnixFileMode(_path));
+        Assert.Equal("still shared", File.ReadAllText(_path));
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
+    [MacOnlyFact]
+    [SupportedOSPlatform("macos")]
+    public void A_restricted_copy_keeps_its_mode_content_and_modified_time()
+    {
+        var source = Path.Combine(_directory, "private.bin");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        const UnixFileMode restricted = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        File.SetUnixFileMode(source, restricted);
+        var modified = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(source, modified);
+        var copy = Path.Combine(_directory, "copy.bin");
+
+        AtomicFile.CopyNew(source, copy);
+
+        Assert.Equal(restricted, File.GetUnixFileMode(copy));
+        Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(copy));
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(copy));
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
     [Fact]
     public void A_copy_keeps_the_sources_modified_time_and_leaves_no_temp_file()
     {
