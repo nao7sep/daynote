@@ -346,6 +346,7 @@ public sealed class RecordsLoggerTests : IDisposable
 
     [Theory]
     [InlineData(0)] // tables but no version: unreadable
+    [InlineData(-1)] // a version no DayNote writes
     [InlineData(FormatVersions.Records + 1)]
     public void An_unversioned_or_newer_database_is_left_byte_identical_and_the_session_falls_back_with_one_warning(long userVersion)
     {
