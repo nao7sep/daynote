@@ -155,7 +155,9 @@ public sealed class DialogService : IDialogService
                 new DialogButton("common.cancel", "cancel"),
                 new DialogButton("quit.retry", "retry"),
                 new DialogButton("quit.quitAnyway", "quit", DialogButtonKind.Destructive),
-            });
+            },
+            // One width in every language, wide enough for all three translated actions.
+            width: 480);
         await dialog.ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag switch
         {

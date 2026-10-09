@@ -5,12 +5,14 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using DayNote.Core.Configuration;
 using DayNote.I18n;
+using DayNote.Services;
 using DayNote.Tests.Storage;
 using DayNote.Views;
 using Xunit;
@@ -107,6 +109,46 @@ public class LabelFitTests : WindowTest
                     right <= header.Bounds.Width + Tolerance,
                     $"{tag}: “{button.Content}” ends at {right:0} px in a {header.Bounds.Width:0} px pane header.");
             }
+        }
+    }
+
+    [AvaloniaTheory]
+    [MemberData(nameof(Tags))]
+    public async Task the_save_and_attachment_questions_keep_their_actions_visible(string tag)
+    {
+        using var speaking = Localizer.Speaking(tag);
+        var owner = Show(new Window());
+        var service = new DialogService(new NullLogger()) { Owner = owner };
+        var outside = service.AskExternalChangeAsync("Journal");
+        Dispatcher.UIThread.RunJobs();
+        var dialog = Assert.Single(owner.OwnedWindows);
+        AssertNothingClipped(dialog, dialog, tag, atLeast: 2);
+        dialog.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Tag, "keep"))
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await outside;
+
+        var quit = service.AskQuitWithUnsavedBinderAsync("Journal");
+        Dispatcher.UIThread.RunJobs();
+        dialog = Assert.Single(owner.OwnedWindows);
+        AssertNothingClipped(dialog, dialog, tag, atLeast: 3);
+        dialog.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Tag, "cancel"))
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await quit;
+
+        var settled = new TaskCompletionSource();
+        var wait = Show(new AttachmentWaitDialog(settled.Task, System.TimeSpan.FromHours(1)));
+        try
+        {
+            // Timer behavior is covered separately; measure the state after Stop is offered.
+            wait.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Tag, AttachmentWaitDialog.StopTag)).IsVisible = true;
+            Dispatcher.UIThread.RunJobs();
+            AssertNothingClipped(wait, wait, tag, atLeast: 1);
+        }
+        finally
+        {
+            settled.SetResult();
+            wait.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Tag, AttachmentWaitDialog.StopTag))
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         }
     }
 

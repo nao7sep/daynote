@@ -2926,6 +2926,27 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Stopping_an_attachment_wait_allows_quit_and_removes_a_late_copy()
+    {
+        var (vm, held, note, file, adding) = await StartHeldAddAsync();
+        _dialogs.AttachmentWaitAnswer = _ => Task.FromResult(true);
+
+        var quitting = vm.QuitAsync();
+        _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
+        Assert.True(await quitting);
+
+        Assert.False(adding.IsCompleted);
+        Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
+        var result = Assert.Single(vm.Results);
+        Assert.Equal(OperationResultKind.Warning, result.Kind);
+        Assert.Contains(Path.GetFileName(file), result.Text, StringComparison.Ordinal);
+
+        held.Release();
+        await adding;
+        Assert.Empty(AssetFiles(note));
+    }
+
+    [AvaloniaFact]
     public async Task An_ending_session_does_not_wait_for_an_add_and_its_late_copy_is_removed()
     {
         var (vm, held, note, _, adding) = await StartHeldAddAsync();
