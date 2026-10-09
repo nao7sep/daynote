@@ -1,12 +1,12 @@
 namespace DayNote.Services;
 
-/// <summary>What to do when a binder file was modified outside the application while it had unsaved edits.</summary>
+/// <summary>What to do when a save finds the binder file modified outside the application.</summary>
 public enum ExternalChangeChoice
 {
     /// <summary>Discard in-memory edits and reload from disk.</summary>
     ReloadFromDisk,
 
-    /// <summary>Keep the in-memory buffer (the next save will overwrite the external change).</summary>
+    /// <summary>Keep the in-memory version, which replaces the version on disk the user was asked about.</summary>
     KeepMine,
 }
 

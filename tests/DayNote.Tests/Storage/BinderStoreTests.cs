@@ -16,7 +16,7 @@ namespace DayNote.Tests.Storage;
 /// file in a temp directory.
 /// </summary>
 /// <remarks>
-/// A binder Save goes through the atomic writer, which is the write-through data-backup hook, so
+/// A binder Save goes through the atomic writer, which is where saves reach the backup history, so
 /// <c>DAYNOTE_DATA_DIR</c> is relocated to this test's throwaway directory to keep the store out of the
 /// developer's real <c>~/.daynote/</c>. Joined to the AppPaths collection so that process-wide env var
 /// never races; the store singleton is closed in teardown so it re-opens per throwaway root.

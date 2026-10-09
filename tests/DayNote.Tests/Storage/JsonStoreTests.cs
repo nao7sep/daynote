@@ -16,7 +16,7 @@ namespace DayNote.Tests.Storage;
 /// caller can disable saving rather than overwrite good data. Writes are atomic and newline-terminated.
 /// </summary>
 /// <remarks>
-/// A Save goes through the atomic writer, which is the write-through data-backup hook, so
+/// A Save goes through the atomic writer, which is where saves reach the backup history, so
 /// <c>DAYNOTE_DATA_DIR</c> is relocated to this test's throwaway directory to keep the store out of the
 /// developer's real <c>~/.daynote/</c>. Joined to the AppPaths collection so that process-wide env var
 /// never races; the store singleton is closed in teardown so it re-opens per throwaway root.

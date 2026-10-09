@@ -7,7 +7,7 @@ using Microsoft.Data.Sqlite;
 namespace DayNote.Core.Backup;
 
 /// <summary>
-/// The backup history (data-backup-conventions): one add-only SQLite file, <c>backups.sqlite3</c>, directly
+/// The backup history (data-backup-conventions): one SQLite file, <c>backups.sqlite3</c>, directly
 /// under DayNote's storage root (<c>DAYNOTE_DATA_DIR</c> or <c>~/.daynote</c>, resolved by
 /// <see cref="AppPaths"/>). It keeps the last version of each protected file saved in each session, so a bug
 /// that damages or deletes a binder, the settings or an attachment leaves an earlier version to restore by

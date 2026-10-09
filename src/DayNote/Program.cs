@@ -85,7 +85,7 @@ internal static class Program
         Paths = paths;
         RegisterCrashHooks(logger);
 
-        // The write-through data-backup store (data-backup conventions) lives in DayNote.Core and must
+        // The backup history (data-backup-conventions) lives in DayNote.Core and must
         // stay logger-framework-free, so it takes its one edge concern — a warn on a record/open failure —
         // as a delegate installed here. Installed before any managed save so the very first record's
         // failure (should one occur) is logged. The store logs ONLY failures; success is silent.

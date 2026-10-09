@@ -17,7 +17,7 @@ namespace DayNote.Tests.Storage;
 /// in full, and the temp file used for the write-then-rename is never left behind.
 /// </summary>
 /// <remarks>
-/// The atomic writer is the write-through data-backup hook (<see cref="BackupStore.Record"/> fires after
+/// The atomic writer is where saves reach the backup history (<see cref="BackupStore.Record"/> fires after
 /// each rename lands), so <c>DAYNOTE_DATA_DIR</c> is relocated to this test's throwaway directory — otherwise
 /// the store would open under the developer's real <c>~/.daynote/</c>. Joined to the AppPaths collection
 /// so that process-wide env var never races another test; the store singleton is closed in teardown so it
@@ -40,7 +40,7 @@ public sealed class AtomicFileTests : IDisposable
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _directory);
     }
 
-    /// <summary>The files under <see cref="_directory"/>, excluding the write-through store and its
+    /// <summary>The files under <see cref="_directory"/>, excluding the backup history and its
     /// <c>-wal</c>/<c>-shm</c> sidecars — normal SQLite artifacts that sit beside a relocated root, not
     /// output of the code under test.</summary>
     private string[] NonStoreFiles() =>

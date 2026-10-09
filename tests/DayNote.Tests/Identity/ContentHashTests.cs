@@ -7,7 +7,7 @@ using Xunit;
 namespace DayNote.Tests.Identity;
 
 /// <summary>
-/// The content hash underpins external-change detection and attachment deduplication, so it must be a
+/// The content hash underpins the save-time outside-change check and attachment deduplication, so it must be a
 /// stable, lowercase-hex SHA-256 of the bytes — matched here against the canonical NIST vectors so a
 /// drift in encoding or casing is caught.
 /// </summary>

@@ -2545,7 +2545,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
     }
 
-    /// <summary>Counts rows the write-through store holds for <paramref name="path"/>, reading the store
+    /// <summary>Counts rows the backup history holds for <paramref name="path"/>, reading the store
     /// file directly. The caller closes the singleton first so its handle is released.</summary>
     private static int RowCountFor(string storeFile, string path)
     {
