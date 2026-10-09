@@ -25,10 +25,14 @@
   "attachments.removeFailed": "添付ファイルはノートから削除されましたが、ファイル自体を削除できませんでした。ファイルはバインダーの assets フォルダに残っています。",
   "attachments.removeMessage": "「{name}」を削除しますか？ファイルも削除されます。",
   "attachments.removeTitle": "添付ファイルを削除",
+  "attachments.stop": "中止",
+  "attachments.stopped": "追加を中止したため、次のファイルは添付されませんでした: {names}。",
   "attachments.unreadable": {
     "other": "{count} 個の項目は読み込めるローカルファイルではありません。"
   },
   "attachments.unreadableThat": "その項目は読み込めるローカルファイルではありません。",
+  "attachments.waitMessage": "DayNote はまだ添付ファイルを追加しています。追加が完了すると、操作を続行します。",
+  "attachments.waitTitle": "添付ファイルを追加中",
   "binder.changedMessage": "保存していない編集がある間に、「{name}」が DayNote の外で変更されました。ディスクから再読み込みして編集内容を破棄しますか？それとも、このまま編集を残しますか（次の保存でファイルが上書きされます）？",
   "binder.changedTitle": "バインダーがディスク上で変更されました",
   "binder.keepMine": "編集を残す",

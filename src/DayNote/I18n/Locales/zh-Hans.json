@@ -25,10 +25,14 @@
   "attachments.removeFailed": "附件已从笔记中移除，但其文件无法删除。它仍在笔记本的 assets 文件夹中。",
   "attachments.removeMessage": "要移除“{name}”吗？该文件将被删除。",
   "attachments.removeTitle": "移除附件",
+  "attachments.stop": "停止",
+  "attachments.stopped": "添加已停止，因此以下文件未被附加：{names}。",
   "attachments.unreadable": {
     "other": "{count} 个项目不是可读取的本地文件。"
   },
   "attachments.unreadableThat": "该项目不是可读取的本地文件。",
+  "attachments.waitMessage": "DayNote 仍在添加附件，添加完成后将继续操作。",
+  "attachments.waitTitle": "正在添加附件",
   "binder.changedMessage": "在你有未保存的编辑时，“{name}”在 DayNote 之外被修改了。要从磁盘重新载入并丢弃你的编辑，还是保留你的版本（下次保存时会覆盖该文件）？",
   "binder.changedTitle": "笔记本在磁盘上已更改",
   "binder.keepMine": "保留我的版本",

@@ -27,12 +27,16 @@
   "attachments.removeFailed": "La pièce jointe a été retirée de la note, mais son fichier n’a pas pu être supprimé. Il se trouve toujours dans le dossier assets du classeur.",
   "attachments.removeMessage": "Retirer «\u00a0{name}\u00a0»\u00a0? Le fichier sera supprimé.",
   "attachments.removeTitle": "Retirer la pièce jointe",
+  "attachments.stop": "Arrêter",
+  "attachments.stopped": "L’ajout a été arrêté\u00a0; les fichiers suivants n’ont donc pas été joints\u00a0: {names}.",
   "attachments.unreadable": {
     "one": "{count} élément n’est pas un fichier local lisible.",
     "many": "{count} d’éléments ne sont pas des fichiers locaux lisibles.",
     "other": "{count} éléments ne sont pas des fichiers locaux lisibles."
   },
   "attachments.unreadableThat": "Cet élément n’est pas un fichier local lisible.",
+  "attachments.waitMessage": "DayNote ajoute encore des pièces jointes et poursuivra une fois qu’elles seront ajoutées.",
+  "attachments.waitTitle": "Ajout des pièces jointes",
   "binder.changedMessage": "«\u00a0{name}\u00a0» a été modifié en dehors de DayNote alors que vous avez des modifications non enregistrées. Recharger depuis le disque et perdre vos modifications, ou conserver votre version (le prochain enregistrement écrasera le fichier)\u00a0?",
   "binder.changedTitle": "Classeur modifié sur le disque",
   "binder.keepMine": "Conserver ma version",

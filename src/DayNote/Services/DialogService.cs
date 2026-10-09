@@ -115,13 +115,31 @@ public sealed class DialogService : IDialogService
             new[]
             {
                 new DialogButton("binder.keepMine", "keep"),
-                // Reloading discards the user's unsaved local edits, so it is the destructive choice:
-                // mark it Destructive both for its styling and so initial focus lands on the safe
-                // "Keep my version" instead of the edit-losing button.
+                // Reloading discards the user's unsaved local edits; keeping them replaces the version on disk.
+                // Each gives up a version and putting the choice off would leave the edits only in memory, so
+                // neither is focused and the question cannot be dismissed (modal-dialog conventions).
                 new DialogButton("binder.reloadFromDisk", "reload", DialogButtonKind.Destructive),
-            });
+            },
+            dismissable: false);
         await dialog.ShowBoundedAsync(RequireOwner());
-        return dialog.ResultTag == "reload" ? ExternalChangeChoice.ReloadFromDisk : ExternalChangeChoice.KeepMine;
+        return dialog.ResultTag switch
+        {
+            "keep" => ExternalChangeChoice.KeepMine,
+            "reload" => ExternalChangeChoice.ReloadFromDisk,
+            _ => ExternalChangeChoice.Unanswered,
+        };
+    }
+
+    public async Task<bool> WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter)
+    {
+        if (settled.IsCompleted)
+        {
+            return false;
+        }
+
+        var dialog = new AttachmentWaitDialog(settled, stopOfferedAfter);
+        await dialog.ShowBoundedAsync(RequireOwner());
+        return dialog.ResultTag == AttachmentWaitDialog.StopTag;
     }
 
     public async Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName)

@@ -26,11 +26,15 @@
   "attachments.removeFailed": "The attachment was removed from the note, but its file could not be deleted. It is still in the binder’s assets folder.",
   "attachments.removeMessage": "Remove “{name}”? The file will be deleted.",
   "attachments.removeTitle": "Remove attachment",
+  "attachments.stop": "Stop",
+  "attachments.stopped": "Adding was stopped, so these were not attached: {names}.",
   "attachments.unreadable": {
     "one": "{count} item is not a readable local file.",
     "other": "{count} items are not readable local files."
   },
   "attachments.unreadableThat": "That item is not a readable local file.",
+  "attachments.waitMessage": "DayNote is still adding attachments and will continue once they are added.",
+  "attachments.waitTitle": "Adding attachments",
   "binder.changedMessage": "“{name}” was modified outside DayNote while you have unsaved edits. Reload from disk and lose your edits, or keep your version (the next save overwrites the file)?",
   "binder.changedTitle": "Binder changed on disk",
   "binder.keepMine": "Keep my version",

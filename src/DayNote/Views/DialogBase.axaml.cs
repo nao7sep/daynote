@@ -9,7 +9,7 @@ namespace DayNote.Views;
 /// <summary>
 /// Base for the application's own modal dialogs (ported from the house pattern): a borderless,
 /// owner-centred window with a content area and a right-aligned button row. The clicked button's
-/// tag is exposed as <see cref="ResultTag"/>. Escape closes the dialog.
+/// tag is exposed as <see cref="ResultTag"/>. Escape closes the dialog, unless it cannot be dismissed.
 /// <para>
 /// Every close path runs one close guard (modal-dialog conventions, Close Paths): a dialog that edits
 /// a copy of durable data, such as <see cref="SettingsDialog"/>, reports its unsaved changes, and a
@@ -31,6 +31,22 @@ public partial class DialogBase : Window
     }
 
     public string? ResultTag { get; private set; }
+
+    /// <summary>
+    /// Whether the user can close the dialog without choosing one of its buttons. A question whose every
+    /// answer gives up something, with no safe way to put it off, cannot be dismissed (modal-dialog
+    /// conventions): Escape and the user's own close do nothing. The app or the operating system closing it
+    /// still does.
+    /// </summary>
+    protected bool IsDismissable { get; init; } = true;
+
+    /// <summary>Closes the dialog with <paramref name="tag"/> as its result, as its own code decides.</summary>
+    protected void CloseWith(string tag)
+    {
+        ResultTag = tag;
+        _closeConfirmed = true;
+        Close();
+    }
 
     protected void SetContent(Control content) => DialogContent.Content = content;
 
@@ -145,7 +161,7 @@ public partial class DialogBase : Window
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape)
+        if (e.Key == Key.Escape && IsDismissable)
         {
             Close();
         }
@@ -162,13 +178,19 @@ public partial class DialogBase : Window
             }
 
             ResultTag = tag;
-            _closeConfirmed = !_dismissButtons.Contains(button);
+            _closeConfirmed = !IsDismissable || !_dismissButtons.Contains(button);
             Close();
         }
     }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
+        if (!IsDismissable && !_closeConfirmed && e.CloseReason == WindowCloseReason.WindowClosing)
+        {
+            e.Cancel = true;
+            return;
+        }
+
         if (!ShouldAskBeforeClosing(e.CloseReason, _closeConfirmed, HasUnsavedChanges))
         {
             return;

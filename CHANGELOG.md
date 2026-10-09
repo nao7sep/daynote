@@ -14,11 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- DayNote no longer checks the open binder's file every three seconds. A change made outside DayNote is noticed when DayNote next saves the binder: nothing is written, and DayNote asks whether to keep your version or reload the file. An unedited binder is no longer reloaded silently, and a deleted binder file is written again by the next save. When quitting finds such a change, nothing is written and DayNote asks whether to retry, quit anyway or stay; when the computer logs out or shuts down, the outside version is kept.
+- DayNote no longer checks the open binder's file every three seconds. A change made outside DayNote is noticed when DayNote next saves the binder: nothing is written, and DayNote asks whether to keep your version or reload the file. The question must be answered with one of its two buttons: neither is preselected, and Escape, Enter or closing it no longer keeps your version. An unedited binder is no longer reloaded silently, and a deleted binder file is written again by the next save. When quitting finds such a change, nothing is written and DayNote asks whether to retry, quit anyway or stay; when the computer logs out or shuts down, the outside version is kept.
 - A settings file DayNote cannot parse stops DayNote at launch with a message naming it, and the file is left as it is, instead of being set aside for a fresh start with default settings and an empty binder list. Fix the file, or move it aside to start fresh.
 - A damaged `state.json` (window placement, pane widths and the selection) is no longer set aside: DayNote opens with the default view and replaces the file.
 - The backup history in `backups.sqlite3` keeps the last version of each file saved in each session instead of a row for every changed save, so a long editing session adds one row per binder rather than one per autosave. Earlier rows stay as they are. The history is written on its own thread, so a busy history file no longer delays a save or the interface, and quitting waits at most a second for it.
-- An attachment is copied into the backup history when it is added, so one removed or deleted with its note can be restored by hand. Attachments added earlier are not copied.
+- An attachment is copied into the backup history when it is added, so one removed or deleted with its note can be restored by hand, whatever its size. Attachments added earlier are not copied.
+- Switching, closing or removing a binder, or quitting, while attachments are still being added now waits for them, so they end up in the note. If the wait lasts, DayNote says it is still adding them, and after a few seconds offers Stop; stopping leaves the remaining files out and says which. When the computer logs out or shuts down, DayNote does not wait, and those files are not added.
 - Saving settings no longer deletes what DayNote did not understand in `config.json`. Unknown keys are kept, and a binder list or text-style set that fails its check is kept as it was stored until you change it in DayNote; DayNote uses the built-in value meanwhile. An invalid theme, language, font, autosave delay or time zone still falls back to its built-in and is corrected by the next save.
 - A note's lifecycle is draft, discarded, verified, published and retired. Verified replaces Ready, and Retired replaces Expired.
 - Each status keeps the time the note reached it, and a status that implies an earlier one fills that time too: a published note always has a verification time, and a retired one a publication time. Moving back clears the times the new status does not hold, and un-retiring restores the original publication time.
@@ -29,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Selecting another note while attachments were being added to the first showed the first note's files under the second, where removing one could delete a file the first note still used. Each note's attachments now appear and act only under that note.
+- An attachment add that was dropped, because its binder closed or its note was deleted meanwhile, left its copied files in the assets folder. They are now removed.
 - When switching binders was refused because the open binder could not be saved, the binder list kept highlighting the binder you clicked. It now highlights the binder that is still open.
 - A note's modified time changes only when its title, text or attachments change. Changing its status, locking it, an edit undone before the save, and whitespace the save removes no longer move it.
 - A note's modified time is the time of its last edit, not the time the edit was saved.

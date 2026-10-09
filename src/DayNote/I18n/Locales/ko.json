@@ -25,10 +25,14 @@
   "attachments.removeFailed": "첨부 파일을 노트에서 제거했지만 파일은 삭제하지 못했습니다. 파일은 바인더의 assets 폴더에 그대로 있습니다.",
   "attachments.removeMessage": "“{name}”을(를) 제거하시겠습니까? 파일도 삭제됩니다.",
   "attachments.removeTitle": "첨부 파일 제거",
+  "attachments.stop": "중지",
+  "attachments.stopped": "추가를 중지하여 다음 파일이 첨부되지 않았습니다: {names}.",
   "attachments.unreadable": {
     "other": "항목 {count}개는 읽을 수 있는 로컬 파일이 아닙니다."
   },
   "attachments.unreadableThat": "그 항목은 읽을 수 있는 로컬 파일이 아닙니다.",
+  "attachments.waitMessage": "DayNote가 아직 첨부 파일을 추가하고 있습니다. 추가가 끝나면 작업을 계속합니다.",
+  "attachments.waitTitle": "첨부 파일 추가 중",
   "binder.changedMessage": "저장하지 않은 편집 내용이 있는 동안 “{name}”이(가) DayNote 밖에서 수정되었습니다. 디스크에서 다시 불러와 편집 내용을 버리시겠습니까, 아니면 현재 버전을 유지하시겠습니까(다음에 저장할 때 파일을 덮어씁니다)?",
   "binder.changedTitle": "디스크에서 바인더가 변경됨",
   "binder.keepMine": "내 버전 유지",

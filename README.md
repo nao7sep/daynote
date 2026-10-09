@@ -29,9 +29,9 @@ Prebuilt builds for **macOS (Apple Silicon)** and **Windows (x64)** are on the [
 
 ## Files and recovery
 
-Move or back up a binder together with its adjacent `<binder-name>-assets` folder. Adding an attachment copies the file into that folder; removing an attachment deletes the copied file after confirmation. Deleting a note, after confirmation, also deletes its attachment files.
+Move or back up a binder together with its adjacent `<binder-name>-assets` folder. Adding an attachment copies the file into that folder, and switching binders or quitting waits until the copy is done; removing an attachment deletes the copied file after confirmation. Deleting a note, after confirmation, also deletes its attachment files.
 
-DayNote also keeps a history in `~/.daynote/backups.sqlite3`: the last version of each binder and of its settings saved in each session, and a copy of each attachment as it is added. Window and selection state is excluded. Attachments added before this history covered them are not in it. There is no in-app restore browser; an earlier version can be read back from the file by hand. A history failure never blocks or delays the live save, so the history is a recovery aid rather than a substitute for your normal file backups.
+DayNote also keeps a history in `~/.daynote/backups.sqlite3`: the last version of each binder and of its settings saved in each session, and a copy of each attachment as it is added, whatever its size. Window and selection state is excluded. Attachments added before this history covered them are not in it. There is no in-app restore browser; an earlier version can be read back from the file by hand. A history failure never blocks or delays the live save, so the history is a recovery aid rather than a substitute for your normal file backups.
 
 ## Run from source
 

@@ -37,8 +37,19 @@ public interface IDialogService
     /// <summary>The custom settings dialog; keeps a failed save inline and returns true only after persistence succeeds.</summary>
     Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave);
 
-    /// <summary>Asks how to handle an external modification detected against unsaved edits.</summary>
+    /// <summary>
+    /// Asks how to handle an external modification detected against unsaved edits. Both answers give up a
+    /// version, so the question cannot be dismissed and no answer is focused; it closes unanswered only when
+    /// the app or the operating system closes it.
+    /// </summary>
     Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName);
+
+    /// <summary>
+    /// Shows that attachments are still being added until <paramref name="settled"/> completes, then closes
+    /// itself. After <paramref name="stopOfferedAfter"/> it offers Stop. Returns true when the user stopped
+    /// waiting; false when the work settled or the app or the operating system closed it.
+    /// </summary>
+    Task<bool> WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter);
 
     /// <summary>
     /// Asks, after a quit could not save the binder's edits, whether to retry the save or quit without

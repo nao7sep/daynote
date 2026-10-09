@@ -27,12 +27,16 @@
   "attachments.removeFailed": "L’allegato è stato rimosso dalla nota, ma non è stato possibile eliminarne il file. Si trova ancora nella cartella assets del raccoglitore.",
   "attachments.removeMessage": "Rimuovere «{name}»? Il file verrà eliminato.",
   "attachments.removeTitle": "Rimuovi allegato",
+  "attachments.stop": "Interrompi",
+  "attachments.stopped": "L’aggiunta è stata interrotta, quindi questi file non sono stati allegati: {names}.",
   "attachments.unreadable": {
     "one": "{count} elemento non è un file locale leggibile.",
     "many": "{count} di elementi non sono file locali leggibili.",
     "other": "{count} elementi non sono file locali leggibili."
   },
   "attachments.unreadableThat": "Quell’elemento non è un file locale leggibile.",
+  "attachments.waitMessage": "DayNote sta ancora aggiungendo gli allegati e continuerà non appena saranno aggiunti.",
+  "attachments.waitTitle": "Aggiunta degli allegati",
   "binder.changedMessage": "«{name}» è stato modificato fuori da DayNote mentre hai modifiche non salvate. Vuoi ricaricarlo dal disco e perdere le tue modifiche, o mantenere la tua versione (il prossimo salvataggio sovrascriverà il file)?",
   "binder.changedTitle": "Raccoglitore modificato sul disco",
   "binder.keepMine": "Mantieni la mia versione",

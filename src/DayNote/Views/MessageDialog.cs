@@ -15,9 +15,11 @@ public sealed class MessageDialog : DialogBase
         Message title,
         Message message,
         IReadOnlyList<DialogButton> buttons,
-        double width = 440)
+        double width = 440,
+        bool dismissable = true)
     {
         Title = Localizer.Of(title);
+        IsDismissable = dismissable;
         Width = width;
 
         SetContent(new TextBlock
@@ -29,6 +31,13 @@ public sealed class MessageDialog : DialogBase
         });
 
         var created = SetButtons(buttons);
+
+        // A question that cannot be dismissed has no safe answer, so none is focused and Enter chooses
+        // nothing (modal-dialog conventions).
+        if (!dismissable)
+        {
+            return;
+        }
 
         // Focus the safest action: when a destructive button is present, the cancel/secondary one, so a
         // stray Space/Enter never lands on the dangerous action; otherwise the primary.

@@ -27,12 +27,16 @@
   "attachments.removeFailed": "O anexo foi removido da nota, mas não foi possível apagar o arquivo. Ele continua na pasta assets do fichário.",
   "attachments.removeMessage": "Remover “{name}”? O arquivo será apagado.",
   "attachments.removeTitle": "Remover anexo",
+  "attachments.stop": "Parar",
+  "attachments.stopped": "A adição foi interrompida, então estes arquivos não foram anexados: {names}.",
   "attachments.unreadable": {
     "one": "{count} item não é um arquivo local legível.",
     "many": "{count} de itens não são arquivos locais legíveis.",
     "other": "{count} itens não são arquivos locais legíveis."
   },
   "attachments.unreadableThat": "Esse item não é um arquivo local legível.",
+  "attachments.waitMessage": "O DayNote ainda está adicionando anexos e continuará assim que eles forem adicionados.",
+  "attachments.waitTitle": "Adicionando anexos",
   "binder.changedMessage": "“{name}” foi modificado fora do DayNote enquanto você tem edições não salvas. Recarregar do disco e perder suas edições, ou manter sua versão (o próximo salvamento vai substituir o arquivo)?",
   "binder.changedTitle": "Fichário alterado no disco",
   "binder.keepMine": "Manter minha versão",

@@ -27,12 +27,16 @@
   "attachments.removeFailed": "El adjunto se quitó de la nota, pero no se pudo eliminar su archivo. Sigue en la carpeta assets del archivador.",
   "attachments.removeMessage": "¿Quitar «{name}»? El archivo se eliminará.",
   "attachments.removeTitle": "Quitar adjunto",
+  "attachments.stop": "Detener",
+  "attachments.stopped": "Se dejó de agregar archivos, así que estos no se adjuntaron: {names}.",
   "attachments.unreadable": {
     "one": "{count} elemento no es un archivo local legible.",
     "many": "{count} de elementos no son archivos locales legibles.",
     "other": "{count} elementos no son archivos locales legibles."
   },
   "attachments.unreadableThat": "Ese elemento no es un archivo local legible.",
+  "attachments.waitMessage": "DayNote todavía está agregando adjuntos y continuará cuando se hayan agregado.",
+  "attachments.waitTitle": "Agregando adjuntos",
   "binder.changedMessage": "«{name}» se modificó fuera de DayNote mientras tienes cambios sin guardar. ¿Quieres volver a cargarlo desde el disco y perder tus cambios, o conservar tu versión (al guardar la próxima vez se sobrescribirá el archivo)?",
   "binder.changedTitle": "El archivador cambió en el disco",
   "binder.keepMine": "Conservar mi versión",

@@ -137,18 +137,20 @@ public sealed class AtomicFileTests : IDisposable
     }
 
     [Fact]
-    public void A_copy_is_recorded_once_byte_identically()
+    public void A_copy_records_nothing_itself()
     {
+        // The caller records an added file with the hash of what it copied (BackupStore.RecordAdded); the
+        // copy alone never reaches the history.
         var source = Path.Combine(_directory, "photo.bin");
         File.WriteAllBytes(source, [0, 0xFF, 0x0D, 0x0A, 7]);
         var copy = Path.Combine(_directory, "assets", "photo.bin");
         Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
 
         AtomicFile.CopyNew(source, copy);
+        AtomicFile.WriteAllText(_path, "opens the history");
         BackupStore.Close();
 
-        Assert.Equal(new byte[] { 0, 0xFF, 0x0D, 0x0A, 7 }, Assert.Single(BackupContents(copy)));
-        Assert.Empty(BackupContents(source));
+        Assert.Empty(BackupContents(copy));
     }
 
     [Fact]

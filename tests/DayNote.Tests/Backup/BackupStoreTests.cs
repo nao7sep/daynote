@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -300,6 +301,97 @@ public sealed class BackupStoreTests : IDisposable
         }
     }
 
+    // ----- Added files ---------------------------------------------------------------------------
+
+    private static string Sha256(byte[] bytes) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+
+    private string AddedFile(byte[] bytes)
+    {
+        var file = Path.Combine(_home, "assets", "photo.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllBytes(file, bytes);
+        return Path.GetFullPath(file);
+    }
+
+    [Fact]
+    public void An_added_file_is_streamed_into_its_row_byte_identically()
+    {
+        byte[] bytes = [0, 0xFF, 0x0D, 0x0A, 7];
+        var file = AddedFile(bytes);
+
+        BackupStore.RecordAdded(file, Sha256(bytes));
+        var row = LatestRow(file);
+
+        Assert.NotNull(row);
+        Assert.Equal(bytes, row!.Content);
+        Assert.Equal(Sha256(bytes), row.ContentSha256);
+        Assert.Equal(bytes.Length, row.ByteSize);
+        Assert.Empty(Parts(file));
+    }
+
+    [Fact]
+    public void A_file_larger_than_one_part_is_kept_in_parts_that_join_to_its_exact_bytes()
+    {
+        var previous = BackupStore.PartSize;
+        BackupStore.PartSize = 1000;
+        try
+        {
+            var bytes = new byte[2500];
+            new Random(7).NextBytes(bytes);
+            var file = AddedFile(bytes);
+
+            BackupStore.RecordAdded(file, Sha256(bytes));
+            var row = LatestRow(file);
+            var parts = Parts(file);
+
+            // The row holds the size and hash; its content is in three parts, in order.
+            Assert.Empty(row!.Content);
+            Assert.Equal(2500, row.ByteSize);
+            Assert.Equal(Sha256(bytes), row.ContentSha256);
+            Assert.Equal(3, parts.Count);
+            Assert.Equal(bytes, parts.SelectMany(part => part).ToArray());
+        }
+        finally
+        {
+            BackupStore.PartSize = previous;
+        }
+    }
+
+    [Fact]
+    public void An_added_file_that_no_longer_holds_what_was_copied_is_not_recorded()
+    {
+        var file = AddedFile([1, 2, 3]);
+        var warnings = new List<string>();
+        BackupStore.ConfigureWarn((message, _, _) => warnings.Add(message));
+
+        BackupStore.RecordAdded(file, Sha256([9, 9, 9]));
+        AtomicFile.WriteAllText(TargetPath, "a later save still lands");
+
+        Assert.Equal(0, RowCount(file));
+        Assert.Contains("changed before it could be recorded", Assert.Single(warnings));
+        Assert.Equal(1, RowCount(TargetPath));
+    }
+
+    private List<byte[]> Parts(string path)
+    {
+        BackupStore.Close();
+        using var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Mode=ReadOnly;Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT p.content FROM backup_parts p JOIN backups b ON b.id = p.backup_id " +
+            "WHERE b.path = $path ORDER BY b.id, p.part";
+        command.Parameters.AddWithValue("$path", Path.GetFullPath(path));
+        using var reader = command.ExecuteReader();
+        var parts = new List<byte[]>();
+        while (reader.Read())
+        {
+            parts.Add((byte[])reader["content"]);
+        }
+
+        return parts;
+    }
+
     // ----- Format version (PRAGMA user_version) --------------------------------------------------
 
     [Fact]
@@ -364,6 +456,34 @@ public sealed class BackupStoreTests : IDisposable
 
         Assert.Equal(new[] { "old", "older", "newer" }, Contents(TargetPath));
         Assert.Equal(FormatVersions.Backups, UserVersion());
+    }
+
+    [Fact]
+    public void A_format_2_store_is_converted_keeping_its_rows()
+    {
+        using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE backups (id INTEGER PRIMARY KEY, session_id TEXT, path TEXT NOT NULL,
+                  content BLOB NOT NULL, content_sha256 TEXT NOT NULL, byte_size INTEGER NOT NULL,
+                  written_at_utc TEXT NOT NULL);
+                CREATE INDEX idx_backups_path_id ON backups (path, id);
+                CREATE UNIQUE INDEX idx_backups_path_session ON backups (path, session_id);
+                INSERT INTO backups (session_id, path, content, content_sha256, byte_size, written_at_utc)
+                  VALUES ('earlier', $path, X'6F6C64', 'x', 3, '2026-07-06T04:05:12.345Z');
+                PRAGMA user_version = 2;
+                """;
+            command.Parameters.AddWithValue("$path", Path.GetFullPath(TargetPath));
+            command.ExecuteNonQuery();
+        }
+
+        AtomicFile.WriteAllText(TargetPath, "new");
+
+        Assert.Equal(new[] { "old", "new" }, Contents(TargetPath));
+        Assert.Equal(FormatVersions.Backups, UserVersion());
+        Assert.Empty(Parts(TargetPath));
     }
 
     private long UserVersion()
