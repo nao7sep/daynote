@@ -153,37 +153,39 @@
                                IsVisible="{Binding TextStyleStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="16,0,0,0"
-                            HorizontalAlignment="Right" VerticalAlignment="Center"
-                            IsVisible="{Binding Editor.HasNote}">
-                    <TextBlock Text="{Binding Editor.WordsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    <TextBlock Text="{Binding Editor.CharsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    <TextBlock Text="{Binding Editor.XCountText}" FontSize="12"
-                               Classes="xcount" Classes.over="{Binding !Editor.IsWithinXLimit}"/>
-                    <Border Width="1" Height="14" Margin="4,0" VerticalAlignment="Center"
-                            Background="{DynamicResource BorderBrush}"/>
-                    <TextBlock Text="{Binding Editor.CreatedText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                <!-- Counts stay together; each complete date flows onto the next line when needed. -->
+                <WrapPanel x:Name="NoteMetadata" Grid.Column="1" Margin="16,0,0,0"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           IsVisible="{Binding Editor.HasNote}">
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,12,2">
+                        <TextBlock Text="{Binding Editor.WordsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding Editor.CharsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding Editor.XCountText}" FontSize="12"
+                                   Classes="xcount" Classes.over="{Binding !Editor.IsWithinXLimit}"/>
+                        <Border Width="1" Height="14" Margin="4,0,0,0" VerticalAlignment="Center"
+                                Background="{DynamicResource BorderBrush}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Editor.CreatedText}" FontSize="12" Margin="0,2,12,2"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.CreatedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="12" Margin="0,2,12,2"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               IsVisible="{Binding Editor.ModifiedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Editor.DiscardedAtText}" FontSize="12" Margin="0,2,12,2"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                IsVisible="{Binding Editor.DiscardedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.DiscardedAtText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.DiscardedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                    <TextBlock Text="{Binding Editor.VerifiedAtText}" FontSize="12" Margin="0,2,12,2"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                IsVisible="{Binding Editor.VerifiedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.VerifiedAtText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.VerifiedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                    <TextBlock Text="{Binding Editor.PublishedAtText}" FontSize="12" Margin="0,2,12,2"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                IsVisible="{Binding Editor.PublishedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.PublishedAtText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.PublishedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                    <TextBlock Text="{Binding Editor.RetiredAtText}" FontSize="12" Margin="0,2,12,2"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                IsVisible="{Binding Editor.RetiredAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.RetiredAtText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.RetiredAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </StackPanel>
+                </WrapPanel>
 
                 <TextBlock Grid.Column="1" Text="{Binding BinderStatusText}" FontSize="12"
                            HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -444,7 +446,7 @@
                                         </Border>
                                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                             <TextBlock x:Name="AttachmentFileName" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding DetailsText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            <TextBlock Classes="attachmentDetails" Text="{Binding DetailsText}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
                                         <!-- Same hover-✕ remove affordance as the other lists; a locked note
                                              keeps its attachments, as it keeps its text. -->

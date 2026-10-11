@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Headless;
+using Avalonia.Styling;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -24,7 +26,7 @@ namespace DayNote.Tests.I18n;
 ///
 /// Buttons and menus size to their words, so a longer language makes them wider rather than cutting
 /// them off. What does not grow is anything given a fixed width: the dialogs, the side panes at their
-/// default widths, and the status bar, which never wraps. So these open each of those in all ten
+/// default widths, and the status bar. So these open each of those in all ten
 /// languages and measure the text, with the real font and the real layout rather than by eye: against
 /// the room each label was given, and against the edge of the surface it sits on, which catches a row
 /// that pushes its last words past the end rather than squeezing any one label.
@@ -108,6 +110,50 @@ public class LabelFitTests : WindowTest
                 Assert.True(
                     right <= header.Bounds.Width + Tolerance,
                     $"{tag}: “{button.Content}” ends at {right:0} px in a {header.Bounds.Width:0} px pane header.");
+            }
+        }
+    }
+
+    [AvaloniaTheory]
+    [MemberData(nameof(Tags))]
+    public async Task metadata_and_attachment_details_remain_visible_when_narrow(string tag)
+    {
+        using var speaking = Localizer.Speaking(tag);
+        using var populated = PopulatedMainWindow.Create();
+        var window = Show(populated.Window);
+        await populated.FillAsync();
+        var normalWidth = window.Width;
+        foreach (var theme in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+        foreach (var width in new[] { window.MinWidth, normalWidth })
+        {
+            window.RequestedThemeVariant = theme;
+            window.Width = width;
+            Dispatcher.UIThread.RunJobs();
+            AssertNothingClipped(window, window, tag, atLeast: 20);
+            var metadata = window.FindControl<WrapPanel>("NoteMetadata")!;
+            var details = window.GetVisualDescendants().OfType<TextBlock>()
+                .Where(text => text.Classes.Contains("attachmentDetails")).ToArray();
+            Assert.True(details.Length >= 2);
+            foreach (var text in metadata.GetVisualDescendants().OfType<TextBlock>().Concat(details)
+                         .Where(text => text.IsEffectivelyVisible && !string.IsNullOrEmpty(text.Text)))
+            {
+                var surface = text.Classes.Contains("attachmentDetails")
+                    ? (Visual)window.FindControl<ListBox>("AttachList")! : metadata;
+                var start = text.TranslatePoint(default, surface)!.Value;
+                Assert.True(start.X >= -Tolerance && start.Y >= -Tolerance);
+                Assert.True(start.X + text.Bounds.Width <= surface.Bounds.Width + Tolerance);
+                Assert.True(start.Y + text.Bounds.Height <= surface.Bounds.Height + Tolerance);
+                Assert.True(text.TextLayout.Height <= text.Bounds.Height + Tolerance);
+                Assert.True(text.TextLayout.Width <= text.Bounds.Width + Tolerance, $"{tag}: {text.Text} needs {text.TextLayout.Width} in {text.Bounds.Width}");
+            }
+            if (width == window.MinWidth)
+                Assert.True(metadata.Children.Where(child => child.IsVisible).Select(child => child.Bounds.Y).Distinct().Count() > 1);
+            // Optional rendered evidence uses the same real layout as the regression.
+            if (System.Environment.GetEnvironmentVariable("DAYNOTE_LAYOUT_EVIDENCE") is { Length: > 0 } directory)
+            {
+                System.IO.Directory.CreateDirectory(directory);
+                using var frame = window.CaptureRenderedFrame();
+                frame!.Save(System.IO.Path.Combine(directory, $"{tag}-{theme}-{width:0}.png"), new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
             }
         }
     }

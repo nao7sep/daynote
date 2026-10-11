@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Note dates and attachment details wrap when space narrows, keeping them readable at the minimum window width.
+
 - The failed-save quit dialog is wide enough for Cancel, Retry and Quit anyway in every interface language.
 - On macOS, text saves create private temporary files before writing any content. Existing files keep their permissions; new binders and settings files are owner-only.
 - A window saved with only a corner left on a screen, for example after a display was removed, came back where its title bar could not be grabbed. DayNote now restores a window only where its title bar can be reached, and opens it at the default place otherwise.
