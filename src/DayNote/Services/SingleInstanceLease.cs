@@ -1,8 +1,10 @@
 using System;
 using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -47,20 +49,27 @@ internal sealed class ActivationRequestRouter
 /// </summary>
 internal sealed class SingleInstanceLease : IDisposable
 {
+    private const string LeaseFileName = "instance.lock";
     private const string EndpointFileName = "instance.endpoint";
     private static readonly TimeSpan NotifyTimeout = TimeSpan.FromSeconds(2);
     private static readonly object CurrentGate = new();
     private static SingleInstanceLease? _current;
 
-    private Mutex? _mutex;
+    private FileStream? _ownership;
+    private Mutex? _legacyMutex;
+    private readonly Action? _beforeFileClose;
+    private Task _closing = Task.CompletedTask;
+    internal Task Closing => _closing;
     private readonly TcpListener _listener;
     private readonly Thread _listenerThread;
     private readonly ActivationRequestRouter _activationRouter = new();
     private volatile bool _disposed;
 
-    private SingleInstanceLease(Mutex mutex, TcpListener listener)
+    private SingleInstanceLease(FileStream ownership, Mutex legacyMutex, TcpListener listener, Action? beforeFileClose)
     {
-        _mutex = mutex;
+        _ownership = ownership;
+        _legacyMutex = legacyMutex;
+        _beforeFileClose = beforeFileClose;
         _listener = listener;
         _listenerThread = new Thread(ListenForActivation)
         {
@@ -70,38 +79,77 @@ internal sealed class SingleInstanceLease : IDisposable
         _listenerThread.Start();
     }
 
-    public static bool TryAcquire(string root, out SingleInstanceLease? lease)
+    public static bool TryAcquire(string root, out SingleInstanceLease? lease,
+        Func<FileStream, int>? lockUnix = null, Action? beforeFileClose = null)
     {
         var endpointPath = Path.Combine(root, EndpointFileName);
-        var mutex = new Mutex(initiallyOwned: false, MutexName(root));
-        var ownsMutex = false;
-        try
+        // Retain the previous protocol while an older build can still be running. The stable file
+        // below supplies current-build alias correctness; this mutex preserves previous-build
+        // exclusion on its original spelling (older Unix builds cannot recognize other aliases).
+        var legacyMutex = new Mutex(false, LegacyMutexName(root));
+        bool legacyOwned;
+        try { legacyOwned = legacyMutex.WaitOne(TimeSpan.Zero); }
+        catch (AbandonedMutexException) { legacyOwned = true; }
+        if (!legacyOwned)
         {
-            ownsMutex = mutex.WaitOne(TimeSpan.Zero);
-        }
-        catch (AbandonedMutexException)
-        {
-            // The abandoned wait transfers ownership to this process.
-            ownsMutex = true;
-        }
-
-        if (!ownsMutex)
-        {
-            mutex.Dispose();
+            legacyMutex.Dispose();
             NotifyPrimary(endpointPath);
             lease = null;
             return false;
+        }
+        var legacyReleased = false;
+        void ReleaseLegacy()
+        {
+            if (legacyReleased) return;
+            legacyReleased = true;
+            legacyMutex.ReleaseMutex();
+            legacyMutex.Dispose();
+        }
+        FileStream ownership;
+        try
+        {
+            // Every alias reaches the same stable file. Never unlink it: another opener must keep
+            // contending for this inode rather than creating a second independent reservation.
+            ownership = new FileStream(Path.Combine(root, LeaseFileName), FileMode.OpenOrCreate,
+                FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException error) when (IsSharingConflict(error))
+        {
+            ReleaseLegacy();
+            NotifyPrimary(endpointPath);
+            lease = null;
+            return false;
+        }
+        catch
+        {
+            ReleaseLegacy();
+            throw;
         }
 
         TcpListener? listener = null;
         try
         {
+            // Unix FileStream sharing is best effort and can be disabled. Verify the actual flock
+            // so unsupported locking cannot silently admit competing shared-store writers.
+            var lockingError = OperatingSystem.IsWindows() ? 0 : (lockUnix ?? LockUnix)(ownership);
+            if (lockingError != 0)
+            {
+                if (IsWouldBlock(lockingError))
+                {
+                    ownership.Dispose();
+                    ReleaseLegacy();
+                    NotifyPrimary(endpointPath);
+                    lease = null;
+                    return false;
+                }
+                throw new IOException("Could not reserve the storage folder.", new Win32Exception(lockingError));
+            }
             listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             PublishEndpoint(endpointPath, port);
 
-            lease = new SingleInstanceLease(mutex, listener);
+            lease = new SingleInstanceLease(ownership, legacyMutex, listener, beforeFileClose);
             lock (CurrentGate)
                 _current = lease;
             return true;
@@ -109,20 +157,37 @@ internal sealed class SingleInstanceLease : IDisposable
         catch
         {
             listener?.Stop();
-            mutex.ReleaseMutex();
-            mutex.Dispose();
+            ownership.Dispose();
+            ReleaseLegacy();
             throw;
         }
     }
 
-    private static string MutexName(string root)
+    private static bool IsSharingConflict(IOException error) => OperatingSystem.IsWindows()
+        ? error.HResult == unchecked((int)0x80070020) : IsWouldBlock(error.HResult);
+
+    private static bool IsWouldBlock(int error) => error == (OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD() ? 35 : 11);
+
+    private static int LockUnix(FileStream ownership)
     {
-        var canonicalRoot = Path.GetFullPath(root);
-        if (OperatingSystem.IsWindows())
-            canonicalRoot = canonicalRoot.ToUpperInvariant();
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonicalRoot));
-        return "DayNote-" + Convert.ToHexString(hash);
+        while (Flock(ownership.SafeFileHandle.DangerousGetHandle().ToInt32(), 2 | 4) != 0)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            if (error != 4) // An interrupted syscall has no settled locking outcome; retry it.
+                return error;
+        }
+        return 0;
     }
+
+    private static string LegacyMutexName(string root)
+    {
+        var path = Path.GetFullPath(root);
+        if (OperatingSystem.IsWindows()) path = path.ToUpperInvariant();
+        return "DayNote-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(path)));
+    }
+
+    [DllImport("libc", EntryPoint = "flock", SetLastError = true)]
+    private static extern int Flock(int descriptor, int operation);
 
     public static void RegisterOwnerActivationHandler(Action handler)
     {
@@ -203,12 +268,16 @@ internal sealed class SingleInstanceLease : IDisposable
 
     public void Dispose() => Dispose(TimeSpan.FromSeconds(2));
 
-    /// <summary>Releases the lease, waiting up to <paramref name="listenerBound"/> for the listener to stop.</summary>
-    public void Dispose(TimeSpan listenerBound)
+    /// <summary>Shares <paramref name="closeBound"/> between listener exit and physical file close.</summary>
+    public void Dispose(TimeSpan closeBound)
     {
         if (_disposed)
+        {
+            ReleaseLegacyAfterClose();
             return;
+        }
         _disposed = true;
+        var elapsed = Stopwatch.StartNew();
 
         lock (CurrentGate)
         {
@@ -217,12 +286,34 @@ internal sealed class SingleInstanceLease : IDisposable
         }
 
         _listener.Stop();
-        _listenerThread.Join(listenerBound);
-        var mutex = Interlocked.Exchange(ref _mutex, null);
-        if (mutex is not null)
+        var ownership = Interlocked.Exchange(ref _ownership, null);
+        _closing = Task.Run(() =>
         {
-            mutex.ReleaseMutex();
-            mutex.Dispose();
-        }
+            try { _beforeFileClose?.Invoke(); }
+            finally
+            {
+                ownership?.Dispose();
+                GC.KeepAlive(this); // Retain unfinished close work and the compatibility handle after the bound.
+            }
+        });
+        _ = _closing.ContinueWith(task => Debug.WriteLine(task.Exception),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        _listenerThread.Join(closeBound);
+        var remaining = closeBound - elapsed.Elapsed;
+        if (!_closing.IsCompleted && remaining > TimeSpan.Zero)
+            ((IAsyncResult)_closing).AsyncWaitHandle.WaitOne(remaining);
+        ReleaseLegacyAfterClose();
+    }
+
+    private void ReleaseLegacyAfterClose()
+    {
+        if (!_closing.IsCompleted)
+            return;
+        var mutex = Interlocked.Exchange(ref _legacyMutex, null);
+        if (mutex is null)
+            return;
+        mutex.ReleaseMutex();
+        mutex.Dispose();
     }
 }

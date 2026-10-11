@@ -21,7 +21,7 @@ public sealed class AboutDialogTests
     public void Link_failure_stays_inline_and_hides_diagnostics()
     {
         var hostile = new IOException("EACCES IPC /private/tmp/DAYNOTE-LINK-SENTINEL");
-        var dialog = new AboutDialog(new NullLogger(), _ => Task.FromException(hostile));
+        var dialog = new AboutDialog(new NullLogger(), _ => Task.FromException<bool>(hostile));
         dialog.Show();
 
         var link = dialog.GetVisualDescendants().OfType<Button>()
@@ -36,6 +36,25 @@ public sealed class AboutDialogTests
         Assert.DoesNotContain("DAYNOTE-LINK-SENTINEL", AutomationProperties.GetName(result), StringComparison.Ordinal);
 
         dialog.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_declined_launch_stays_inline_until_a_confirmed_retry()
+    {
+        var success = false;
+        var dialog = new AboutDialog(new NullLogger(), _ => Task.FromResult(success));
+        dialog.Show();
+        try
+        {
+            var link = dialog.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "GitHubLinkButton");
+            var result = dialog.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "AboutLinkResult");
+            link.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.True(result.IsVisible);
+            success = true;
+            link.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.False(result.IsVisible);
+        }
+        finally { dialog.Close(); }
     }
 
     // About opens with the app's own name at the product-title size, and the version on its own line

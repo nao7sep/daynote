@@ -82,10 +82,21 @@ internal static class Program
             return 1;
         }
 
-        if (!SingleInstanceLease.TryAcquire(paths.Root, out var instanceLease))
+        SingleInstanceLease? instanceLease;
+        try
         {
-            Console.Error.WriteLine("DayNote is already running; activated the existing window.");
-            return 0;
+            if (!SingleInstanceLease.TryAcquire(paths.Root, out instanceLease))
+            {
+                Console.Error.WriteLine("DayNote is already running; activated the existing window.");
+                return 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("DayNote cannot start: its storage location could not be reserved. " + ex.Message);
+            App.StartupFailureMessage = FailurePresentation.StartupStorage();
+            _ = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            return 1;
         }
         using var ownedInstance = instanceLease;
 

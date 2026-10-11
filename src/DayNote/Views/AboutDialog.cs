@@ -8,6 +8,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using DayNote.I18n;
 using DayNote.Logging;
+using DayNote.Services;
 using DayNote.ViewModels;
 
 namespace DayNote.Views;
@@ -23,11 +24,11 @@ public sealed class AboutDialog : DialogBase
     private const string GitHubUrl = "https://github.com/nao7sep/daynote";
 
     private readonly IAppLogger _log;
-    private readonly Func<Uri, Task> _openUri;
+    private readonly Func<Uri, Task<bool>> _openUri;
     private readonly Border _linkResult;
     private readonly TextBlock _linkResultText;
 
-    public AboutDialog(IAppLogger log, Func<Uri, Task>? openUri = null)
+    public AboutDialog(IAppLogger log, Func<Uri, Task<bool>>? openUri = null)
     {
         _log = log;
         _openUri = openUri ?? (uri => Launcher.LaunchUriAsync(uri));
@@ -136,7 +137,7 @@ public sealed class AboutDialog : DialogBase
         {
             try
             {
-                await _openUri(new Uri(url));
+                await ExternalLaunch.RequireSuccessAsync(_openUri(new Uri(url)));
                 _linkResult.IsVisible = false;
             }
             catch (Exception ex)

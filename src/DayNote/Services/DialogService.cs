@@ -170,7 +170,7 @@ public sealed class DialogService : IDialogService
     public async Task OpenPathExternallyAsync(string path)
     {
         var owner = RequireOwner();
-        await owner.Launcher.LaunchFileInfoAsync(new FileInfo(path));
+        await ExternalLaunch.RequireSuccessAsync(owner.Launcher.LaunchFileInfoAsync(new FileInfo(path)));
     }
 
     private Window RequireOwner() =>

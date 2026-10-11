@@ -3,6 +3,7 @@
   <PropertyGroup>
     <!-- xUnit v3 test projects are executables (their own in-process runner). -->
     <OutputType>Exe</OutputType>
+    <StartupObject>DayNote.Tests.FixtureHarnessEntryPoint</StartupObject>
     <IsPackable>false</IsPackable>
     <IsPublishable>false</IsPublishable>
     <!-- The Desktop host is a WinExe; referencing it for its assembly warns about the

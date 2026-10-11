@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using BindingFlags = System.Reflection.BindingFlags;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +15,8 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.Input;
@@ -48,10 +53,12 @@ public sealed class MainWindowViewModelTests : IDisposable
     // Every time the view model records comes from here, so a test moves time explicitly.
     private readonly ManualClock _clock = new(new DateTimeOffset(2026, 6, 1, 9, 0, 0, TimeSpan.Zero));
 
-    public MainWindowViewModelTests()
+    public MainWindowViewModelTests() : this(null) { }
+
+    private MainWindowViewModelTests(string? parentRoot)
     {
         _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
-        _home = Path.Combine(Path.GetTempPath(), "daynote-vm-tests-" + IdGenerator.New());
+        _home = Path.Combine(parentRoot ?? Path.GetTempPath(), "daynote-vm-tests-" + IdGenerator.New());
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _home);
     }
 
@@ -63,6 +70,12 @@ public sealed class MainWindowViewModelTests : IDisposable
     // Every window a test opens, so teardown closes it even when the test failed before closing it.
     private readonly List<MainWindow> _windows = [];
     private readonly List<Task> _droppedOperations = [];
+    private readonly List<Task> _commandOperations = [];
+    private readonly List<(IAsyncRelayCommand Command, PropertyChangedEventHandler Handler)> _commandSubscriptions = [];
+    private readonly HashSet<AttachmentItemViewModel> _previewRows = [];
+    private readonly List<Task> _previewOperations = [];
+    private readonly List<(MainWindowViewModel Vm, NotifyCollectionChangedEventHandler Handler)> _attachmentSubscriptions = [];
+    private Action? _beforeRootRelease;
     private bool _disposed;
 
     private Task AddDroppedFiles(MainWindowViewModel vm, IReadOnlyList<string> files, int unavailable = 0)
@@ -77,11 +90,41 @@ public sealed class MainWindowViewModelTests : IDisposable
         Action<string>? deleteDirectory = null,
         BinderStore? binderStore = null,
         Action<string, string>? copyFile = null,
-        IAppLogger? log = null)
+        IAppLogger? log = null,
+        Func<string, bool>? fileExists = null,
+        Func<string, bool>? directoryExists = null)
     {
         var vm = new MainWindowViewModel(
-            new AppPaths(), _dialogs, log ?? new NullLogger(), deleteFile, deleteDirectory, _clock, binderStore, copyFile);
+            new AppPaths(), _dialogs, log ?? new NullLogger(), deleteFile, deleteDirectory, _clock, binderStore, copyFile,
+            fileExists, directoryExists);
         _viewModels.Add(vm);
+        NotifyCollectionChangedEventHandler attachmentsChanged = (_, change) =>
+        {
+            if (change.NewItems is not { } added)
+                return;
+            foreach (AttachmentItemViewModel row in added)
+            {
+                _previewRows.Add(row);
+                _previewOperations.Add(row.ThumbnailTask);
+            }
+        };
+        vm.Attachments.CollectionChanged += attachmentsChanged;
+        _attachmentSubscriptions.Add((vm, attachmentsChanged));
+        // Concurrent commands expose only their newest ExecutionTask. Observe every admission before
+        // a later invocation can hide an earlier worker from failed-test teardown.
+        foreach (var property in typeof(MainWindowViewModel).GetProperties()
+                     .Where(property => typeof(IAsyncRelayCommand).IsAssignableFrom(property.PropertyType)))
+        {
+            var command = (IAsyncRelayCommand)property.GetValue(vm)!;
+            PropertyChangedEventHandler handler = (_, change) =>
+            {
+                if (change.PropertyName == nameof(IAsyncRelayCommand.ExecutionTask)
+                    && command.ExecutionTask is { } task)
+                    _commandOperations.Add(task);
+            };
+            command.PropertyChanged += handler;
+            _commandSubscriptions.Add((command, handler));
+        }
         Assert.True(vm.IsReady);
         return vm;
     }
@@ -120,6 +163,41 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.NewBinderCommand.ExecuteAsync(null);
         Assert.True(vm.HasBinder);
         return vm;
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reopening_a_restored_note_during_the_last_volume_check_preserves_its_files(bool removeNote)
+    {
+        var checking = new GatedBinderStore.Hold();
+        var vm = NewViewModel(
+            fileExists: path => { checking.Wait(); return File.Exists(path); },
+            directoryExists: path => { checking.Wait(); return Directory.Exists(path); });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var source = Path.Combine(_home, "restored.txt");
+        File.WriteAllText(source, "retained attachment");
+        await AddDroppedFiles(vm, [source]);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var originalText = File.ReadAllText(BinderPath);
+        var attachment = Assert.Single(vm.Attachments);
+
+        var removing = removeNote
+            ? vm.DeleteNoteCommand.ExecuteAsync(vm.SelectedNote)
+            : vm.RemoveAttachmentCommand.ExecuteAsync(attachment);
+        await checking.Entered.Task;
+        _dialogs.BinderToCreate = Path.Combine(_home, "other.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        File.WriteAllText(BinderPath, originalText);
+        await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path == BinderPath));
+        checking.Release();
+        await removing;
+
+        Assert.Equal(attachment.FileName, Assert.Single(vm.SelectedNote!.Note.Attachments));
+        Assert.True(File.Exists(attachment.FullPath));
+        await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]
@@ -2998,6 +3076,31 @@ public sealed class MainWindowViewModelTests : IDisposable
         Dispatcher.UIThread.RunJobs();
     }
 
+    [AvaloniaFact]
+    public async Task A_window_detaches_the_note_created_subscription_when_its_context_changes_or_closes()
+    {
+        var first = NewViewModel();
+        var second = NewViewModel();
+        var window = new MainWindow { DataContext = first };
+        _windows.Add(window);
+        window.Show();
+        Assert.True(Subscribed(first));
+        window.DataContext = second;
+        Assert.False(Subscribed(first));
+        Assert.True(Subscribed(second));
+        window.DataContext = null;
+        Assert.False(Subscribed(second));
+        window.DataContext = first;
+        Assert.True(Subscribed(first));
+        await CloseTestWindowAsync(first, window);
+        Assert.False(Subscribed(first));
+
+        bool Subscribed(MainWindowViewModel vm) =>
+            ((EventHandler?)typeof(MainWindowViewModel).GetField(nameof(MainWindowViewModel.NoteCreated),
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm))?
+            .GetInvocationList().Any(handler => ReferenceEquals(handler.Target, window)) == true;
+    }
+
     public void Dispose()
     {
         if (!Dispatcher.UIThread.CheckAccess())
@@ -3049,20 +3152,39 @@ public sealed class MainWindowViewModelTests : IDisposable
         Attempt(_dialogs.CancelPending);
         Attempt(() =>
         {
-            var commands = _viewModels.SelectMany(vm => typeof(MainWindowViewModel).GetProperties()
-                .Where(property => typeof(IAsyncRelayCommand).IsAssignableFrom(property.PropertyType))
-                .Select(property => ((IAsyncRelayCommand)property.GetValue(vm)!).ExecutionTask)
-                .OfType<Task>());
-            var settling = Task.WhenAll(commands.Concat(_droppedOperations)
-                .Concat(_viewModels.Select(vm => vm.EndSessionAsync())));
-            if (!settling.IsCompleted)
+            var sessions = _viewModels.Select(vm => vm.EndSessionAsync()).ToArray();
+            while (true)
             {
-                var frame = new DispatcherFrame();
-                _ = settling.ContinueWith(_ => Dispatcher.UIThread.Post(() => frame.Continue = false), TaskScheduler.Default);
-                Dispatcher.UIThread.PushFrame(frame);
+                // Settling a command can itself schedule cleanup. Re-snapshot owned workers until
+                // those obligations too have physically completed; no production deadline is widened.
+                var owned = _viewModels.SelectMany(vm => typeof(MainWindowViewModel)
+                    .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Where(field => typeof(Task).IsAssignableFrom(field.FieldType))
+                    .Select(field => field.GetValue(vm)).OfType<Task>());
+                var tasks = _commandOperations.Concat(_droppedOperations).Concat(sessions).Concat(owned)
+                    .Concat(_previewOperations).Concat(_previewRows.Select(row => row.ThumbnailTask)).Distinct().ToArray();
+                var settling = Task.WhenAll(tasks);
+                if (!settling.IsCompleted)
+                {
+                    var frame = new DispatcherFrame();
+                    _ = settling.ContinueWith(_ => Dispatcher.UIThread.Post(() => frame.Continue = false), TaskScheduler.Default);
+                    Dispatcher.UIThread.PushFrame(frame);
+                }
+                settling.GetAwaiter().GetResult();
+                if (tasks.All(task => task.IsCompleted) && _viewModels.All(vm => typeof(MainWindowViewModel)
+                    .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Where(field => typeof(Task).IsAssignableFrom(field.FieldType))
+                    .Select(field => field.GetValue(vm)).OfType<Task>().All(task => task.IsCompleted))
+                    && _previewRows.All(row => row.ThumbnailTask.IsCompleted))
+                    break;
             }
-            settling.GetAwaiter().GetResult();
         });
+
+        foreach (var (command, handler) in _commandSubscriptions)
+            command.PropertyChanged -= handler;
+        foreach (var (vm, handler) in _attachmentSubscriptions)
+            vm.Attachments.CollectionChanged -= handler;
+        Attempt(() => _beforeRootRelease?.Invoke());
 
         // Close the backup store so its singleton re-opens against the next test's throwaway root and
         // releases the file handle before the directory is deleted.
@@ -3081,6 +3203,169 @@ public sealed class MainWindowViewModelTests : IDisposable
         {
             throw new AggregateException("Test teardown failed.", failures);
         }
+    }
+
+    // Called only by a separate test-host process. Throw inside the using scope so the real fixture
+    // failure unwind, rather than a successful test's explicit cleanup, owns the lifetime proof.
+    internal static async Task RunFailedFixtureHarnessAsync(string scenario, string parentRoot)
+    {
+        // The assembly initializer intentionally replaces DAYNOTE_DATA_DIR. The parent passes its
+        // cleanup authority separately, so even a killed child leaves files beneath the owned root.
+        DataRootGuard.Check(parentRoot);
+        Assert.True(Directory.Exists(parentRoot));
+        var previous = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
+        string? root = null;
+        var inspected = false;
+        var sentinelSeen = false;
+        try
+        {
+            using var fixture = new MainWindowViewModelTests(parentRoot);
+            root = fixture._home;
+            Assert.StartsWith(Path.TrimEndingDirectorySeparator(parentRoot) + Path.DirectorySeparatorChar, root, StringComparison.Ordinal);
+            Task unfinished;
+            Func<bool> physicallySettled;
+            if (scenario == "earlier-open")
+            {
+                var store = new GatedBinderStore();
+                var vm = await fixture.OpenNewBinderAsync(store);
+                var second = Path.Combine(root, "missing.daynote");
+                fixture._dialogs.BinderToCreate = second;
+                await vm.NewBinderCommand.ExecuteAsync(null);
+                var hold = store.HoldNextLoad();
+                unfinished = vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path == fixture.BinderPath));
+                await hold.Entered.Task;
+                File.Delete(second);
+                await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path == second));
+                Assert.False(unfinished.IsCompleted);
+                Assert.True(vm.OpenKnownBinderCommand.ExecutionTask!.IsCompleted);
+                physicallySettled = () => unfinished.IsCompleted;
+            }
+            else if (scenario == "published-cleanup")
+            {
+                var stopped = await fixture.StartStoppedImportCleanupAsync();
+                unfinished = stopped.Adding;
+                physicallySettled = () => unfinished.IsCompleted && stopped.Deleted.IsCompleted;
+            }
+            else if (scenario == "removed-thumbnail")
+            {
+                var vm = await fixture.OpenNewBinderAsync();
+                vm.NewNoteCommand.Execute(null);
+                var file = Path.Combine(root, "held-preview.png");
+                File.WriteAllBytes(file, [1]);
+                var decoding = new GatedBinderStore.Hold();
+                FixturePreviewBitmap? bitmap = null;
+                var row = new AttachmentItemViewModel(new Attachment("held-preview.png", file), new NullLogger(), async path =>
+                {
+                    using var source = File.OpenRead(path);
+                    await Task.Run(decoding.Wait);
+                    bitmap = new FixturePreviewBitmap();
+                    return (bitmap, new PixelSize(1, 1));
+                });
+                vm.Attachments.Add(row);
+                unfinished = row.ThumbnailTask;
+                await decoding.Entered.Task;
+                vm.NewNoteCommand.Execute(null);
+                Assert.DoesNotContain(row, vm.Attachments);
+                Assert.False(unfinished.IsCompleted);
+                // Settle the logical session first, then disable redundant state writes in this
+                // fixture. Teardown's only remaining wait is the removed row's physical decode.
+                await vm.RefreshKnownBinders();
+                await vm.EndSessionAsync();
+                vm.IsReady = false;
+                physicallySettled = () =>
+                {
+                    if (!unfinished.IsCompleted || bitmap?.DisposeCalls != 1)
+                        return false;
+                    using var exclusive = File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                    return true;
+                };
+            }
+            else throw new ArgumentException("Unknown fixture failure scenario.", nameof(scenario));
+
+            fixture._beforeRootRelease = () =>
+            {
+                Assert.True(physicallySettled(), "Admitted work outlived fixture settlement.");
+                Assert.Equal(root, Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable));
+                Assert.True(Directory.Exists(root));
+                inspected = true;
+            };
+            throw new FixtureFailureSentinel();
+        }
+        catch (FixtureFailureSentinel) { sentinelSeen = true; }
+        Assert.True(sentinelSeen);
+        Assert.True(inspected);
+        Assert.Equal(previous, Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable));
+        Assert.False(Directory.Exists(root));
+    }
+
+    private sealed class FixtureFailureSentinel : Exception;
+
+    private sealed class FixturePreviewBitmap()
+        : WriteableBitmap(new PixelSize(1, 1), new Vector(96, 96), PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul)
+    {
+        public int DisposeCalls { get; private set; }
+        public override void Dispose()
+        {
+            DisposeCalls++;
+            base.Dispose();
+        }
+    }
+
+
+    private async Task<(MainWindowViewModel Vm, Task Adding, GatedBinderStore.Hold Cleanup, Task Deleted)>
+        StartStoppedImportCleanupAsync(IAppLogger? log = null)
+    {
+        var copying = new HeldCopy();
+        var deleting = new GatedBinderStore.Hold();
+        var deleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var vm = NewViewModel(log: log, copyFile: (source, destination) =>
+        {
+            if (Path.GetFileName(source) == "second.txt") copying.Copy(source, destination);
+            else AtomicFile.CopyNew(source, destination);
+        }, deleteFile: path =>
+        {
+            if (Path.GetFileName(path) == "first.txt")
+            {
+                deleting.Wait();
+                File.Delete(path);
+                deleted.SetResult();
+            }
+            else File.Delete(path);
+        });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var first = Path.Combine(_home, "first.txt");
+        var second = Path.Combine(_home, "second.txt");
+        File.WriteAllText(first, "published");
+        File.WriteAllText(second, "held");
+        var adding = AddDroppedFiles(vm, [first, second]);
+        await copying.Entered.Task;
+        _dialogs.AttachmentWaitAnswer = _ => Task.FromResult(true);
+        _dialogs.BinderToCreate = Path.Combine(_home, "next.daynote");
+        var switching = vm.NewBinderCommand.ExecuteAsync(null);
+        _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
+        await switching;
+        await deleting.Entered.Task;
+        copying.Release();
+        await adding;
+        Assert.False(deleted.Task.IsCompleted);
+        return (vm, adding, deleting, deleted.Task);
+    }
+
+    [AvaloniaFact]
+    public async Task Session_end_retains_cleanup_started_by_an_earlier_stopped_import()
+    {
+        var log = new ListLogger();
+        var stopped = await StartStoppedImportCleanupAsync(log);
+        var ending = stopped.Vm.EndSessionAsync();
+        _clock.Advance(MainWindowViewModel.QuitStateWriteBound);
+        await ending;
+        Assert.Contains(log.Entries, entry => entry.Level == "warn"
+            && entry.Message == "Attachment copies were not all removed within the quit's bound");
+        Assert.False(stopped.Deleted.IsCompleted);
+        stopped.Cleanup.Release();
+        await stopped.Deleted;
     }
 
     // ----- Attachments being added (developer decision: finished before a switch, close or quit) -----

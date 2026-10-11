@@ -50,6 +50,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private readonly Action<string> _deleteFile;
     private readonly Action<string> _deleteDirectory;
     private readonly Action<string, string> _copyFile;
+    private readonly Func<string, bool> _fileExists;
+    private readonly Func<string, bool> _directoryExists;
 
     // The clock every recorded time is read from: created, modified and status times. The quit's bounds
     // run on it too.
@@ -136,6 +138,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // and a quit, wait for them, so what the user added ends up in the note; an ending OS session never
     // waits (developer decision).
     private readonly List<AttachmentImport> _imports = new();
+    // Stopping an import relinquishes its published copies, but their physical deletion still belongs
+    // to this window. A later quit must retain deletions started by an earlier stop or binder switch.
+    private Task _attachmentCleanup = Task.CompletedTask;
 
     public MainWindowViewModel(
         AppPaths paths,
@@ -145,7 +150,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         Action<string>? deleteDirectory = null,
         TimeProvider? clock = null,
         BinderStore? binderStore = null,
-        Action<string, string>? copyFile = null)
+        Action<string, string>? copyFile = null,
+        Func<string, bool>? fileExists = null,
+        Func<string, bool>? directoryExists = null)
     {
         _paths = paths;
         _dialogs = dialogs;
@@ -155,6 +162,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _clock = clock ?? TimeProvider.System;
         _binderStore = binderStore ?? new BinderStore();
         _copyFile = copyFile ?? AtomicFile.CopyNew;
+        _fileExists = fileExists ?? File.Exists;
+        _directoryExists = directoryExists ?? Directory.Exists;
         _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         // Not recorded in the backup history: placement and selection are state, never the user's work.
         _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
@@ -937,7 +946,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var directory = BinderStore.NoteAssetsDirectory(binderPath, note.Id);
         try
         {
-            if (!await Task.Run(() => Directory.Exists(directory)))
+            if (!await Task.Run(() => _directoryExists(directory)))
+            {
+                return;
+            }
+
+            // Reopening a restored binder can regain this note while the volume check waits. Check
+            // again immediately before admitting deletion, while the UI owns the live binder.
+            if (_current is { } current && SameBinderPath(current.Path, binderPath)
+                && current.Binder.Notes.Any(candidate => candidate.Id == note.Id))
             {
                 return;
             }
@@ -1473,18 +1490,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// </summary>
     private Task GiveUpImports(IReadOnlyList<AttachmentImport> imports)
     {
-        var deletions = new List<Task>();
         foreach (var import in imports)
         {
             var copies = import.GiveUp();
             _log.Info("Gave up adding attachments", new { noteId = import.Note.Id, published = copies.Count });
             if (copies.Count > 0)
             {
-                deletions.Add(DeleteCopiesAsync(import.Directory, copies));
+                _ = DeleteCopiesAsync(import.Directory, copies);
             }
         }
 
-        return Task.WhenAll(deletions);
+        return _attachmentCleanup;
     }
 
     // The OS is ending the session, so nothing waits for an add; the copies already made are deleted within
@@ -1501,13 +1517,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    private Task DeleteCopiesAsync(string directory, IReadOnlyList<string> names) => Task.Run(() =>
+    private Task DeleteCopiesAsync(string directory, IReadOnlyList<string> names)
     {
-        foreach (var name in names)
+        var deleting = Task.Run(() =>
         {
-            DeleteCopy(Path.Combine(directory, name), noteId: null);
-        }
-    });
+            foreach (var name in names)
+            {
+                DeleteCopy(Path.Combine(directory, name), noteId: null);
+            }
+        });
+        _attachmentCleanup = _attachmentCleanup.IsCompleted
+            ? deleting : Task.WhenAll(_attachmentCleanup, deleting);
+        return deleting;
+    }
 
     // An attachment copy that nothing refers to. A failure leaves an unreferenced file, which is logged.
     private void DeleteCopy(string path, string? noteId)
@@ -1603,7 +1625,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             // The binder's folder can be on a slow or vanished volume, so the file is checked and deleted
             // off the UI thread.
-            if (!await Task.Run(() => File.Exists(fullPath)))
+            if (!await Task.Run(() => _fileExists(fullPath)))
+            {
+                return;
+            }
+
+            if (!ReferenceEquals(_current, binder))
             {
                 return;
             }

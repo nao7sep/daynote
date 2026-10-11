@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
@@ -108,6 +109,123 @@ public sealed class AttachmentItemViewModelTests : IDisposable
 
     private AttachmentItemViewModel Row(Func<string, Task<(Bitmap, PixelSize)>> decode) =>
         new(new Attachment("image.png", _path), new NullLogger(), decode);
+
+    [AvaloniaFact]
+    public async Task Repeated_preview_replacement_and_cancellation_disposes_every_bitmap_once()
+    {
+        var created = new List<CountedBitmap>();
+        var active = 0;
+        var maximumActive = 0;
+        var queuedCalls = 0;
+        for (var round = 0; round < 12; round++)
+        {
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var calls = 0;
+            var tasks = new List<Task>();
+            var queued = new List<AttachmentItemViewModel>();
+            using var row = Row(async _ =>
+            {
+                active++;
+                maximumActive = Math.Max(maximumActive, active);
+                var bitmap = new CountedBitmap();
+                created.Add(bitmap);
+                try
+                {
+                    if (++calls == 1)
+                    {
+                        entered.SetResult();
+                        await release.Task;
+                    }
+                    return (bitmap, new PixelSize(1, 1));
+                }
+                finally { active--; }
+            });
+            tasks.Add(row.ThumbnailTask);
+            try
+            {
+                await entered.Task;
+                for (var index = 0; index < 3; index++)
+                {
+                    var obsolete = Row(_ =>
+                    {
+                        queuedCalls++;
+                        var bitmap = new CountedBitmap();
+                        created.Add(bitmap);
+                        return Task.FromResult<(Bitmap, PixelSize)>((bitmap, new PixelSize(1, 1)));
+                    });
+                    queued.Add(obsolete);
+                    tasks.Add(obsolete.ThumbnailTask);
+                    obsolete.Dispose();
+                }
+                row.ShowUnavailable();
+                if (round % 2 == 0)
+                {
+                    row.ClearOpenResult();
+                    tasks.Add(row.ThumbnailTask);
+                }
+                else row.Dispose();
+                release.SetResult();
+                await Task.WhenAll(tasks);
+                if (round % 2 == 0)
+                {
+                    var adopted = Assert.IsType<CountedBitmap>(row.Thumbnail);
+                    Assert.Equal(0, adopted.DisposeCalls);
+                    row.ShowUnavailable();
+                    Assert.Equal(1, adopted.DisposeCalls);
+                    row.ClearOpenResult();
+                    tasks.Add(row.ThumbnailTask);
+                    await row.ThumbnailTask;
+                    Assert.Equal(0, Assert.IsType<CountedBitmap>(row.Thumbnail).DisposeCalls);
+                }
+            }
+            finally
+            {
+                release.TrySetResult();
+                row.Dispose();
+                queued.ForEach(item => item.Dispose());
+                await Task.WhenAll(tasks);
+            }
+        }
+        Assert.Equal(1, maximumActive);
+        Assert.Equal(0, active);
+        Assert.Equal(0, queuedCalls);
+        Assert.Equal(24, created.Count);
+        Assert.All(created, bitmap => Assert.Equal(1, bitmap.DisposeCalls));
+    }
+
+    [AvaloniaFact]
+    public async Task Repeated_native_valid_and_corrupt_decodes_release_the_source_file()
+    {
+        for (var round = 0; round < 6; round++)
+        {
+            using (var pixels = new SKBitmap(9, 7))
+            using (var bytes = pixels.Encode(SKEncodedImageFormat.Png, 80))
+            using (var file = File.Create(_path))
+                bytes.SaveTo(file);
+            var (preview, dimensions) = await AttachmentItemViewModel.DecodeThumbnailAsync(_path);
+            using (preview) Assert.Equal(new PixelSize(9, 7), dimensions);
+            using (var exclusive = File.Open(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                exclusive.SetLength(0);
+                exclusive.Write([1, 2, 3]);
+            }
+            await Assert.ThrowsAsync<InvalidDataException>(() => AttachmentItemViewModel.DecodeThumbnailAsync(_path));
+            using var afterFailure = File.Open(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            afterFailure.SetLength(0);
+        }
+    }
+
+    private sealed class CountedBitmap()
+        : WriteableBitmap(new PixelSize(1, 1), new Vector(96, 96), PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul)
+    {
+        public int DisposeCalls { get; private set; }
+        public override void Dispose()
+        {
+            DisposeCalls++;
+            base.Dispose();
+        }
+    }
 
     private static Bitmap Bitmap() => new WriteableBitmap(new PixelSize(1, 1), new Vector(96, 96),
         PixelFormat.Bgra8888, AlphaFormat.Premul);

@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An OS launch that declines to open an attachment or About link now shows the existing failure message until a successful retry.
+- Storage-folder aliases share one running instance, preventing two DayNote processes from writing the same settings and history.
+- Reopening a restored note during the final attachment check keeps its files before cleanup starts.
 - A burst of new Records entries no longer leaves a gap between the latest entries and the older list.
 - Concurrent saves share the outside-change answer until Reload or Keep my version finishes, avoiding a repeated question about the same change.
 - Selecting the current binder while another open is waiting keeps the current binder. Distinct files whose names differ only in case stay distinct on case-sensitive volumes; existing case aliases retain the current binder and its known-list entry.

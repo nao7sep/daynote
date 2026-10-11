@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     internal RecordsWindow? RecordsWindow => _recordsWindow;
 
     private MainWindowViewModel? _themeSource;
+    private MainWindowViewModel? _noteCreatedSource;
 
     public MainWindow()
     {
@@ -216,6 +217,18 @@ public partial class MainWindow : Window
         _themeSource = DataContext as MainWindowViewModel;
         if (_themeSource is not null)
             _themeSource.PropertyChanged += OnViewModelPropertyChanged;
+        SetNoteCreatedSource(IsVisible && !_closed ? DataContext as MainWindowViewModel : null);
+    }
+
+    private void SetNoteCreatedSource(MainWindowViewModel? source)
+    {
+        if (ReferenceEquals(source, _noteCreatedSource))
+            return;
+        if (_noteCreatedSource is not null)
+            _noteCreatedSource.NoteCreated -= OnNoteCreated;
+        _noteCreatedSource = source;
+        if (source is not null)
+            source.NoteCreated += OnNoteCreated;
     }
 
     // The theme is app-wide: when Settings commits a new one, every window and title bar follows.
@@ -288,7 +301,7 @@ public partial class MainWindow : Window
         RememberNormalGeometry();
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.NoteCreated += OnNoteCreated;
+            SetNoteCreatedSource(vm);
             _ = vm.InitializeAsync();
         }
     }
@@ -518,10 +531,7 @@ public partial class MainWindow : Window
         _closed = true;
         Localizer.Changed -= OnLanguageChanged;
         Activated -= OnWindowActivated;
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.NoteCreated -= OnNoteCreated;
-        }
+        SetNoteCreatedSource(null);
 
         base.OnClosed(e);
     }
