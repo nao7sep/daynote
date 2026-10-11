@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A failed settings save no longer causes unreadable stored text styles or binder lists to disappear on a later unrelated save.
+- Opening or creating a binder while the previous binder saves is cancelled if quitting begins before that save finishes.
+- Deleting a note finishes cleaning up its attachments after a pending copy settles, even if another binder has since been opened; a restored and reopened note keeps its files.
+
 - Note dates and attachment details wrap when space narrows, keeping them readable at the minimum window width.
 
 - The failed-save quit dialog is wide enough for Cancel, Retry and Quit anyway in every interface language.

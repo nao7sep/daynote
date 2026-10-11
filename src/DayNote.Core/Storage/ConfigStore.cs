@@ -35,7 +35,8 @@ public sealed class ConfigStore(string path, Action<string> warn)
     {
         var sets = ConfigSets.UserSets(config);
         var values = JsonSerializer.SerializeToElement(config, DayNoteJson.Options);
-        foreach (var (key, stored) in _kept.ToArray())
+        var replaced = new List<string>();
+        foreach (var (key, stored) in _kept)
         {
             if (!values.TryGetProperty(key, out var value))
             {
@@ -47,8 +48,9 @@ public sealed class ConfigStore(string path, Action<string> warn)
             }
             else
             {
-                // The user replaced the set; its stored value has served its purpose.
-                _kept.Remove(key);
+                // Retain the original until publication succeeds: a rejected edit may be
+                // reverted before an unrelated setting is saved.
+                replaced.Add(key);
             }
         }
 
@@ -59,6 +61,8 @@ public sealed class ConfigStore(string path, Action<string> warn)
 
         _store.Save(sets);
         _onDisk = sets;
+        foreach (var key in replaced)
+            _kept.Remove(key);
     }
 
     private static bool SameSets(Dictionary<string, JsonElement> stored, Dictionary<string, JsonElement> sets) =>

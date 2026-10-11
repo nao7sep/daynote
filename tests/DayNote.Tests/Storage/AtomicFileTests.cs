@@ -66,6 +66,60 @@ public sealed class AtomicFileTests : IDisposable
     }
 
     [Fact]
+    public void Replacement_with_a_shared_reader_publishes_new_bytes_without_changing_its_snapshot()
+    {
+        File.WriteAllText(_path, "old bytes");
+        using var held = new FileStream(_path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+
+        AtomicFile.WriteAllText(_path, "replacement", recordBackup: false);
+
+        Assert.Equal("replacement", File.ReadAllText(_path));
+        using var reader = new StreamReader(held);
+        Assert.Equal("old bytes", reader.ReadToEnd());
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
+    [WindowsOnlyFact]
+    public void A_Windows_reader_denying_delete_preserves_the_original_until_retry()
+    {
+        File.WriteAllText(_path, "original");
+        using (var held = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.ThrowsAny<IOException>(() =>
+                AtomicFile.WriteAllText(_path, "replacement", recordBackup: false));
+            Assert.Equal("original", File.ReadAllText(_path));
+            Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+        }
+
+        AtomicFile.WriteAllText(_path, "replacement", recordBackup: false);
+        Assert.Equal("replacement", File.ReadAllText(_path));
+    }
+
+    [MacOnlyFact]
+    [SupportedOSPlatform("macos")]
+    public void A_nonwritable_parent_preserves_the_original_and_allows_retry_after_permissions_return()
+    {
+        File.WriteAllText(_path, "original");
+        var mode = File.GetUnixFileMode(_directory);
+        try
+        {
+            File.SetUnixFileMode(_directory, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            Assert.Throws<UnauthorizedAccessException>(() =>
+                AtomicFile.WriteAllText(_path, "replacement", recordBackup: false));
+            Assert.Equal("original", File.ReadAllText(_path));
+            Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+        }
+        finally
+        {
+            File.SetUnixFileMode(_directory, mode);
+        }
+
+        AtomicFile.WriteAllText(_path, "replacement", recordBackup: false);
+        Assert.Equal("replacement", File.ReadAllText(_path));
+    }
+
+    [Fact]
     public void Writes_utf8_without_a_byte_order_mark()
     {
         AtomicFile.WriteAllText(_path, "日本語");

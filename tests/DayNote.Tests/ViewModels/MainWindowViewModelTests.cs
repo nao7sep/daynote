@@ -2306,6 +2306,26 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_new_binder_waiting_for_the_previous_save_cannot_start_after_quit_begins()
+    {
+        var (vm, store, _) = await OpenWithUnsavedEditAsync("saved before closing");
+        var held = store.HoldNextSave();
+        var next = Path.Combine(_home, "next.daynote");
+        _dialogs.BinderToCreate = next;
+        var opening = vm.NewBinderCommand.ExecuteAsync(null);
+        await held.Entered.Task;
+
+        vm.BeginShutdown();
+        held.Release();
+        await opening;
+
+        Assert.False(File.Exists(next));
+        Assert.DoesNotContain(vm.Binders, binder => PathKey.Equal(binder.Path, next));
+        Assert.Equal("saved before closing", SavedBody());
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task An_open_still_reading_its_file_at_shutdown_is_discarded()
     {
         // Shutdown supersedes an open whose background read has not returned yet: when that read
@@ -2959,6 +2979,41 @@ public sealed class MainWindowViewModelTests : IDisposable
         await adding;
         Assert.Empty(AssetFiles(note));
         Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Saved_note_deletion_keeps_its_cleanup_after_switching_unless_the_note_is_reopened(bool restoreNote)
+    {
+        var (vm, held, note, _, adding) = await StartHeldAddAsync();
+        var directory = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
+        Directory.CreateDirectory(directory);
+        var existing = Path.Combine(directory, "existing.txt");
+        File.WriteAllText(existing, "existing attachment");
+        note.Attachments.Add("existing.txt");
+        vm.Editor.Body = "with an existing attachment";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var original = File.ReadAllText(BinderPath);
+
+        var deleting = vm.DeleteNoteCommand.ExecuteAsync(null);
+        await PumpUntilAsync(() => !vm.IsSaveStateSaving);
+        Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes);
+        Assert.False(deleting.IsCompleted);
+        _dialogs.BinderToCreate = Path.Combine(_home, "other.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        if (restoreNote)
+        {
+            File.WriteAllText(BinderPath, original);
+            await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(binder => PathKey.Equal(binder.Path, BinderPath)));
+            Assert.Single(vm.Notes);
+        }
+
+        held.Release();
+        await Task.WhenAll(deleting, adding);
+        Assert.Equal(restoreNote, Directory.Exists(directory));
+        Assert.Equal(restoreNote, File.Exists(existing));
+        await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]

@@ -117,7 +117,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // discard that newer edit (it would never be written, and never be flagged as unsaved again).
     private long _dirtyGeneration;
 
-    // Bumped by every OpenBinderPathAsync call right before its background read/write starts. If it
+    // Bumped by every admitted OpenBinderPathAsync call before it waits for the previous binder. If it
     // changes before that call returns, a later open has already started — the user moved on to
     // another binder while this one's file was still being read — and this call's result is discarded
     // instead of adopting a binder the user is no longer looking at.
@@ -898,12 +898,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // never leaves a reopened binder pointing at deleted files. A binder reloaded or closed
         // meanwhile may still hold the note, so its files stay.
         var saved = await SaveCurrentAsync();
+        var removalSaved = saved && ReferenceEquals(_current, binder);
 
         // A copy still running when its add was given up would land in the folder as it is deleted.
+        // Once removal is saved, switching binders does not abandon this folder's cleanup. A binder
+        // subsequently reopened with the note restored still owns its attachments, so keep those.
         await Task.WhenAll(adding.Select(import => import.Copying));
-        if (ReferenceEquals(_current, binder))
+        if (_current is { } current && PathKey.Equal(current.Path, binder.Path)
+            && current.Binder.Notes.Any(candidate => candidate.Id == note.Id))
         {
-            await DeleteNoteAssetsAsync(binder.Path, note, saved);
+            return;
+        }
+        if (removalSaved || ReferenceEquals(_current, binder))
+        {
+            await DeleteNoteAssetsAsync(binder.Path, note, removalSaved);
         }
     }
 
@@ -1754,6 +1762,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _log.Info("Opening binder", new { path, isNew });
         var stopwatch = Stopwatch.StartNew();
 
+        // Claim the request before any wait, so quitting or a newer open also supersedes
+        // an open still waiting for the previous binder's attachments or save.
+        var generation = ++_openGeneration;
         if (!await CloseCurrentAsync(clearSelection: false))
         {
             // The current binder's edits couldn't be flushed; keep it open rather than switch away, and
@@ -1762,10 +1773,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        // Marks this open as the one in flight. Checked again after the background read/write returns:
-        // if another OpenBinderPathAsync call started in the meantime, that later open wins and this
-        // call's result is discarded rather than yanking the user back to a binder they moved on from.
-        var generation = ++_openGeneration;
+        if (_shuttingDown || generation != _openGeneration)
+            return;
 
         LoadedBinder loaded;
         try
@@ -1777,6 +1786,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             await _binderFileLock.WaitAsync();
             try
             {
+                if (_shuttingDown || generation != _openGeneration)
+                    return;
+
                 if (isNew)
                 {
                     var now = _clock.GetUtcNow();

@@ -108,6 +108,44 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Single(_warnings);
     }
 
+    [Theory]
+    [InlineData("textStyles", "[{\"fontFamily\":\"A\"}]")]
+    [InlineData("binders", "[{\"path\":\"x\"}]")]
+    public void A_failed_replacement_of_an_invalid_set_does_not_discard_its_preserved_value(string key, string value)
+    {
+        var original = $"{{\"formatVersion\":1,\"{key}\":{value}}}";
+        File.WriteAllText(ConfigPath, original);
+        var store = Store;
+        var config = store.Load();
+        var fontSize = config.TextStyles[0].FontSize;
+        if (key == "textStyles")
+            config.TextStyles[0].FontSize = 22;
+        else
+            config.Binders.Add(new KnownBinder { Path = Path.Combine(_directory, "other.daynote"), Title = "Other" });
+
+        // A directory at the destination rejects publication on either platform.
+        File.Delete(ConfigPath);
+        Directory.CreateDirectory(ConfigPath);
+        try
+        {
+            var error = Record.Exception(() => store.Save(config));
+            Assert.True(error is IOException or UnauthorizedAccessException, $"Expected a publication failure, got {error}");
+        }
+        finally
+        {
+            Directory.Delete(ConfigPath);
+            File.WriteAllText(ConfigPath, original);
+        }
+
+        config.TextStyles[0].FontSize = fontSize;
+        config.Binders.Clear();
+        config.Theme = ThemePreference.Dark;
+        store.Save(config);
+        using var expected = JsonDocument.Parse(value);
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        Assert.True(JsonElement.DeepEquals(expected.RootElement, saved.RootElement.GetProperty(key)));
+    }
+
     [Fact]
     public void An_invalid_preference_is_normalized_by_the_next_save()
     {
