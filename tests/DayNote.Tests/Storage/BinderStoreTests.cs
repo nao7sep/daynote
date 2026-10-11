@@ -52,6 +52,20 @@ public sealed class BinderStoreTests : IDisposable
     }
 
     [Fact]
+    public void Attachment_directory_retry_syncs_the_whole_chain_even_when_it_already_exists()
+    {
+        var noteDirectory = BinderStore.NoteAssetsDirectory(_path, "note");
+        Assert.Throws<IOException>(() => BinderStore.EnsureNoteAssetsDirectory(noteDirectory,
+            _ => throw new IOException("sync failed")));
+        Assert.True(Directory.Exists(noteDirectory));
+        var synced = new System.Collections.Generic.List<string>();
+
+        BinderStore.EnsureNoteAssetsDirectory(noteDirectory, synced.Add);
+
+        Assert.Equal(new[] { noteDirectory, BinderStore.AssetsDirectory(_path), _directory }, synced);
+    }
+
+    [Fact]
     public void A_save_over_the_expected_version_writes_and_returns_the_new_hash()
     {
         var saved = _store.Save(_path, Sample());

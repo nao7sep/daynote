@@ -9,4 +9,7 @@ namespace DayNote.Core.Storage;
 public sealed record LoadedBinder(
     Binder Binder,
     string Path,
-    string ContentHash);
+    string ContentHash)
+{
+    public string IdentityPath { get; init; } = Path;
+}

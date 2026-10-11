@@ -16,12 +16,10 @@ public sealed class OperationResultViewModel : ObservableObject
     public OperationResultViewModel(
         OperationResultKind kind,
         Message message,
-        bool isPersistent = false,
         string? resultKey = null)
     {
         Kind = kind;
         Message = message;
-        IsPersistent = isPersistent;
         ResultKey = resultKey;
         LiveSetting = kind == OperationResultKind.Error
             ? AutomationLiveSetting.Assertive
@@ -42,8 +40,6 @@ public sealed class OperationResultViewModel : ObservableObject
     public bool IsWarning => Kind == OperationResultKind.Warning;
 
     public bool IsError => Kind == OperationResultKind.Error;
-
-    public bool IsPersistent { get; }
 
     /// <summary>Identity of one still-active shell result. Null means the owner clears it directly.</summary>
     public string? ResultKey { get; }

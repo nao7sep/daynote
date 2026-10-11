@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
 using DayNote.I18n;
 using DayNote.Logging;
+using SkiaSharp;
 
 namespace DayNote.ViewModels;
 
@@ -15,6 +17,9 @@ namespace DayNote.ViewModels;
 public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposable
 {
     private const int ThumbnailWidth = 240;
+    // A note can contain many camera images. Own one physical decode through completion, including
+    // after its row is disposed; queued obsolete rows never start another full native decode.
+    private static readonly SemaphoreSlim DecodeAdmission = new(1, 1);
     private const string UnavailableKey = "attachment.unavailableMessage";
 
     private readonly IAppLogger _log;
@@ -48,8 +53,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             _log.Warn("Attachment is unavailable", new { path = FullPath });
             Result = new OperationResultViewModel(
                 OperationResultKind.Warning,
-                Message.Of(UnavailableKey),
-                isPersistent: true);
+                Message.Of(UnavailableKey));
         }
 
         if (IsImage && Exists)
@@ -104,8 +108,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     public void ShowOpenFailure() =>
         Result = new OperationResultViewModel(
             OperationResultKind.Error,
-            Message.Of("attachment.openFailed"),
-            isPersistent: true);
+            Message.Of("attachment.openFailed"));
 
     /// <summary>Called by the main window's view model when the language changes.</summary>
     internal void Retranslate()
@@ -128,12 +131,13 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
         Result = new OperationResultViewModel(
             OperationResultKind.Warning,
-            Message.Of(UnavailableKey),
-            isPersistent: true);
+            Message.Of(UnavailableKey));
     }
 
     public void ClearOpenResult()
     {
+        if (_disposed)
+            return;
         _thumbnailGeneration++;
         _size = FileSize(FullPath);
         Exists = true;
@@ -155,11 +159,19 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         var generation = ++_thumbnailGeneration;
         try
         {
-            // Decode off the UI thread so selecting an image-heavy note does not block the UI; the
-            // full decode yields the original pixel size for the details line, then is scaled down to a
-            // bounded thumbnail. The continuation resumes on the UI thread (assigning Thumbnail is
-            // binding-safe there).
-            var (bitmap, size) = await _decodeThumbnail(path);
+            await DecodeAdmission.WaitAsync();
+            Bitmap bitmap;
+            PixelSize size;
+            try
+            {
+                if (_disposed || generation != _thumbnailGeneration || !Exists)
+                    return;
+                (bitmap, size) = await _decodeThumbnail(path);
+            }
+            finally
+            {
+                DecodeAdmission.Release();
+            }
 
             if (_disposed || generation != _thumbnailGeneration || !Exists)
             {
@@ -185,14 +197,23 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         }
     }
 
-    private static Task<(Bitmap Bitmap, PixelSize Size)> DecodeThumbnailAsync(string path) => Task.Run(() =>
+    internal static Task<(Bitmap Bitmap, PixelSize Size)> DecodeThumbnailAsync(string path) => Task.Run(() =>
     {
-        using var stream = File.OpenRead(path);
-        using var full = new Bitmap(stream);
-        var original = full.PixelSize;
-        var width = Math.Min(ThumbnailWidth, original.Width);
-        var height = Math.Max(1, (int)Math.Round(original.Height * (double)width / original.Width));
-        return (full.CreateScaledBitmap(new PixelSize(width, height)), original);
+        // Codec metadata supplies the original dimensions without a full pixel allocation or an
+        // in-memory copy of the encoded file. Some formats still need a full raster; admission above
+        // prevents several of those allocations at once, rather than claiming a per-image memory cap.
+        using var codec = SKCodec.Create(File.OpenRead(path)) ?? throw new InvalidDataException("Image codec could not be opened.");
+        var original = new PixelSize(codec.Info.Width, codec.Info.Height);
+        var scale = Math.Min(1d, ThumbnailWidth / (double)Math.Max(original.Width, original.Height));
+        var dimensions = codec.GetScaledDimensions((float)scale);
+        var info = new SKImageInfo(dimensions.Width, dimensions.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var decoded = new SKBitmap(info);
+        if (codec.GetPixels(info, decoded.GetPixels()) != SKCodecResult.Success)
+            throw new InvalidDataException("Image pixels could not be decoded.");
+        var size = new PixelSize(Math.Max(1, (int)Math.Round(original.Width * scale)), Math.Max(1, (int)Math.Round(original.Height * scale)));
+        using var preview = decoded.Resize(new SKImageInfo(size.Width, size.Height, SKColorType.Bgra8888, SKAlphaType.Premul),
+            new SKSamplingOptions(SKFilterMode.Linear)) ?? throw new InvalidDataException("Image preview could not be resized.");
+        return (new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, preview.GetPixels(), size, new Vector(96, 96), preview.RowBytes), original);
     });
 
     private static long FileSize(string path)

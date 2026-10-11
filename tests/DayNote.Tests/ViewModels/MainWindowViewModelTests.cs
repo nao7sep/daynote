@@ -14,6 +14,7 @@ using Avalonia.Input;
 using Avalonia.Input.Raw;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.Data.Sqlite;
 using DayNote.Core.Backup;
 using DayNote.Core.Configuration;
@@ -61,6 +62,15 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     // Every window a test opens, so teardown closes it even when the test failed before closing it.
     private readonly List<MainWindow> _windows = [];
+    private readonly List<Task> _droppedOperations = [];
+    private bool _disposed;
+
+    private Task AddDroppedFiles(MainWindowViewModel vm, IReadOnlyList<string> files, int unavailable = 0)
+    {
+        var operation = vm.AddDroppedFiles(files, unavailable);
+        _droppedOperations.Add(operation);
+        return operation;
+    }
 
     private MainWindowViewModel NewViewModel(
         Action<string>? deleteFile = null,
@@ -86,7 +96,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.NewNoteCommand.Execute(null);
         var source = Path.Combine(_home, "remove-me.txt");
         File.WriteAllText(source, "attachment content");
-        await vm.AddDroppedFiles(new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
         var item = Assert.Single(vm.Attachments);
 
         await vm.RemoveAttachmentCommand.ExecuteAsync(item);
@@ -110,6 +120,89 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.NewBinderCommand.ExecuteAsync(null);
         Assert.True(vm.HasBinder);
         return vm;
+    }
+
+    [AvaloniaFact]
+    public async Task A_late_attachment_removal_failure_keeps_the_selected_notes_result()
+    {
+        var deleting = new GatedBinderStore.Hold();
+        var vm = NewViewModel(deleteFile: _ =>
+        {
+            deleting.Wait();
+            throw new IOException("held removal failure");
+        });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var source = Path.Combine(_home, "remove-later.txt");
+        File.WriteAllText(source, "attachment");
+        await AddDroppedFiles(vm, [source]);
+        var removing = vm.RemoveAttachmentCommand.ExecuteAsync(Assert.Single(vm.Attachments));
+        await deleting.Entered.Task;
+        vm.NewNoteCommand.Execute(null);
+        await AddDroppedFiles(vm, [], unavailable: 1);
+        var selectedResult = vm.AttachmentResult;
+        deleting.Release();
+        await removing;
+
+        Assert.Same(selectedResult, vm.AttachmentResult);
+        Assert.Empty(vm.Attachments);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_late_locked_import_cleanup_keeps_the_selected_notes_result()
+    {
+        var copying = new HeldCopy();
+        var deleting = new GatedBinderStore.Hold();
+        var vm = NewViewModel(copyFile: copying.Copy, deleteFile: path =>
+        {
+            deleting.Wait();
+            File.Delete(path);
+        });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var original = vm.SelectedNote!.Note;
+        var source = Path.Combine(_home, "locked-later.txt");
+        File.WriteAllText(source, "attachment");
+        var adding = AddDroppedFiles(vm, [source]);
+        await copying.Entered.Task;
+        vm.Editor.Locked = true;
+        copying.Release();
+        await deleting.Entered.Task;
+        vm.NewNoteCommand.Execute(null);
+        await AddDroppedFiles(vm, [], unavailable: 1);
+        var selectedResult = vm.AttachmentResult;
+        deleting.Release();
+        await adding;
+
+        Assert.Same(selectedResult, vm.AttachmentResult);
+        Assert.Empty(original.Attachments);
+        Assert.Empty(AssetFiles(original));
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task An_attachment_copy_with_failed_namespace_sync_is_not_written_into_the_binder()
+    {
+        var vm = NewViewModel(copyFile: (source, destination) => AtomicFile.CopyNew(source, destination,
+            _ => { }, _ => throw new IOException("namespace sync failed")));
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        var file = Path.Combine(_home, "sync-failure.bin");
+        File.WriteAllText(file, "attachment bytes");
+
+        await AddDroppedFiles(vm, [file]);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+
+        Assert.Empty(note.Attachments);
+        Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
+        Assert.Single(AssetFiles(note)); // An unreferenced copy is an accepted partial outcome.
+        Assert.NotNull(vm.AttachmentResult);
+        await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]
@@ -737,6 +830,40 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Queued_saves_share_the_conflict_answer_until_reload_is_adopted()
+    {
+        var store = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(store);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        ChangeOutside("Changed outside");
+        vm.Editor.Body = "local edit";
+        var answer = new TaskCompletionSource<ExternalChangeChoice>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _dialogs.ExternalAnswer = () => answer.Task;
+        var firstRead = store.HoldNextSave();
+        var firstSave = vm.SaveNowCommand.ExecuteAsync(null);
+        await firstRead.Entered.Task;
+        var nextRead = store.HoldNextSave();
+        var secondSave = vm.SaveNowCommand.ExecuteAsync(null);
+        firstRead.Release();
+        await PumpUntilAsync(() => _dialogs.ExternalChangeQuestions == 1);
+        await nextRead.Entered.Task;
+        var reload = store.HoldNextLoad();
+        answer.SetResult(ExternalChangeChoice.ReloadFromDisk);
+        Dispatcher.UIThread.RunJobs();
+        nextRead.Release();
+        await reload.Entered.Task;
+        reload.Release();
+        await Task.WhenAll(firstSave, secondSave);
+
+        Assert.Equal(1, _dialogs.ExternalChangeQuestions);
+        Assert.Equal("Changed outside", vm.Editor.Title);
+        Assert.Equal(string.Empty, vm.Editor.Body);
+        Assert.Equal("Saved", vm.SaveStateText);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task A_binder_file_deleted_outside_is_written_again_by_the_next_save()
     {
         var vm = await OpenNewBinderAsync();
@@ -1145,21 +1272,19 @@ public sealed class MainWindowViewModelTests : IDisposable
         File.WriteAllText(b, "different content");
 
         // Within one batch, the second identical file dedups against the first.
-        await vm.AddDroppedFiles(new[] { a, aCopy, b });
+        await AddDroppedFiles(vm, new[] { a, aCopy, b });
         Assert.Equal(2, note.Attachments.Count);
         var firstResult = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Info, firstResult.Kind);
-        Assert.True(firstResult.IsPersistent);
         Assert.Contains("Already attached", firstResult.Text);
         Assert.Empty(vm.Results);
 
         // A later file whose content the note already holds is not copied again.
         var c = Path.Combine(sources, "c.txt");
         File.WriteAllText(c, "same content");
-        await vm.AddDroppedFiles(new[] { c });
+        await AddDroppedFiles(vm, new[] { c });
         Assert.Equal(2, note.Attachments.Count);
         var replacement = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
-        Assert.True(replacement.IsPersistent);
         Assert.NotSame(firstResult, replacement);
 
         vm.DismissAttachmentResult();
@@ -1179,21 +1304,19 @@ public sealed class MainWindowViewModelTests : IDisposable
         var assetsDirectory = BinderStore.AssetsDirectory(BinderPath);
         File.WriteAllText(assetsDirectory, "blocked");
 
-        await vm.AddDroppedFiles(new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
 
         var error = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Error, error.Kind);
-        Assert.True(error.IsPersistent);
         Assert.Equal(error.Text, error.AccessibleMessage);
         Assert.Equal(AutomationLiveSetting.Assertive, error.LiveSetting);
 
         File.Delete(assetsDirectory);
-        await vm.AddDroppedFiles(new[] { source });
-        await vm.AddDroppedFiles(new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
 
         var information = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Info, information.Kind);
-        Assert.True(information.IsPersistent);
         Assert.Equal(information.Text, information.AccessibleMessage);
         Assert.Equal(AutomationLiveSetting.Polite, information.LiveSetting);
         Assert.Empty(vm.Results);
@@ -1209,18 +1332,18 @@ public sealed class MainWindowViewModelTests : IDisposable
         var note = vm.SelectedNote!.Note;
 
         // Establish a pane-owned attachment result alongside the independent shell save result.
-        await vm.AddDroppedFiles([], unavailable: 1);
+        await AddDroppedFiles(vm, [], unavailable: 1);
 
         var source = Path.Combine(_home, "source.txt");
         File.WriteAllText(source, "attachment content");
         var noteAssets = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
         Directory.CreateDirectory(Path.GetDirectoryName(noteAssets)!);
         File.WriteAllText(noteAssets, "blocks the attachment directory");
-        await vm.AddDroppedFiles(new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
 
         File.Delete(noteAssets);
-        await vm.AddDroppedFiles(new[] { source });
-        await vm.AddDroppedFiles(new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
         Assert.NotNull(vm.AttachmentResult);
         Assert.Empty(vm.Results);
 
@@ -1260,7 +1383,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         // Occupy the assets-directory path with a file so Directory.CreateDirectory must fail.
         File.WriteAllText(BinderStore.AssetsDirectory(BinderPath), "blocked");
 
-        var exception = await Record.ExceptionAsync(() => vm.AddDroppedFiles(new[] { source }));
+        var exception = await Record.ExceptionAsync(() => AddDroppedFiles(vm, new[] { source }));
 
         Assert.Null(exception);
         Assert.Empty(note.Attachments);
@@ -1277,12 +1400,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         var vm = await OpenNewBinderAsync();
         vm.NewNoteCommand.Execute(null);
 
-        await vm.AddDroppedFiles([], unavailable: 2);
+        await AddDroppedFiles(vm, [], unavailable: 2);
 
         Assert.Empty(vm.Attachments);
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
-        Assert.True(result.IsPersistent);
         Assert.Equal("2 items are not readable local files.", result.Text);
         Assert.Empty(vm.Results);
 
@@ -1297,7 +1419,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var source = Path.Combine(_home, "open-me.txt");
         File.WriteAllText(source, "attachment content");
-        await vm.AddDroppedFiles(new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
         var item = Assert.Single(vm.Attachments);
 
         _dialogs.OpenPathError = new IOException("test open failure");
@@ -1312,7 +1434,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var anotherSource = Path.Combine(_home, "another.txt");
         File.WriteAllText(anotherSource, "different attachment content");
-        await vm.AddDroppedFiles(new[] { anotherSource });
+        await AddDroppedFiles(vm, new[] { anotherSource });
 
         Assert.Contains(item, vm.Attachments);
         Assert.Same(failure, item.Result);
@@ -1334,7 +1456,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var source = Path.Combine(_home, "goes-missing.txt");
         File.WriteAllText(source, "attachment content");
-        await vm.AddDroppedFiles(new[] { source });
+        await AddDroppedFiles(vm, new[] { source });
         var selectedNote = vm.SelectedNote;
         var originalItem = Assert.Single(vm.Attachments);
         File.Delete(originalItem.FullPath);
@@ -1527,6 +1649,134 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Known_directory_alias_rows_keep_their_own_names_order_and_removal()
+    {
+        if (!OperatingSystem.IsMacOS())
+            return; // Creating file links on Windows needs host privileges; native qualification owns it.
+        Directory.CreateDirectory(_home);
+        var directory = Path.Combine(_home, "real");
+        Directory.CreateDirectory(directory);
+        var aliasDirectory = Path.Combine(_home, "alias");
+        Directory.CreateSymbolicLink(aliasDirectory, directory);
+        var real = Path.Combine(directory, "binder.daynote");
+        var alias = Path.Combine(aliasDirectory, "binder.daynote");
+        new BinderStore().Save(real, new Binder { Id = IdGenerator.New() });
+        var config = new AppConfig
+        {
+            Binders = [new KnownBinder { Path = real, Title = "Real" }, new KnownBinder { Path = alias, Title = "Alias" }],
+        };
+        var configPath = Path.Combine(_home, "config.json");
+        var configStore = new ConfigStore(configPath, _ => { });
+        configStore.Load();
+        configStore.Save(config);
+        var vm = NewViewModel();
+        await vm.RefreshKnownBinders();
+        var realRow = vm.Binders.Single(row => row.Path == real);
+        var aliasRow = vm.Binders.Single(row => row.Path == alias);
+        Assert.Equal("Real", realRow.Title);
+        Assert.Equal("Alias", aliasRow.Title);
+        aliasRow.IsEditing = true;
+        vm.ApplyBinderRename(aliasRow, "Renamed alias");
+        Assert.Equal("Real", realRow.Title);
+        Assert.Equal("Renamed alias", aliasRow.Title);
+        vm.MoveBinder(aliasRow, realRow);
+        vm.CommitBinderOrder();
+        var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
+        Assert.Equal(new[] { alias, real }, saved.Binders.Select(entry => entry.Path));
+        Assert.Equal("Real", saved.Binders.Single(entry => entry.Path == real).Title);
+        Assert.Equal("Renamed alias", saved.Binders.Single(entry => entry.Path == alias).Title);
+        await vm.RemoveBinderCommand.ExecuteAsync(aliasRow);
+        Assert.Equal(real, Assert.Single(vm.Binders).Path);
+        Assert.Equal("Real", Assert.Single(vm.Binders).Title);
+        saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
+        Assert.Equal(real, Assert.Single(saved.Binders).Path);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_known_case_alias_stays_current_after_deletion_and_recreation()
+    {
+        Directory.CreateDirectory(_home);
+        var store = new BinderStore();
+        store.Save(BinderPath, new Binder { Id = IdGenerator.New() });
+        var alias = Path.Combine(_home, "TEST.DAYNOTE");
+        if (!File.Exists(alias))
+            return; // This spelling is distinct on a case-sensitive volume.
+        var configStore = new ConfigStore(Path.Combine(_home, "config.json"), _ => { });
+        configStore.Load();
+        configStore.Save(new AppConfig { Binders = [new KnownBinder { Path = alias, Title = "Alias" }] });
+        var vm = NewViewModel();
+        _dialogs.BinderToOpen = BinderPath;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        var row = Assert.Single(vm.Binders);
+        Assert.True(row.IsCurrent);
+        File.Delete(BinderPath);
+        await vm.RefreshKnownBinders();
+        Assert.True(row.IsCurrent);
+        Assert.False(row.IsMissing);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.True(row.IsCurrent);
+        Assert.True(File.Exists(BinderPath));
+        await vm.RemoveBinderCommand.ExecuteAsync(row);
+        Assert.False(vm.HasBinder);
+        Assert.Empty(vm.Binders);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Reselecting_the_current_row_supersedes_a_switch_waiting_for_its_save()
+    {
+        var store = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(store);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var other = Path.Combine(_home, "other.daynote");
+        _dialogs.BinderToCreate = other;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var original = vm.Binders.Single(row => row.Path == BinderPath);
+        await vm.OpenKnownBinderCommand.ExecuteAsync(original);
+        vm.Editor.Body = "current edit";
+        var selected = vm.SelectedNote;
+        var held = store.HoldNextSave();
+        vm.SelectedBinder = vm.Binders.Single(row => row.Path == other);
+        Dispatcher.UIThread.RunJobs();
+        await held.Entered.Task;
+        var switching = vm.OpenKnownBinderCommand.ExecutionTask!;
+        vm.SelectedBinder = original;
+        Dispatcher.UIThread.RunJobs();
+        held.Release();
+        await switching;
+        Assert.Same(selected, vm.SelectedNote);
+        Assert.Equal("current edit", vm.Editor.Body);
+        Assert.True(original.IsCurrent);
+        Assert.Equal(BinderPath, vm.SelectedBinder!.Path);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Opening_a_case_alias_keeps_the_current_binder_and_unsaved_edit()
+    {
+        var vm = await OpenNewBinderAsync();
+        var alias = Path.Combine(_home, "TEST.DAYNOTE");
+        if (!File.Exists(alias))
+        {
+            await vm.ShutdownAsync();
+            return; // This host's volume treats this spelling as a distinct file.
+        }
+        vm.NewNoteCommand.Execute(null);
+        var selected = vm.SelectedNote;
+        vm.Editor.Body = "unsaved local edit";
+        _dialogs.BinderToOpen = alias;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        Assert.Same(selected, vm.SelectedNote);
+        Assert.Equal("unsaved local edit", vm.Editor.Body);
+        Assert.Equal("Unsaved changes", vm.SaveStateText);
+        Assert.Single(vm.Binders);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Commands_that_change_the_settings_keep_what_was_saved_when_the_save_fails()
     {
         var vm = NewViewModel();
@@ -1617,7 +1867,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         await ShowBinderNotRememberedAsync(vm);
         var notRemembered = Assert.Single(vm.Results);
         Assert.Equal(OperationResultKind.Warning, notRemembered.Kind);
-        Assert.True(notRemembered.IsPersistent);
         Assert.Same(notRemembered, vm.AnnouncedResult);
 
         // Another subject goes on top and leaves the first card where it stands.
@@ -1644,7 +1893,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.ApplyBinderRename(row, "Renamed");
         var warning = vm.Results[1];
         Assert.Equal(OperationResultKind.Error, warning.Kind);
-        Assert.True(warning.IsPersistent);
 
         // The same unresolved problem again is neither a second card nor a second announcement.
         row.IsEditing = true;
@@ -1828,7 +2076,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.False(vm.MoveAttachment(vm.Attachments[1], 0));
         _dialogs.AttachmentPaths = [late];
         await vm.AddAttachmentCommand.ExecuteAsync(null);
-        await vm.AddDroppedFiles([late]);
+        await AddDroppedFiles(vm, [late]);
         await vm.RemoveAttachmentCommand.ExecuteAsync(vm.Attachments[0]);
         Assert.Equal(kept, vm.Attachments.Select(attachment => attachment.FileName));
         vm.Editor.Status = NoteStatus.Retired;
@@ -1838,7 +2086,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Locked = false;
         Assert.True(vm.CanEditNote);
         Assert.True(vm.MoveAttachment(vm.Attachments[1], 0));
-        await vm.AddDroppedFiles([late]);
+        await AddDroppedFiles(vm, [late]);
         Assert.Equal(3, vm.Attachments.Count);
 
         await vm.ShutdownAsync();
@@ -1847,14 +2095,8 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task A_note_locked_while_its_files_are_copied_does_not_take_them()
     {
-        var copying = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var release = new ManualResetEventSlim();
-        var vm = NewViewModel(copyFile: (source, destination) =>
-        {
-            copying.TrySetResult();
-            release.Wait();
-            AtomicFile.CopyNew(source, destination);
-        });
+        var copying = new HeldCopy();
+        var vm = NewViewModel(copyFile: copying.Copy);
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         vm.NewNoteCommand.Execute(null);
@@ -1862,10 +2104,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         var file = Path.Combine(_home, "large.bin");
         File.WriteAllText(file, "large");
 
-        var adding = vm.AddDroppedFiles([file]);
-        await copying.Task;
+        var adding = AddDroppedFiles(vm, [file]);
+        await copying.Entered.Task;
         vm.Editor.Locked = true;
-        release.Set();
+        copying.Release();
         await adding;
 
         Assert.Empty(note.Attachments);
@@ -2275,7 +2517,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         // started after it: B's result must be discarded rather than briefly flashing its note into the
         // pane before C's (empty) content replaces it, and the binder that ends up open must be C, the
         // one the user opened last.
-        var vm = NewViewModel();
+        var store = new GatedBinderStore();
+        var vm = NewViewModel(binderStore: store);
         var pathB = Path.Combine(_home, "b.daynote");
         var pathC = Path.Combine(_home, "c.daynote");
 
@@ -2293,8 +2536,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         var observedNoteCounts = new List<int>();
         vm.Notes.CollectionChanged += (_, _) => observedNoteCounts.Add(vm.Notes.Count);
 
+        var held = store.HoldNextLoad();
         var openB = vm.OpenKnownBinderCommand.ExecuteAsync(itemB);
+        await held.Entered.Task;
         var openC = vm.OpenKnownBinderCommand.ExecuteAsync(itemC);
+        held.Release();
         await Task.WhenAll(openB, openC);
 
         Assert.DoesNotContain(1, observedNoteCounts);
@@ -2478,7 +2724,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var (vm, window) = await OpenWindowWithNoteAsync();
         await ShowEveryShellResultAsync(vm, window);
         // Every message the window reports runs to a sentence or two; a short one shows the one-line case.
-        var shortResult = new OperationResultViewModel(OperationResultKind.Warning, Message.Of("common.cancel"), isPersistent: true, "short");
+        var shortResult = new OperationResultViewModel(OperationResultKind.Warning, Message.Of("common.cancel"), "short");
         vm.Results.Insert(0, shortResult);
         Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();
@@ -2606,7 +2852,7 @@ public sealed class MainWindowViewModelTests : IDisposable
             File.WriteAllText(file, Path.GetFileName(file));
         }
 
-        await vm.AddDroppedFiles(files);
+        await AddDroppedFiles(vm, files);
         Assert.Equal(3, vm.Attachments.Count);
     }
 
@@ -2754,6 +3000,14 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     public void Dispose()
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.InvokeAsync(Dispose).GetAwaiter().GetResult();
+            return;
+        }
+        if (_disposed)
+            return;
+        _disposed = true;
         // A test that failed midway may have left a window open, a view model with a pending autosave or a
         // quit to make, and a save, load or copy held on a background thread. Every step runs whatever the
         // others did, and their failures are reported together, so none of it runs into the next test. The
@@ -2792,6 +3046,23 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Attempt(GatedBinderStore.Hold.ReleaseAll);
         Attempt(HeldCopy.ReleaseAll);
+        Attempt(_dialogs.CancelPending);
+        Attempt(() =>
+        {
+            var commands = _viewModels.SelectMany(vm => typeof(MainWindowViewModel).GetProperties()
+                .Where(property => typeof(IAsyncRelayCommand).IsAssignableFrom(property.PropertyType))
+                .Select(property => ((IAsyncRelayCommand)property.GetValue(vm)!).ExecutionTask)
+                .OfType<Task>());
+            var settling = Task.WhenAll(commands.Concat(_droppedOperations)
+                .Concat(_viewModels.Select(vm => vm.EndSessionAsync())));
+            if (!settling.IsCompleted)
+            {
+                var frame = new DispatcherFrame();
+                _ = settling.ContinueWith(_ => Dispatcher.UIThread.Post(() => frame.Continue = false), TaskScheduler.Default);
+                Dispatcher.UIThread.PushFrame(frame);
+            }
+            settling.GetAwaiter().GetResult();
+        });
 
         // Close the backup store so its singleton re-opens against the next test's throwaway root and
         // releases the file handle before the directory is deleted.
@@ -2826,7 +3097,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var file = Path.Combine(_home, "video.bin");
         File.WriteAllText(file, "a large video");
 
-        var adding = vm.AddDroppedFiles([file]);
+        var adding = AddDroppedFiles(vm, [file]);
         await held.Entered.Task;
         return (vm, held, note, file, adding);
     }
@@ -2835,6 +3106,19 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var directory = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
         return Directory.Exists(directory) ? Directory.GetFiles(directory) : [];
+    }
+
+    [AvaloniaFact]
+    public async Task Fixture_teardown_settles_a_held_import_before_restoring_the_root()
+    {
+        using var fixture = new MainWindowViewModelTests();
+        var (_, _, _, _, adding) = await fixture.StartHeldAddAsync();
+
+        fixture.Dispose();
+
+        Assert.True(adding.IsCompleted);
+        Assert.False(Directory.Exists(fixture._home));
+        Assert.Equal(_home, Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable));
     }
 
     [AvaloniaFact]
@@ -3151,6 +3435,8 @@ public sealed class MainWindowViewModelTests : IDisposable
 
     private sealed class FakeDialogService : IDialogService
     {
+        private readonly CancellationTokenSource _lifetime = new();
+        public void CancelPending() => _lifetime.Cancel();
         public string? BinderToCreate { get; set; }
         public string? BinderToOpen { get; set; }
         public IReadOnlyList<string> AttachmentPaths { get; set; } = Array.Empty<string>();
@@ -3200,7 +3486,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
         {
             ExternalChangeQuestions++;
-            return ExternalAnswer?.Invoke() ?? Task.FromResult(ExternalChoice);
+            return (ExternalAnswer?.Invoke() ?? Task.FromResult(ExternalChoice)).WaitAsync(_lifetime.Token);
         }
         /// <summary>The binder named by each quit question, in order.</summary>
         public List<string> QuitQuestions { get; } = [];
@@ -3228,10 +3514,10 @@ public sealed class MainWindowViewModelTests : IDisposable
             AttachmentWaits++;
             if (AttachmentWaitAnswer is { } answer)
             {
-                return await answer(settled);
+                return await answer(settled).WaitAsync(_lifetime.Token);
             }
 
-            await settled;
+            await settled.WaitAsync(_lifetime.Token);
             return false;
         }
 

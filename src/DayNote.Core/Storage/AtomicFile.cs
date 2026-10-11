@@ -87,7 +87,9 @@ public static partial class AtomicFile
     /// Copies a user's file to a new name that nothing else holds: into a temp file beside it, then
     /// published under that name without replacing anything there, so the name never shows a partial
     /// copy. <see cref="File.Copy(string, string)"/> keeps the source's modified time and the metadata the
-    /// destination volume supports (content-lifecycle-conventions). A failed copy removes its temp.
+    /// destination volume supports (content-lifecycle-conventions). Data is synchronized before
+    /// publication, followed by namespace synchronization on Unix. A failed copy removes its temp;
+    /// a synchronization failure after publication can leave an unreferenced final copy.
     /// </summary>
     /// <remarks>
     /// The copy is a file the user adds, such as an attachment, which the backup history protects once, when
@@ -96,19 +98,64 @@ public static partial class AtomicFile
     /// copy from its published name and keeps it only if it still holds those bytes.
     /// </remarks>
     /// <exception cref="IOException">The destination already exists, or the copy failed.</exception>
-    public static void CopyNew(string source, string destination)
+    public static void CopyNew(string source, string destination) => CopyNew(source, destination, FlushCopiedFile, FlushDirectory);
+
+    internal static void CopyNew(string source, string destination, Action<string> flushFile, Action<string> flushDirectory)
     {
         var fullPath = Path.GetFullPath(destination);
         var tempPath = TempPathFor(fullPath);
         try
         {
             File.Copy(source, tempPath);
-            File.Move(tempPath, fullPath, overwrite: false);
+            flushFile(tempPath);
+            if (OperatingSystem.IsWindows())
+            {
+                // Publish without replacement and ask Windows to settle the move before returning.
+                if (!MoveFileEx(WindowsExtendedPath(tempPath), WindowsExtendedPath(fullPath), 0x8)) // MOVEFILE_WRITE_THROUGH
+                    throw new IOException("Could not publish attachment copy.", new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError()));
+            }
+            else
+            {
+                File.Move(tempPath, fullPath, overwrite: false);
+            }
+            flushDirectory(Path.GetDirectoryName(fullPath)!);
         }
         catch
         {
             TryDelete(tempPath);
             throw;
+        }
+    }
+
+    // Native publication must retain .NET's extended DOS/UNC path support.
+    internal static string WindowsExtendedPath(string path) =>
+        path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal)
+            ? path
+            : path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..] : @"\\?\" + path;
+
+    private static void FlushCopiedFile(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            RandomAccess.FlushToDisk(handle);
+            return;
+        }
+
+        // Windows requires write access to flush. A copied read-only file keeps that state at
+        // publication; only the private staging copy temporarily allows this handle to be opened.
+        var attributes = File.GetAttributes(path);
+        try
+        {
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+                File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+            using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Write, FileShare.Read);
+            RandomAccess.FlushToDisk(handle);
+        }
+        finally
+        {
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+                File.SetAttributes(path, attributes);
         }
     }
 
@@ -125,12 +172,12 @@ public static partial class AtomicFile
     }
 
     /// <summary>
-    /// Makes the most recent rename durable by flushing the containing directory. .NET exposes no
-    /// portable directory flush, so this drops to the OS primitive on Unix (where DayNote primarily
-    /// runs). On Windows there is no equivalent non-privileged call; NTFS metadata journaling keeps
-    /// the rename consistent (never a torn or vanished file), so the directory flush is a Unix-only step.
+    /// Synchronizes the containing directory after publication on Unix. .NET exposes no
+    /// portable directory flush, so this uses the Unix primitive. Windows has no corresponding ordinary
+    /// directory operation here. Physical crash durability on each destination remains platform
+    /// qualification; journaling alone is not a promise that a rename survives power loss.
     /// </summary>
-    private static void FlushDirectory(string directory)
+    internal static void FlushDirectory(string directory)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -182,4 +229,8 @@ public static partial class AtomicFile
 
     [LibraryImport("libc", SetLastError = true)]
     private static partial int close(int fd);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "MoveFileExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool MoveFileEx(string existing, string destination, uint flags);
 }

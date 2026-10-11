@@ -106,6 +106,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // never returns leaves a binder switch waiting, but the window stays usable and a quit is bounded and
     // offers Quit anyway, while a timeout could not stop the write it would abandon.
     private readonly SemaphoreSlim _binderFileLock = new(1, 1);
+    private readonly BinderPathKeys _binderPathKeys = new();
+    private bool SameBinderPath(string a, string b) => _binderPathKeys.Equal(a, b);
 
     // Completes when the open question about a binder changed outside DayNote is answered and applied. A
     // save arriving meanwhile waits for it and then saves as the answer left things, instead of asking again.
@@ -117,7 +119,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // discard that newer edit (it would never be written, and never be flagged as unsaved again).
     private long _dirtyGeneration;
 
-    // Bumped by every admitted OpenBinderPathAsync call before it waits for the previous binder. If it
+    // Bumped by each user open request before its first wait, including reselecting the current binder. If it
     // changes before that call returns, a later open has already started — the user moved on to
     // another binder while this one's file was still being read — and this call's result is discarded
     // instead of adopting a binder the user is no longer looking at.
@@ -457,7 +459,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
             var reopen = _state.CurrentBinderPath;
             if (!string.IsNullOrEmpty(reopen)
-                && _config.Binders.Any(binder => PathKey.Equal(binder.Path, reopen))
+                && _config.Binders.Any(binder => SameBinderPath(binder.Path, reopen))
                 && await Task.Run(() => File.Exists(reopen)))
             {
                 await OpenBinderPathAsync(reopen, isNew: false, selectNoteId: _state.CurrentNoteId);
@@ -735,10 +737,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task OpenKnownBinder(BinderListItemViewModel item)
     {
-        if (!await Task.Run(() => File.Exists(item.Path)))
+        if (!IsReady || _shuttingDown)
+            return;
+        // The user's request owns ordering before even its existence check yields.
+        var generation = ++_openGeneration;
+        var exists = await Task.Run(() => File.Exists(item.Path));
+        if (_shuttingDown || generation != _openGeneration)
+            return;
+        if (!exists)
         {
             // The row owns this: it is the narrowest surviving owner, it already shows the path,
             // and several missing binders each say it once instead of replacing one shared card.
@@ -750,7 +759,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // The file is there, so the row stops saying it is gone: a marker of what is true has to
         // stop being shown the moment it stops being true.
         item.IsMissing = false;
-        await OpenBinderPathAsync(item.Path, isNew: false);
+        await OpenBinderPathAsync(item.Path, isNew: false, requestGeneration: generation);
     }
 
     /// <summary>
@@ -784,7 +793,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        if (_current is not null && PathKey.Equal(_current.Path, item.Path))
+        if (_current is not null && SameBinderPath(_current.Path, item.Path))
         {
             if (!await CloseCurrentAsync(clearSelection: true))
             {
@@ -904,7 +913,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // Once removal is saved, switching binders does not abandon this folder's cleanup. A binder
         // subsequently reopened with the note restored still owns its attachments, so keep those.
         await Task.WhenAll(adding.Select(import => import.Copying));
-        if (_current is { } current && PathKey.Equal(current.Path, binder.Path)
+        if (_current is { } current && SameBinderPath(current.Path, binder.Path)
             && current.Binder.Notes.Any(candidate => candidate.Id == note.Id))
         {
             return;
@@ -975,7 +984,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             AttachmentResult = new OperationResultViewModel(
                 OperationResultKind.Error,
                 FailurePresentation.AttachmentPicker(ex),
-                isPersistent: true,
                 resultKey: AttachmentPickerResultKey);
             return;
         }
@@ -1081,8 +1089,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     OperationResultKind.Warning,
                     unavailable == 1
                         ? Message.Of("attachments.unreadableThat")
-                        : Message.Of("attachments.unreadable", ("count", unavailable)),
-                    isPersistent: true);
+                        : Message.Of("attachments.unreadable", ("count", unavailable)));
             }
             return;
         }
@@ -1116,8 +1123,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 AttachmentResult = new OperationResultViewModel(
                     OperationResultKind.Error,
-                    Message.Of("attachments.folderFailed"),
-                    isPersistent: true);
+                    Message.Of("attachments.folderFailed"));
             }
 
             return;
@@ -1156,12 +1162,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             _log.Info("Discarding attachment-add result: note was locked", new { noteId, copied = outcome.AddedNames.Count });
             await DeleteCopiesAsync(directory, outcome.AddedNames);
 
-            if (shown)
+            if (ReferenceEquals(SelectedNote?.Note, note))
             {
                 AttachmentResult = new OperationResultViewModel(
                     OperationResultKind.Warning,
-                    Message.Of("attachments.lockedWhileAdding"),
-                    isPersistent: true);
+                    Message.Of("attachments.lockedWhileAdding"));
             }
 
             return;
@@ -1231,15 +1236,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             parts.Add(Message.Of("attachments.failed", ("names", SummarizeFileNames(failures))));
             AttachmentResult = new OperationResultViewModel(
                 OperationResultKind.Error,
-                Message.Join("attachments.join", parts),
-                isPersistent: true);
+                Message.Join("attachments.join", parts));
         }
         else if (unavailable > 0 || duplicateNames.Count > 0)
         {
             AttachmentResult = new OperationResultViewModel(
                 unavailable > 0 ? OperationResultKind.Warning : OperationResultKind.Info,
-                Message.Join("attachments.join", parts),
-                isPersistent: true);
+                Message.Join("attachments.join", parts));
         }
         else
         {
@@ -1342,7 +1345,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         var directory = import.Directory;
         var noteId = import.Note.Id;
-        Directory.CreateDirectory(directory);
+        BinderStore.EnsureNoteAssetsDirectory(directory);
 
         // Hash the note's current attachments so a file whose content the note already has is not
         // copied again; a later identical file in the same batch dedups against earlier ones too.
@@ -1620,11 +1623,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             ShowFileLeft();
         }
 
-        void ShowFileLeft() => AttachmentResult = new OperationResultViewModel(
-            OperationResultKind.Warning,
-            Message.Of("attachments.removeFailed"),
-            isPersistent: true,
-            resultKey: resultKey);
+        void ShowFileLeft()
+        {
+            if (ReferenceEquals(SelectedNote?.Note, note))
+            {
+                AttachmentResult = new OperationResultViewModel(
+                    OperationResultKind.Warning,
+                    Message.Of("attachments.removeFailed"),
+                    resultKey: resultKey);
+            }
+        }
     }
 
     [RelayCommand]
@@ -1745,13 +1753,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     // ----- Binder open / close / save ----------------------------------------------------------
 
-    private async Task OpenBinderPathAsync(string path, bool isNew, string? selectNoteId = null)
+    private async Task OpenBinderPathAsync(string path, bool isNew, string? selectNoteId = null, long? requestGeneration = null)
     {
         // Nothing opens once a quit has begun, including an open whose own checks were still running.
         if (!IsReady || _shuttingDown)
         {
             return;
         }
+
+        // Even reselecting the current binder supersedes an older open still in flight.
+        var generation = requestGeneration ?? ++_openGeneration;
+        if (generation != _openGeneration)
+            return;
 
         // Re-selecting the binder that is already open (e.g. tapping its row again) is a no-op.
         if (!isNew && _current is not null && PathKey.Equal(_current.Path, path))
@@ -1764,9 +1777,34 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         // Claim the request before any wait, so quitting or a newer open also supersedes
         // an open still waiting for the previous binder's attachments or save.
-        var generation = ++_openGeneration;
-        if (!await CloseCurrentAsync(clearSelection: false))
+        if (!isNew)
         {
+            // Resolve only relevant spellings. An unrelated offline known binder must not delay this open.
+            var full = PathKey.Normalize(path);
+            var paths = _config.Binders.Select(binder => binder.Path)
+                .Where(known => string.Equals(PathKey.Normalize(known), full, StringComparison.OrdinalIgnoreCase))
+                .Append(path).Concat(_current is null ? [] : new[] { _current.Path })
+                .Distinct(StringComparer.Ordinal).ToArray();
+            while (true)
+            {
+                var revision = _binderPathKeys.Revision;
+                var keys = await Task.Run(() => Array.ConvertAll(paths,
+                    PathKey.ResolveExisting));
+                if (_shuttingDown || generation != _openGeneration)
+                    return;
+                // A save or reload may have changed stored spelling while this lookup ran.
+                // Retry without holding the save lock across a possibly stalled outside path.
+                if (_binderPathKeys.TryAdopt(revision, paths, keys))
+                    break;
+            }
+            if (!isNew && _current is not null && SameBinderPath(_current.Path, path))
+                return;
+        }
+
+        if (!await CloseCurrentAsync(clearSelection: false, requestGeneration: generation))
+        {
+            if (_shuttingDown || generation != _openGeneration)
+                return;
             // The current binder's edits couldn't be flushed; keep it open rather than switch away, and
             // move the highlight back from the row that was clicked to the binder still open.
             ApplyBinderFilter();
@@ -1798,8 +1836,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                         Created = now,
                         Modified = now,
                     };
-                    var saved = await Task.Run(() => _binderStore.Save(path, binder));
-                    loaded = new LoadedBinder(binder, saved.Path, saved.ContentHash);
+                    loaded = await Task.Run(() =>
+                    {
+                        var saved = _binderStore.Save(path, binder);
+                        return new LoadedBinder(binder, saved.Path, saved.ContentHash) { IdentityPath = PathKey.Resolve(saved.Path) };
+                    });
                 }
                 else
                 {
@@ -1852,7 +1893,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// dirty, with the autosave still retrying) when the flush failed — so a save error never costs the
     /// user their edits. Callers abort whatever they were doing (forget / switch) on false.
     /// </summary>
-    private async Task<bool> CloseCurrentAsync(bool clearSelection)
+    private async Task<bool> CloseCurrentAsync(bool clearSelection, long? requestGeneration = null)
     {
         if (_current is null)
         {
@@ -1868,6 +1909,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return false;
         }
 
+        if (requestGeneration is { } waitingRequest && waitingRequest != _openGeneration)
+            return false;
         if (_current is null)
         {
             return true;
@@ -1883,6 +1926,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return false;
         }
 
+        if (requestGeneration is { } savingRequest && savingRequest != _openGeneration)
+        {
+            if (!_shuttingDown && _current is not null)
+                _autosaveTimer.Start();
+            return false;
+        }
         TearDownCurrent(clearSelection);
         return true;
     }
@@ -1949,14 +1998,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         return true;
     }
 
-    private async Task<bool> SaveCurrentAsync()
+    private async Task<bool> SaveCurrentAsync(Task? applyingQuestion = null)
     {
         if (!IsReady || _current is null || !_dirty)
         {
             return true;
         }
 
-        if (_changedOnDiskQuestion is { } question)
+        if (_changedOnDiskQuestion is { } question && !ReferenceEquals(question, applyingQuestion))
         {
             // The open binder's file changed outside DayNote and the user is being asked about it; this
             // save goes ahead once that answer is applied. An ending session does not wait for an answer.
@@ -2024,7 +2073,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
             try
             {
-                var saved = await Task.Run(() => _binderStore.SaveText(path, text, expectedHash));
+                var publication = await Task.Run(() =>
+                {
+                    var result = _binderStore.SaveText(path, text, expectedHash);
+                    return (Saved: result, Key: PathKey.Resolve(result.Path));
+                });
+                var saved = publication.Saved;
+                // Atomic replacement can change the stored spelling. Update aliases together and
+                // invalidate older registry checks before they can restore stale keys.
+                _binderPathKeys.Published(path, publication.Key);
                 _baselineHash = saved.ContentHash;
                 foreach (var (id, savedNote) in written)
                 {
@@ -2092,7 +2149,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             _binderFileLock.Release();
         }
 
-        return await ResolveChangedOnDiskAsync(savingBinder, changedOnDisk.DiskHash);
+        return await ResolveChangedOnDiskAsync(savingBinder, changedOnDisk.DiskHash, applyingQuestion);
     }
 
     /// <summary>
@@ -2102,14 +2159,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// change counts as a failed save, so ordinary quit offers Retry, Quit anyway or Cancel, and an ending
     /// OS session leaves the outside version in place. Returns true when nothing is left to save.
     /// </summary>
-    private async Task<bool> ResolveChangedOnDiskAsync(LoadedBinder changedBinder, string diskHash)
+    private async Task<bool> ResolveChangedOnDiskAsync(LoadedBinder changedBinder, string diskHash, Task? applyingQuestion)
     {
         if (_shuttingDown || _sessionEnding)
         {
             return false;
         }
 
-        if (_changedOnDiskQuestion is { } open)
+        if (_changedOnDiskQuestion is { } open && !ReferenceEquals(open, applyingQuestion))
         {
             await open;
             return await SaveCurrentAsync();
@@ -2120,47 +2177,52 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var answered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _changedOnDiskQuestion = answered.Task;
         var path = changedBinder.Path;
-        ExternalChangeChoice choice;
         try
         {
-            choice = await _dialogs.AskExternalChangeAsync(TitleFor(path));
-        }
-        catch (Exception ex)
-        {
-            // Not shown, so not answered: both versions stay, and the edits stay unsaved for the next save.
-            _log.Error("Could not show the question about a binder changed on disk", new { path }, ex);
-            choice = ExternalChangeChoice.Unanswered;
+            ExternalChangeChoice choice;
+            try
+            {
+                choice = await _dialogs.AskExternalChangeAsync(TitleFor(path));
+            }
+            catch (Exception ex)
+            {
+                // Not shown, so not answered: both versions stay, and the edits stay unsaved for the next save.
+                _log.Error("Could not show the question about a binder changed on disk", new { path }, ex);
+                choice = ExternalChangeChoice.Unanswered;
+            }
+
+            if (!ReferenceEquals(_current, changedBinder) || _shuttingDown || _sessionEnding)
+            {
+                // The binder was closed or the app began quitting while the user decided; nothing is changed.
+                return false;
+            }
+
+            if (choice == ExternalChangeChoice.Unanswered)
+            {
+                // Closed by the app or the system, not answered: both versions stay as they are.
+                _log.Info("External change: question closed unanswered; nothing written", new { path });
+                return false;
+            }
+
+            if (choice == ExternalChangeChoice.ReloadFromDisk)
+            {
+                _log.Info("External change: reloading from disk, discarding local edits", new { path });
+                await ReloadFromDiskAsync(changedBinder);
+                return !_dirty;
+            }
+
+            // Only this answer's save may pass its own question; other saves wait through publication.
+            // A further outside edit still creates its own question rather than self-awaiting this one.
+            _log.Info("External change: keeping local edits", new { path });
+            _baselineHash = diskHash;
+            return await SaveCurrentAsync(answered.Task);
         }
         finally
         {
-            _changedOnDiskQuestion = null;
+            if (ReferenceEquals(_changedOnDiskQuestion, answered.Task))
+                _changedOnDiskQuestion = null;
             answered.SetResult();
         }
-
-        if (!ReferenceEquals(_current, changedBinder) || _shuttingDown || _sessionEnding)
-        {
-            // The binder was closed or the app began quitting while the user decided; nothing is changed.
-            return false;
-        }
-
-        if (choice == ExternalChangeChoice.Unanswered)
-        {
-            // Closed by the app or the system, not answered: both versions stay as they are.
-            _log.Info("External change: question closed unanswered; nothing written", new { path });
-            return false;
-        }
-
-        if (choice == ExternalChangeChoice.ReloadFromDisk)
-        {
-            _log.Info("External change: reloading from disk, discarding local edits", new { path });
-            await ReloadFromDiskAsync(changedBinder);
-            return !_dirty;
-        }
-
-        // Keep the in-memory edits: the version just asked about is the one this save may replace.
-        _log.Info("External change: keeping local edits", new { path });
-        _baselineHash = diskHash;
-        return await SaveCurrentAsync();
     }
 
     /// <summary>
@@ -2220,6 +2282,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     private void AdoptLoaded(LoadedBinder loaded, string? selectNoteId)
     {
+        _binderPathKeys.Published(loaded.Path, loaded.IdentityPath);
         // A reload replaces every note: adds into the notes it replaces are part of the edits it discards.
         _ = GiveUpImports(_imports.ToArray());
         _current = loaded;
@@ -2300,7 +2363,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// </summary>
     private string TitleFor(string path)
     {
-        var title = _config.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path))?.Title;
+        var entry = _config.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path))
+            ?? _config.Binders.FirstOrDefault(b => SameBinderPath(b.Path, path));
+        var title = entry?.Title;
         return string.IsNullOrWhiteSpace(title) ? Path.GetFileNameWithoutExtension(path) : title;
     }
 
@@ -2345,22 +2410,26 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// Re-applies the binder filter without rebuilding the master list, so typing in the filter does
     /// not churn the rows (and the open binder's highlight survives keystroke to keystroke).
     /// </summary>
+    private bool _applyingBinderFilter;
+
     private void ApplyBinderFilter()
     {
-        // Flag the open binder so its row shows the inline close affordance; keep it visible even when
-        // the filter would exclude it, so filtering never hides the binder you are working in.
-        foreach (var binder in _allBinders)
+        _applyingBinderFilter = true;
+        try
         {
-            binder.IsCurrent = _current is not null && PathKey.Equal(binder.Path, _current.Path);
+            // Filtering and rebuilding programmatically maintain selection; they are not new opens.
+            foreach (var binder in _allBinders)
+                binder.IsCurrent = _current is not null && SameBinderPath(binder.Path, _current.Path);
+
+            FilterInto(_allBinders, Binders, BindersFilter, r => r.Title + " " + r.Name, r => r.IsCurrent);
+            SelectedBinder = _current is null
+                ? null
+                : Binders.FirstOrDefault(r => SameBinderPath(r.Path, _current.Path));
         }
-
-        // Match the displayed title and the file name, so the filter lines up with what the row shows.
-        FilterInto(_allBinders, Binders, BindersFilter, r => r.Title + " " + r.Name, r => r.IsCurrent);
-
-        // Keep the open binder highlighted across rebuilds (open, filter, prune).
-        SelectedBinder = _current is null
-            ? null
-            : Binders.FirstOrDefault(r => PathKey.Equal(r.Path, _current.Path));
+        finally
+        {
+            _applyingBinderFilter = false;
+        }
     }
 
     /// <summary>
@@ -2387,7 +2456,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// Re-reads which known binders are still on disk, so a file deleted or restored outside the app shows
     /// on its row: the row that wants removing says so without being opened first. Runs when the main
     /// window is activated, when the list is rebuilt and when a binder closes, not on a timer, and not
-    /// during a quit. The open binder is left out: while it is open, its next save writes it again.
+    /// during a quit. A missing open binder is not marked missing: its next save writes it again.
     /// </summary>
     /// <remarks>
     /// Known binders can sit on a network or removable volume, where a check of a file that is gone can
@@ -2420,16 +2489,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             _binderCheckAgain = false;
             var paths = _allBinders.Select(item => item.Path).ToArray();
-            var exists = await Task.Run(() => Array.ConvertAll(paths, File.Exists));
+            var revision = _binderPathKeys.Revision;
+            var checkedPaths = await Task.Run(() => Array.ConvertAll(paths,
+                path => (Exists: File.Exists(path), Key: PathKey.ResolveExisting(path))));
             if (_shuttingDown)
             {
                 return;
             }
 
+            _binderPathKeys.TryAdopt(revision, paths, checkedPaths.Select(result => result.Key).ToArray());
             var found = new Dictionary<string, bool>(StringComparer.Ordinal);
             for (var i = 0; i < paths.Length; i++)
             {
-                found[paths[i]] = exists[i];
+                found[paths[i]] = checkedPaths[i].Exists;
             }
 
             foreach (var item in _allBinders)
@@ -2440,7 +2512,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     continue;
                 }
 
-                var missing = !onDisk && !(_current is not null && PathKey.Equal(_current.Path, item.Path));
+                var missing = !onDisk && !(_current is not null && SameBinderPath(_current.Path, item.Path));
+                item.IsCurrent = _current is not null && SameBinderPath(_current.Path, item.Path);
                 if (item.IsMissing != missing)
                 {
                     item.IsMissing = missing;
@@ -2557,7 +2630,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private void AddBinder(string path)
     {
         var full = Path.GetFullPath(path);
-        if (_config.Binders.Any(b => PathKey.Equal(b.Path, full)))
+        if (_config.Binders.Any(b => SameBinderPath(b.Path, full)))
         {
             // Already known: don't churn the list (which is this ListBox's ItemsSource); just refresh
             // which row is marked current.
@@ -2703,7 +2776,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var result = new OperationResultViewModel(kind, message, isPersistent: true, resultKey);
+        var result = new OperationResultViewModel(kind, message, resultKey);
         AnnouncedResult = result;
         if (existing is null)
         {
@@ -2752,10 +2825,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         // Selecting a binder opens it (single click or arrow key) — no double-click. Skip when
         // nothing is selected or it is already open.
-        if (value is null || (_current is not null && PathKey.Equal(_current.Path, value.Path)))
-        {
+        if (_applyingBinderFilter || value is null)
             return;
-        }
+        var generation = ++_openGeneration;
+        if (_current is not null && SameBinderPath(_current.Path, value.Path))
+            return;
 
         // Defer the open: it rebuilds the binders list — this very ListBox's ItemsSource — and mutating
         // it synchronously inside the selection-changed notification corrupts Avalonia's selection model
@@ -2764,7 +2838,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var target = value;
         Dispatcher.UIThread.Post(() =>
         {
-            if (_current is not null && PathKey.Equal(_current.Path, target.Path))
+            if (_shuttingDown || generation != _openGeneration)
+                return;
+            if (_current is not null && SameBinderPath(_current.Path, target.Path))
             {
                 return;
             }

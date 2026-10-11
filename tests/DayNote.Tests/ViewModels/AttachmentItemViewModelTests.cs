@@ -8,6 +8,7 @@ using Avalonia.Platform;
 using DayNote.Core.Models;
 using DayNote.Logging;
 using DayNote.ViewModels;
+using SkiaSharp;
 using Xunit;
 
 namespace DayNote.Tests.ViewModels;
@@ -45,12 +46,12 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         var newerTask = row.ThumbnailTask;
         var latest = Bitmap();
         newer.SetResult((latest, new PixelSize(9, 7)));
-        await newerTask;
         if (olderFails)
             older.SetException(new IOException("older decode failed"));
         else
             older.SetResult((Bitmap(), new PixelSize(1, 1)));
         await olderTask;
+        await newerTask;
         Assert.Same(latest, row.Thumbnail);
         Assert.Contains("9×7", row.DetailsText);
     }
@@ -65,6 +66,44 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         pending.SetResult((Bitmap(), new PixelSize(1, 1)));
         await task;
         Assert.Null(row.Thumbnail);
+    }
+
+    [AvaloniaFact]
+    public async Task A_disposed_queued_row_does_not_start_a_decode()
+    {
+        var pending = new TaskCompletionSource<(Bitmap, PixelSize)>();
+        using var active = Row(_ => pending.Task);
+        var called = false;
+        using var queued = Row(_ =>
+        {
+            called = true;
+            return Task.FromResult((Bitmap(), new PixelSize(1, 1)));
+        });
+        queued.Dispose();
+        pending.SetResult((Bitmap(), new PixelSize(1, 1)));
+        await active.ThumbnailTask;
+        await queued.ThumbnailTask;
+        Assert.False(called);
+        queued.ClearOpenResult();
+        Assert.False(called);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(SKEncodedImageFormat.Jpeg)]
+    [InlineData(SKEncodedImageFormat.Png)]
+    public async Task Native_decoding_keeps_original_dimensions_with_a_small_preview(SKEncodedImageFormat format)
+    {
+        using (var image = new SKBitmap(1600, 800))
+        using (var bytes = image.Encode(format, 80))
+        using (var file = File.Create(_path))
+            bytes.SaveTo(file);
+
+        var (preview, dimensions) = await AttachmentItemViewModel.DecodeThumbnailAsync(_path);
+        using (preview)
+        {
+            Assert.Equal(new PixelSize(1600, 800), dimensions);
+            Assert.Equal(new PixelSize(240, 120), preview.PixelSize);
+        }
     }
 
     private AttachmentItemViewModel Row(Func<string, Task<(Bitmap, PixelSize)>> decode) =>

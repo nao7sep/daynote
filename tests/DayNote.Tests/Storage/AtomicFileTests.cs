@@ -48,6 +48,26 @@ public sealed class AtomicFileTests : IDisposable
             .Where(f => !Path.GetFileName(f).StartsWith("backups.sqlite3", StringComparison.Ordinal))
             .ToArray();
 
+    [Theory]
+    [InlineData(@"C:\folder\file.txt", @"\\?\C:\folder\file.txt")]
+    [InlineData(@"\\server\share\file.txt", @"\\?\UNC\server\share\file.txt")]
+    [InlineData(@"\\?\C:\folder\file.txt", @"\\?\C:\folder\file.txt")]
+    public void Windows_publication_preserves_extended_paths(string path, string expected) =>
+        Assert.Equal(expected, AtomicFile.WindowsExtendedPath(path));
+
+    [WindowsOnlyFact]
+    public void A_copy_can_publish_to_a_long_Windows_path()
+    {
+        var source = Path.Combine(_directory, "source.txt");
+        File.WriteAllText(source, "long path bytes");
+        var directory = Path.Combine(_directory, new string('a', 100), new string('b', 100), new string('c', 100));
+        Directory.CreateDirectory(directory);
+        var destination = Path.Combine(directory, "copy.txt");
+        AtomicFile.CopyNew(source, destination);
+        Assert.Equal("long path bytes", File.ReadAllText(destination));
+        Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
+    }
+
     [Fact]
     public void Writes_the_exact_content()
     {
@@ -224,6 +244,59 @@ public sealed class AtomicFileTests : IDisposable
         Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(copy));
         Assert.Equal(modified, File.GetLastWriteTimeUtc(copy));
         Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
+    [Fact]
+    public void A_copy_that_cannot_sync_its_data_does_not_publish()
+    {
+        var source = Path.Combine(_directory, "source.bin");
+        var copy = Path.Combine(_directory, "copy.bin");
+        File.WriteAllText(source, "protected bytes");
+
+        Assert.Throws<IOException>(() => AtomicFile.CopyNew(source, copy,
+            _ => throw new IOException("data sync failed"), _ => throw new InvalidOperationException("not reached")));
+
+        Assert.False(File.Exists(copy));
+        Assert.Equal("protected bytes", File.ReadAllText(source));
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
+    [Fact]
+    public void A_copy_that_cannot_sync_its_published_name_reports_failure_without_undoing_the_copy()
+    {
+        var source = Path.Combine(_directory, "source.bin");
+        var copy = Path.Combine(_directory, "copy.bin");
+        File.WriteAllText(source, "protected bytes");
+
+        Assert.Throws<IOException>(() => AtomicFile.CopyNew(source, copy,
+            _ => { }, _ => throw new IOException("namespace sync failed")));
+
+        Assert.Equal("protected bytes", File.ReadAllText(copy));
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
+    [Fact]
+    public void A_read_only_copy_keeps_its_bytes_times_and_read_only_state()
+    {
+        var source = Path.Combine(_directory, "readonly.bin");
+        var copy = Path.Combine(_directory, "readonly-copy.bin");
+        File.WriteAllText(source, "read-only bytes");
+        var modified = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(source, modified);
+        File.SetAttributes(source, File.GetAttributes(source) | FileAttributes.ReadOnly);
+        try
+        {
+            AtomicFile.CopyNew(source, copy);
+            Assert.Equal("read-only bytes", File.ReadAllText(copy));
+            Assert.Equal(modified, File.GetLastWriteTimeUtc(copy));
+            Assert.True(File.GetAttributes(copy).HasFlag(FileAttributes.ReadOnly));
+        }
+        finally
+        {
+            File.SetAttributes(source, FileAttributes.Normal);
+            if (File.Exists(copy))
+                File.SetAttributes(copy, FileAttributes.Normal);
+        }
     }
 
     [Fact]

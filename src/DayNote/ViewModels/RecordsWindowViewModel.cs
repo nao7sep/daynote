@@ -400,16 +400,38 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         IsLoadingMore = false;
     }
 
-    // The newest page read again for new records. It joins the rows already shown rather than
+    // Read back to the shown range: a burst can exceed one page while the reader is away from the top.
+    // The new records join the rows already shown rather than
     // replacing them, so the list never falls back to the loading note, the pages already read
     // stay, and the selected row stays selected.
     private async Task ReadNewestAsync()
     {
         var generation = _generation;
+        var filters = _filters;
+        var firstShown = Records.FirstOrDefault()?.Record;
         RecordsPage page;
         try
         {
-            page = await _source.ReadPageAsync(Query(_filters, null));
+            var newest = new List<RecordSummary>();
+            RecordCursor? after = null;
+            while (true)
+            {
+                page = await _source.ReadPageAsync(Query(filters, after));
+                if (generation != _generation)
+                {
+                    return;
+                }
+
+                newest.AddRange(page.Records);
+                if (firstShown is null || !page.More || page.Records.Count == 0
+                    || RecordsPaging.NewestFirst(page.Records[^1], firstShown) >= 0)
+                {
+                    page = new RecordsPage(newest, page.More);
+                    break;
+                }
+
+                after = RecordsPaging.CursorAfter(page.Records);
+            }
         }
         catch (Exception ex)
         {

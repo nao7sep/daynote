@@ -337,6 +337,30 @@ public sealed class RecordsWindowViewModelTests
         Assert.Equal([4L, 3L, 2L, 1L], Ids(vm));
     }
 
+    [AvaloniaTheory]
+    [InlineData(100)]
+    [InlineData(150)]
+    public void A_burst_larger_than_a_page_does_not_leave_a_gap_in_the_records(int originalCount)
+    {
+        _source.Add(originalCount);
+        using var vm = Started();
+        vm.SelectedRecord = vm.Records[10];
+        var selected = vm.SelectedRecord;
+        vm.ViewportChanged(atTop: false, nearEnd: false, byReader: true);
+        _source.Add(150);
+        vm.OnStored();
+        _timers.RunAll();
+        Dispatcher.UIThread.RunJobs();
+
+        vm.ViewportChanged(atTop: true, nearEnd: false, byReader: true);
+        Dispatcher.UIThread.RunJobs();
+        vm.ViewportChanged(atTop: false, nearEnd: true, byReader: true);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(Enumerable.Range(1, originalCount + 150).Reverse().Select(id => (long)id), Ids(vm));
+        Assert.Same(selected, vm.SelectedRecord);
+    }
+
     [AvaloniaFact]
     public void After_a_failed_read_signals_are_ignored_until_a_read_succeeds()
     {

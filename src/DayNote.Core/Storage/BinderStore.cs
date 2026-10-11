@@ -27,7 +27,7 @@ public class BinderStore
         var fullPath = Path.GetFullPath(path);
         var raw = File.ReadAllText(fullPath, Encoding.UTF8);
         var binder = BinderTomlReader.Read(raw);
-        return new LoadedBinder(binder, fullPath, ContentHash.Sha256Hex(raw));
+        return new LoadedBinder(binder, fullPath, ContentHash.Sha256Hex(raw)) { IdentityPath = PathKey.Resolve(fullPath) };
     }
 
     /// <summary>Serializes and atomically writes a new binder, returning its content hash and text.</summary>
@@ -100,6 +100,20 @@ public class BinderStore
     /// <summary>The per-note attachment directory <c>&lt;basename&gt;-assets/&lt;note-id&gt;/</c>.</summary>
     public static string NoteAssetsDirectory(string binderPath, string noteId) =>
         Path.Combine(AssetsDirectory(binderPath), noteId);
+
+    /// <summary>Creates the fixed attachment-directory chain before a copy can be admitted.</summary>
+    public static void EnsureNoteAssetsDirectory(string directory) => EnsureNoteAssetsDirectory(directory, AtomicFile.FlushDirectory);
+
+    internal static void EnsureNoteAssetsDirectory(string directory, Action<string> flush)
+    {
+        Directory.CreateDirectory(directory);
+        // Repeat even when visible already: an earlier failed synchronization may have created it.
+        // A parent flush is not recursive, so each newly usable name needs its containing directory.
+        var assets = Path.GetDirectoryName(directory)!;
+        flush(directory);
+        flush(assets);
+        flush(Path.GetDirectoryName(assets)!);
+    }
 
     /// <summary>Resolves a note's bare attachment filenames into absolute-path <see cref="Attachment"/> objects.</summary>
     public static IReadOnlyList<Attachment> ResolveAttachments(string binderPath, Note note)

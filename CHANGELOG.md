@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A burst of new Records entries no longer leaves a gap between the latest entries and the older list.
+- Concurrent saves share the outside-change answer until Reload or Keep my version finishes, avoiding a repeated question about the same change.
+- Selecting the current binder while another open is waiting keeps the current binder. Distinct files whose names differ only in case stay distinct on case-sensitive volumes; existing case aliases retain the current binder and its known-list entry.
+- Attachment cleanup warnings stay with the note that started the operation when another note is selected meanwhile.
+- Image previews decode one at a time, use codec scaling where available, and skip disposed rows before starting queued work.
+- Attachment copies synchronize their data before publication and their containing directories on Unix before they are added to the note. A failed synchronization leaves the attachment out of the binder; Windows publication retains long-path support.
+
 - A failed settings save no longer causes unreadable stored text styles or binder lists to disappear on a later unrelated save.
 - Opening or creating a binder while the previous binder saves is cancelled if quitting begins before that save finishes.
 - Deleting a note finishes cleaning up its attachments after a pending copy settles, even if another binder has since been opened; a restored and reopened note keeps its files.
