@@ -60,11 +60,11 @@ public sealed class MacMenuBarTests
         Assert.Equal(
             new[]
             {
-                "About DayNote", "—", "Settings…", "—", "Services", "—",
+                "About DayNote", "—", "Settings", "—", "Services", "—",
                 "Hide DayNote", "Hide Others", "Show All", "—", "Quit DayNote",
             },
             Titles(Menu("DayNote")));
-        Assert.Equal((",", Cmd), KeyOf(Menu("DayNote"), "Settings…"));
+        Assert.Equal((",", Cmd), KeyOf(Menu("DayNote"), "Settings"));
         Assert.Equal(("q", Cmd), KeyOf(Menu("DayNote"), "Quit DayNote"));
     }
 

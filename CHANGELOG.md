@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Note dates and attachment details wrap when space narrows, keeping them readable at the minimum window width.
 - The Binders, Notes and Attachments headings are no longer cut short or hidden in a narrow pane: their buttons move below the heading instead. The Binders pane's minimum width now holds its New and Open buttons in every language, so the window's minimum width is slightly larger.
 - An untitled note whose body preview is cut short ends in "…" even when the notes pane is wide.
-- The filter and title placeholders no longer end in "…", and German puts a no-break space before an ellipsis.
+- The filter and title placeholders and the macOS app menu's Settings item no longer end in "…", and German puts a no-break space before an ellipsis.
 - The Records entry for attachments that were duplicates or were left out by Stop names every file, while the message beside the note still names the first few.
 - Records filter entries wrap instead of being cut short at the window's minimum width.
 - Binder paths and attachment file names wrap in their lists instead of being cut short, so the whole path or name is always readable; their rows grow taller as needed.
