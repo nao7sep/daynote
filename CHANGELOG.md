@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The filter and title placeholders no longer end in "…", and German puts a no-break space before an ellipsis.
 - The Records entry for attachments that were duplicates or were left out by Stop names every file, while the message beside the note still names the first few.
 - Records filter entries wrap instead of being cut short at the window's minimum width.
+- Binder paths and attachment file names wrap in their lists instead of being cut short, so the whole path or name is always readable; their rows grow taller as needed.
 
 - The failed-save quit dialog is wide enough for Cancel, Retry and Quit anyway in every interface language.
 - On macOS, text saves create private temporary files before writing any content. Existing files keep their permissions; new binders and settings files are owner-only.

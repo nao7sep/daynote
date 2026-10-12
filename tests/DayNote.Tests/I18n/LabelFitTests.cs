@@ -104,7 +104,7 @@ public class LabelFitTests : WindowTest
 
     [AvaloniaTheory]
     [MemberData(nameof(Tags))]
-    public async Task metadata_and_attachment_details_remain_visible_when_narrow(string tag)
+    public async Task metadata_binder_paths_and_attachment_details_remain_visible_when_narrow(string tag)
     {
         using var speaking = Localizer.Speaking(tag);
         using var populated = PopulatedMainWindow.Create();
@@ -121,13 +121,16 @@ public class LabelFitTests : WindowTest
             AssertPaneHeadersKeepTheirButtons(window, tag);
             var metadata = window.FindControl<WrapPanel>("NoteMetadata")!;
             var details = window.GetVisualDescendants().OfType<TextBlock>()
-                .Where(text => text.Classes.Contains("attachmentDetails")).ToArray();
-            Assert.True(details.Length >= 2);
-            foreach (var text in metadata.GetVisualDescendants().OfType<TextBlock>().Concat(details)
+                .Where(text => text.Classes.Contains("attachmentDetails") || text.Name == "AttachmentFileName").ToArray();
+            Assert.True(details.Length >= 4);
+            var paths = window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == "BinderPath").ToArray();
+            Assert.NotEmpty(paths);
+            foreach (var text in metadata.GetVisualDescendants().OfType<TextBlock>().Concat(details).Concat(paths)
                          .Where(text => text.IsEffectivelyVisible && !string.IsNullOrEmpty(text.Text)))
             {
-                var surface = text.Classes.Contains("attachmentDetails")
-                    ? (Visual)window.FindControl<ListBox>("AttachList")! : metadata;
+                Assert.Equal(TextTrimming.None, text.TextTrimming);
+                var surface = text.Name == "BinderPath" ? (Visual)window.FindControl<ListBox>("BindersList")!
+                    : details.Contains(text) ? window.FindControl<ListBox>("AttachList")! : metadata;
                 var start = text.TranslatePoint(default, surface)!.Value;
                 Assert.True(start.X >= -Tolerance && start.Y >= -Tolerance);
                 Assert.True(start.X + text.Bounds.Width <= surface.Bounds.Width + Tolerance);

@@ -250,8 +250,8 @@
                                                          Submitted="BinderTitle_Submitted" LostFocus="BinderTitle_LostFocus"
                                                          KeyDown="BinderTitle_KeyDown"/>
                                             </Panel>
-                                            <!-- Truncate the START of the path so the file name (the useful end) stays visible. -->
-                                            <TextBlock Text="{Binding Path}" FontSize="11" TextTrimming="PrefixCharacterEllipsis"
+                                            <!-- The whole path wraps, so it is readable at any pane width. -->
+                                            <TextBlock x:Name="BinderPath" Text="{Binding Path}" FontSize="11" TextWrapping="Wrap"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
                                         <!-- The row is where a missing file is reported: it is the narrowest owner
@@ -447,7 +447,7 @@
                                             </Panel>
                                         </Border>
                                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="AttachmentFileName" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="AttachmentFileName" Text="{Binding FileName}" TextWrapping="Wrap"/>
                                             <TextBlock Classes="attachmentDetails" Text="{Binding DetailsText}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
                                         <!-- Same hover-✕ remove affordance as the other lists; a locked note
