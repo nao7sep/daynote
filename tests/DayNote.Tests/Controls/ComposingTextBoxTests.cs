@@ -158,6 +158,8 @@ public sealed class ComposingTextBoxTests : WindowTest
         client.CursorRectangleChanged += (_, _) => cursorChanges++;
 
         client.SetPreeditText("にほん", 2);
+        // Avalonia measures the preedit caret in the layout pass that includes the new text.
+        Dispatcher.UIThread.RunJobs();
 
         Assert.Equal("にほん", presenter.PreeditText);
         Assert.True(cursorChanges > 0);
