@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Every file DayNote keeps records its format version: `format_version` as the first key of a `.daynote` file, `formatVersion` in `config.json` and `state.json`, and the SQLite user version in `records.sqlite3` and `backups.sqlite3`. A file that records none is handled like a damaged one: a binder does not open, a settings file stops DayNote at launch, a view-state file is replaced, and a records or backup database is left alone for the session.
 - A file written by a newer DayNote is never changed. Such a binder is not opened, and the message names it; an open binder that a newer DayNote rewrites is closed without saving. Such a settings file stops DayNote at launch with a message naming it. Such a `state.json` is replaced by the next save of the view state, and such a records or backup database leaves records going to the fallback log file and backups unrecorded for the session.
+- The selected binder can be renamed from the keyboard, with Enter on macOS or F2 on Windows, and the selected attachment opened with Enter. The Keyboard Shortcuts list shows both.
 
 ### Changed
 
@@ -53,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An untitled note whose body preview is cut short ends in "…" even when the notes pane is wide.
 - The filter and title placeholders no longer end in "…", and German puts a no-break space before an ellipsis.
 - The Records entry for attachments that were duplicates or were left out by Stop names every file, while the message beside the note still names the first few.
+- Records filter entries wrap instead of being cut short at the window's minimum width.
 
 - The failed-save quit dialog is wide enough for Cancel, Retry and Quit anyway in every interface language.
 - On macOS, text saves create private temporary files before writing any content. Existing files keep their permissions; new binders and settings files are owner-only.

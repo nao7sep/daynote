@@ -90,6 +90,12 @@ public static class ShortcutCatalog
     public static string CommandModifierLabel(TopLevel top) =>
         CommandModifier(top) == KeyModifiers.Meta ? "Cmd" : "Ctrl";
 
+    /// <summary>
+    /// The key that renames the selected list item: Enter on macOS, as in Finder, and F2 elsewhere, as
+    /// in File Explorer. Read from the same platform signal as <see cref="CommandModifier"/>.
+    /// </summary>
+    public static Key RenameKey(TopLevel top) => CommandModifier(top) == KeyModifiers.Meta ? Key.Enter : Key.F2;
+
     public static IReadOnlyList<ShortcutItem> Build(TopLevel top)
     {
         var cmd = CommandModifier(top);
@@ -101,11 +107,15 @@ public static class ShortcutCatalog
             Command(ShortcutGroup.Binders, "shortcuts.openBinder", cmd, cmdLabel, shift: false, Key.O, "O", ShortcutAction.OpenBinder),
             Command(ShortcutGroup.Binders, "shortcuts.saveNow", cmd, cmdLabel, shift: false, Key.S, "S", ShortcutAction.SaveNow),
             Command(ShortcutGroup.Binders, "shortcuts.closeBinder", cmd, cmdLabel, shift: false, Key.W, "W", ShortcutAction.CloseBinder),
+            // List-scoped like note deletion: the binders list handles it on its selected row.
+            Display(ShortcutGroup.Binders, "shortcuts.renameBinder", RenameKey(top) == Key.Enter ? "Enter" : "F2"),
 
-            // Notes — create, delete, find. (Delete is list-scoped, handled by the notes list itself,
+            // Notes — create, delete, open an attachment, find. (Delete is list-scoped, handled by the notes list itself,
             // so it is documented here as a display row rather than a global accelerator.)
             Command(ShortcutGroup.Notes, "shortcuts.newNote", cmd, cmdLabel, shift: true, Key.N, "N", ShortcutAction.NewNote),
             Display(ShortcutGroup.Notes, "shortcuts.deleteNote", "Delete"),
+            // The attachments list opens its selected row with Enter.
+            Display(ShortcutGroup.Notes, "shortcuts.openAttachment", "Enter"),
             Command(ShortcutGroup.Notes, "shortcuts.filterNotes", cmd, cmdLabel, shift: false, Key.F, "F", ShortcutAction.FilterNotes),
 
             // Navigation — move within the binders and notes lists (selecting a row opens it).

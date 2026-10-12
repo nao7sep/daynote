@@ -193,7 +193,13 @@ internal sealed class PopulatedMainWindow : IDisposable
             await settled;
             return false;
         }
-        public Task OpenPathExternallyAsync(string path) => Task.CompletedTask;
+        public string? LastOpenedPath { get; private set; }
+
+        public Task OpenPathExternallyAsync(string path)
+        {
+            LastOpenedPath = path;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class NullLogger : IAppLogger

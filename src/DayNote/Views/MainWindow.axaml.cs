@@ -97,6 +97,8 @@ public partial class MainWindow : Window
             () => Vm?.Attachments.ToArray() ?? [],
             order => Vm?.RestoreAttachmentOrder(order) ?? false);
         AttachList.DetachedFromVisualTree += (_, _) => ClearAttachDropHighlight();
+        BindersList.AddHandler(KeyDownEvent, BindersList_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+        AttachList.AddHandler(KeyDownEvent, AttachList_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
         Deactivated += (_, _) =>
         {
             _binderReorder.CancelIntent();
@@ -586,7 +588,50 @@ public partial class MainWindow : Window
     // (and opened) the binder; this just enters edit mode and focuses the field.
     private void BinderRow_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is not Control { DataContext: BinderListItemViewModel item } || item.IsEditing)
+        if (sender is Control { DataContext: BinderListItemViewModel item } row)
+        {
+            BeginBinderRename(item, row);
+        }
+    }
+
+    // The keyboard paths for the row gestures above and below: the platform's rename key renames the
+    // selected binder, and Enter opens the selected attachment. The list's own key handling marks Enter
+    // handled, so both listen to handled keys too (wired beside the reorder handlers). A key typed in
+    // the rename field itself bubbles through the list as well, so text input is left alone.
+    private void BindersList_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.None || e.Key != ShortcutCatalog.RenameKey(this) || FromTextInput(e))
+        {
+            return;
+        }
+
+        if (BindersList.SelectedItem is BinderListItemViewModel item && BindersList.ContainerFromItem(item) is Control row)
+        {
+            BeginBinderRename(item, row);
+            e.Handled = true;
+        }
+    }
+
+    private void AttachList_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.None || e.Key != Key.Enter || FromTextInput(e))
+        {
+            return;
+        }
+
+        if (AttachList.SelectedItem is AttachmentItemViewModel item && DataContext is MainWindowViewModel vm)
+        {
+            vm.OpenAttachmentCommand.Execute(item);
+            e.Handled = true;
+        }
+    }
+
+    private static bool FromTextInput(KeyEventArgs e) =>
+        e.Source is Visual source && source.FindAncestorOfType<TextBox>(includeSelf: true) is not null;
+
+    private static void BeginBinderRename(BinderListItemViewModel item, Visual row)
+    {
+        if (item.IsEditing)
         {
             return;
         }
@@ -595,20 +640,29 @@ public partial class MainWindow : Window
         item.IsEditing = true;
 
         // The editor just became visible; post focus so it is realized first.
-        if (sender is Visual visual)
-        {
-            Dispatcher.UIThread.Post(
-                () =>
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (row.GetVisualDescendants().OfType<TextBox>().FirstOrDefault() is { } box)
                 {
-                    if (visual.GetVisualDescendants().OfType<TextBox>().FirstOrDefault() is { } box)
-                    {
-                        box.Focus();
-                        box.SelectAll();
-                    }
-                },
-                DispatcherPriority.Background);
-        }
+                    box.Focus();
+                    box.SelectAll();
+                }
+            },
+            DispatcherPriority.Background);
     }
+
+    // A rename ended from its field hands the keyboard back to the binders list, on the selected row.
+    private void FocusSelectedBinderRow() =>
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (BindersList.SelectedItem is { } selected && BindersList.ContainerFromItem(selected) is { } row)
+                {
+                    row.Focus(NavigationMethod.Directional);
+                }
+            },
+            DispatcherPriority.Background);
 
     // Blur applies the title edit. (Enter/Escape are handled in BinderTitle_KeyDown first, which
     // clears IsEditing, so this becomes a no-op for those paths.)
@@ -628,6 +682,7 @@ public partial class MainWindow : Window
         if (sender is Control { DataContext: BinderListItemViewModel item } && DataContext is MainWindowViewModel vm)
         {
             vm.ApplyBinderRename(item, item.EditText);
+            FocusSelectedBinderRow();
         }
     }
 
@@ -638,6 +693,7 @@ public partial class MainWindow : Window
         {
             item.IsEditing = false; // discard the buffer; Title is untouched
             e.Handled = true;
+            FocusSelectedBinderRow();
         }
     }
 
