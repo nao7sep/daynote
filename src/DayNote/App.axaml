@@ -410,6 +410,17 @@
             <Setter Property="CornerRadius" Value="{StaticResource CompactCornerRadius}"/>
             <Setter Property="Padding" Value="10,6"/>
         </Style>
+        <!-- In a command menu Avalonia's selected item is the keyboard target, not persistent
+             selection. It keeps a stronger fill than hover, including when the target is hovered. -->
+        <Style Selector="MenuFlyoutPresenter MenuItem:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
+        </Style>
+        <Style Selector="MenuFlyoutPresenter MenuItem:selected /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
+        </Style>
+        <Style Selector="MenuFlyoutPresenter MenuItem:selected:pointerover /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource UtilityPressedBrush}"/>
+        </Style>
 
         <!-- Pane header strip: a title row separated from the pane body by a bottom borderline. The
              header spans the full pane width; the body below carries its own padding. Its actions

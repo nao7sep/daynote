@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hovering a menu command no longer redirects keyboard navigation. The keyboard target stays distinct from hover, and clicking still runs the clicked command.
 - An OS launch that declines to open an attachment or About link now shows the existing failure message until a successful retry.
 - Storage-folder aliases share one running instance, preventing two DayNote processes from writing the same settings and history.
 - Reopening a restored note during the final attachment check keeps its files before cleanup starts.

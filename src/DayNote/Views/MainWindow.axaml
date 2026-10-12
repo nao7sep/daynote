@@ -115,12 +115,12 @@
                               Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="2" StrokeLineCap="Round"
                               UseLayoutRounding="True" Data="M1,1 H17 M1,8 H17 M1,15 H17"/>
                         <Button.Flyout>
-                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <views:CommandMenuFlyout Placement="BottomEdgeAlignedRight">
                                 <MenuItem x:Name="SettingsMenuItem" i18n:Localized.Header="menu.settings" Click="Settings_Click"/>
                                 <MenuItem x:Name="RecordsMenuItem" i18n:Localized.Header="menu.records" Click="Records_Click"/>
                                 <MenuItem x:Name="ShortcutsMenuItem" i18n:Localized.Header="menu.shortcuts" Click="Shortcuts_Click"/>
                                 <MenuItem x:Name="AboutMenuItem" i18n:Localized.Header="menu.about" Click="About_Click"/>
-                            </MenuFlyout>
+                            </views:CommandMenuFlyout>
                         </Button.Flyout>
                     </Button>
                 </StackPanel>
