@@ -99,19 +99,7 @@ public class LabelFitTests : WindowTest
         // Pane headers and their buttons, the status picker, the badges and the status bar.
         AssertNothingClipped(window, window, tag, atLeast: 20);
 
-        // Each side pane's header keeps its buttons inside the pane at its default width; the title
-        // beside them trims rather than pushing them out.
-        foreach (var header in window.GetVisualDescendants().OfType<Border>().Where(border => border.Classes.Contains("paneHeader")))
-        {
-            var buttons = header.GetVisualDescendants().OfType<Button>().ToArray();
-            foreach (var button in buttons)
-            {
-                var right = button.TranslatePoint(new Point(button.Bounds.Width, 0), header)!.Value.X;
-                Assert.True(
-                    right <= header.Bounds.Width + Tolerance,
-                    $"{tag}: “{button.Content}” ends at {right:0} px in a {header.Bounds.Width:0} px pane header.");
-            }
-        }
+        AssertPaneHeadersKeepTheirButtons(window, tag);
     }
 
     [AvaloniaTheory]
@@ -130,6 +118,7 @@ public class LabelFitTests : WindowTest
             window.Width = width;
             Dispatcher.UIThread.RunJobs();
             AssertNothingClipped(window, window, tag, atLeast: 20);
+            AssertPaneHeadersKeepTheirButtons(window, tag);
             var metadata = window.FindControl<WrapPanel>("NoteMetadata")!;
             var details = window.GetVisualDescendants().OfType<TextBlock>()
                 .Where(text => text.Classes.Contains("attachmentDetails")).ToArray();
@@ -146,8 +135,10 @@ public class LabelFitTests : WindowTest
                 Assert.True(text.TextLayout.Height <= text.Bounds.Height + Tolerance);
                 Assert.True(text.TextLayout.Width <= text.Bounds.Width + Tolerance, $"{tag}: {text.Text} needs {text.TextLayout.Width} in {text.Bounds.Width}");
             }
-            if (width == window.MinWidth)
-                Assert.True(metadata.Children.Where(child => child.IsVisible).Select(child => child.Bounds.Y).Distinct().Count() > 1);
+            // Metadata that cannot share one line takes more lines instead of being cut.
+            var shown = metadata.Children.Where(child => child.IsVisible).ToArray();
+            if (shown.Sum(child => child.DesiredSize.Width) > metadata.Bounds.Width + Tolerance)
+                Assert.True(shown.Select(child => child.Bounds.Y).Distinct().Count() > 1, $"{tag}: the metadata did not wrap.");
             // Optional rendered evidence uses the same real layout as the regression.
             if (System.Environment.GetEnvironmentVariable("DAYNOTE_LAYOUT_EVIDENCE") is { Length: > 0 } directory)
             {
@@ -269,6 +260,22 @@ public class LabelFitTests : WindowTest
             measured >= atLeast,
             $"{tag}: only {measured} labels were measured, fewer than the {atLeast} expected; the check is not looking at anything.");
         Assert.True(clipped.Count == 0, $"{tag}: {string.Join("; ", clipped)}");
+    }
+
+    // Each side pane's header keeps its heading whole and its buttons inside the pane: when both do
+    // not fit on one line, the buttons move below the heading instead of cutting it short.
+    private static void AssertPaneHeadersKeepTheirButtons(Window window, string tag)
+    {
+        foreach (var header in window.GetVisualDescendants().OfType<Border>().Where(border => border.Classes.Contains("paneHeader")))
+        {
+            foreach (var button in header.GetVisualDescendants().OfType<Button>())
+            {
+                var right = button.TranslatePoint(new Point(button.Bounds.Width, 0), header)!.Value.X;
+                Assert.True(
+                    right <= header.Bounds.Width + Tolerance,
+                    $"{tag}: “{button.Content}” ends at {right:0} px in a {header.Bounds.Width:0} px pane header.");
+            }
+        }
     }
 
     // The dialog's content band: the surface its controls are laid out in, inside the dialog's padding.

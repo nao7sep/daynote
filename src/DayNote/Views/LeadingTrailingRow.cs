@@ -19,6 +19,11 @@ internal sealed class LeadingTrailingRow : Panel
 
     static LeadingTrailingRow() => AffectsMeasure<LeadingTrailingRow>(SpacingProperty, LineSpacingProperty);
 
+    /// <summary>For markup, whose first two children are the leading and trailing controls.</summary>
+    public LeadingTrailingRow()
+    {
+    }
+
     public LeadingTrailingRow(Control leading, Control trailing)
     {
         Children.Add(leading);

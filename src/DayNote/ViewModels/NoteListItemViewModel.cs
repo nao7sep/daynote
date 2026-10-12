@@ -10,6 +10,8 @@ namespace DayNote.ViewModels;
 public sealed partial class NoteListItemViewModel : ObservableObject
 {
     // A label cap well above any pane width; CharacterEllipsis does the visual fit (per text-cleanup-conventions).
+    // A preview cut here ends in one "…", which the drawn trimming replaces when the pane is narrower,
+    // so a wide pane still shows that the body continues.
     private const int LabelLength = 80;
 
     public NoteListItemViewModel(Note note, TimeZoneInfo displayZone)
@@ -73,7 +75,12 @@ public sealed partial class NoteListItemViewModel : ObservableObject
             return Note.Title;
         }
 
-        var preview = TextCleanup.Truncate(Note.Body, LabelLength).Text;
-        return string.IsNullOrEmpty(preview) ? Localizer.T("note.untitled") : preview;
+        var (preview, truncated) = TextCleanup.Truncate(Note.Body, LabelLength);
+        if (string.IsNullOrEmpty(preview))
+        {
+            return Localizer.T("note.untitled");
+        }
+
+        return truncated ? preview + "…" : preview;
     }
 }

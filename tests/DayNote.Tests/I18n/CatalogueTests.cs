@@ -12,7 +12,7 @@ namespace DayNote.Tests.I18n;
 
 /// <summary>
 /// The catalogue gate (localization conventions): English defines the key set, every language has
-/// exactly it, placeholders and plural forms match, nothing is left in English by accident, and no
+/// exactly it, placeholders, plural forms and ellipses match, nothing is left in English by accident, and no
 /// file carries a character a reader cannot see.
 ///
 /// These read the files in the repository rather than the embedded copies, because two of the checks —
@@ -136,6 +136,31 @@ public class CatalogueTests
                 foreach (var (form, text) in Forms(entry))
                 {
                     Assert.Equal(expected, PlaceholdersIn(text));
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void every_ellipsis_is_one_character_where_english_has_one()
+    {
+        // An ellipsis carries meaning (localization conventions), so a translation has one exactly when
+        // English does. German spaces it with a no-break space; every other language attaches it.
+        var english = Read("en");
+        foreach (var tag in Tags)
+        {
+            foreach (var (key, entry) in Read(tag))
+            {
+                var expected = Forms(english[key]).Any(form => form.Text.Contains('…'));
+                foreach (var (form, text) in Forms(entry))
+                {
+                    var where = $"{tag} {key}{form}: “{text}”";
+                    Assert.False(text.Contains("..."), $"{where} uses three periods.");
+                    Assert.True(text.Contains('…') == expected, $"{where} differs from English in having an ellipsis.");
+                    Assert.False(text.Contains(" …"), $"{where} puts an ordinary space before the ellipsis.");
+                    Assert.False(
+                        text.Contains('…') && text.Contains("\u00a0…") != (tag == "de"),
+                        $"{where} spaces the ellipsis against its language's rule.");
                 }
             }
         }

@@ -1202,7 +1202,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             noteId,
             added,
-            duplicates = duplicateNames.Count,
+            // The shown result names only the first few; the record keeps every name.
+            duplicates = duplicateNames,
             unavailable,
             failed = failures.Count,
         });
@@ -1476,7 +1477,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         _ = GiveUpImports(stopped);
         var names = stopped.SelectMany(import => import.Sources).Select(Path.GetFileName).OfType<string>().ToArray();
-        _log.Warn("Stopped waiting for attachments being added; they were not attached", new { files = names.Length });
+        _log.Warn("Stopped waiting for attachments being added; they were not attached", new { files = names });
         ShowResult(
             OperationResultKind.Warning,
             Message.Of("attachments.stopped", ("names", SummarizeFileNames(names))),

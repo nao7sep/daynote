@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deleting a note finishes cleaning up its attachments after a pending copy settles, even if another binder has since been opened; a restored and reopened note keeps its files.
 
 - Note dates and attachment details wrap when space narrows, keeping them readable at the minimum window width.
+- The Binders, Notes and Attachments headings are no longer cut short or hidden in a narrow pane: their buttons move below the heading instead. The Binders pane's minimum width now holds its New and Open buttons in every language, so the window's minimum width is slightly larger.
+- An untitled note whose body preview is cut short ends in "…" even when the notes pane is wide.
+- The filter and title placeholders no longer end in "…", and German puts a no-break space before an ellipsis.
+- The Records entry for attachments that were duplicates or were left out by Stop names every file, while the message beside the note still names the first few.
 
 - The failed-save quit dialog is wide enough for Cancel, Retry and Quit anyway in every interface language.
 - On macOS, text saves create private temporary files before writing any content. Existing files keep their permissions; new binders and settings files are owner-only.

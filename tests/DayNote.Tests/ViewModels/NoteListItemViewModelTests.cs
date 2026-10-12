@@ -40,6 +40,16 @@ public sealed class NoteListItemViewModelTests
     }
 
     [Fact]
+    public void A_cut_preview_ends_in_one_ellipsis_and_a_whole_one_in_none()
+    {
+        var cut = new NoteListItemViewModel(Note(body: new string('a', 100)), TimeZoneInfo.Utc);
+        var whole = new NoteListItemViewModel(Note(body: new string('a', 80) + "   "), TimeZoneInfo.Utc);
+
+        Assert.Equal(new string('a', 80) + "…", cut.Title);
+        Assert.Equal(new string('a', 80), whole.Title);
+    }
+
+    [Fact]
     public void Untitled_empty_note_falls_back_to_a_placeholder()
     {
         var item = new NoteListItemViewModel(Note(), TimeZoneInfo.Utc);
