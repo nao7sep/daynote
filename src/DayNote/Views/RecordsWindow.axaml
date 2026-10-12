@@ -63,7 +63,8 @@
         <Border Grid.Column="0" Classes="pane">
             <DockPanel>
                 <!-- Every filter is off ("All") when the window opens and applies on change; the
-                     search applies shortly after the last keystroke. -->
+                     search applies shortly after the last keystroke. A filter entry wraps rather than
+                     trims, so a long launch label stays readable at the minimum width. -->
                 <Border x:Name="FiltersBand" DockPanel.Dock="Top" Classes="paneHeader">
                     <StackPanel Spacing="8">
                         <ctl:ComposingTextBox x:Name="SearchBox" Text="{Binding SearchText}"
@@ -74,7 +75,7 @@
                                   i18n:Localized.AutomationName="records.launch">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:RecordFilterOption">
-                                    <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
@@ -83,7 +84,7 @@
                                   i18n:Localized.AutomationName="records.level">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:RecordFilterOption">
-                                    <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
