@@ -1308,6 +1308,25 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task The_delete_question_shortens_a_very_long_title_and_keeps_the_title_whole()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var title = new string('x', 160_000);
+        vm.Editor.Title = title;
+
+        _dialogs.ConfirmResult = false;
+        await vm.DeleteNoteCommand.ExecuteAsync(vm.SelectedNote);
+
+        var question = Localizer.Of(_dialogs.LastConfirmMessage!);
+        Assert.Contains(new string('x', 10_000) + "…", question, StringComparison.Ordinal);
+        Assert.True(question.Length < 11_000, $"the question holds {question.Length} characters");
+        Assert.Equal(title, vm.Editor.Title);
+
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Deleting_a_note_is_a_no_op_when_the_confirmation_is_declined()
     {
         var vm = await OpenNewBinderAsync();

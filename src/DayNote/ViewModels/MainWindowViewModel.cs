@@ -860,7 +860,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var note = target.Note;
         var question = string.IsNullOrWhiteSpace(note.Title)
             ? Message.Of("note.deleteUntitled")
-            : Message.Of("note.deleteNamed", ("title", note.Title));
+            : Message.Of("note.deleteNamed", ("title", ShownInWrappingText(note.Title)));
         var attachmentCount = note.Attachments.Count;
         var message = attachmentCount == 0
             ? question
@@ -1543,6 +1543,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             _log.Warn("Could not remove an attachment copy that was not attached", new { noteId, path }, ex);
         }
+    }
+
+    // A wrapping text block lays out one long unbroken line slowly enough to freeze the window
+    // (text-cleanup-conventions rule 4), so user text shown in one is cut past this length, in the
+    // shown copy only. The value itself is untouched and stays whole where it is edited.
+    private const int WrappingTextLimit = 10_000;
+
+    private static string ShownInWrappingText(string value)
+    {
+        var (shown, truncated) = TextCleanup.Truncate(value, WrappingTextLimit);
+        return truncated ? shown + "…" : value;
     }
 
     // The first few names, joined through the catalogue's list entry, and a count of the rest. The
