@@ -1884,9 +1884,12 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(title, row.Title);
         Assert.Contains("new name could not be saved", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
 
+        var selected = vm.SelectedBinder;
         Assert.True(vm.MoveBinder(order[0], order[1]));
         vm.CommitBinderOrder();
-        Assert.Equal(order.Select(item => item.Path), vm.BinderOrder().Select(item => item.Path));
+        // The reverted rows are the same rows, so the selection and keyboard target stay on them.
+        Assert.Equal(order, vm.BinderOrder());
+        Assert.Same(selected, vm.SelectedBinder);
         Assert.Contains("order could not be saved", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
 
         await vm.RemoveBinderCommand.ExecuteAsync(order[0]);

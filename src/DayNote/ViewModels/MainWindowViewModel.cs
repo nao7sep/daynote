@@ -2368,17 +2368,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// <summary>Rebuilds the master binders list from config, then applies the current filter.</summary>
     private void RebuildBinders()
     {
-        // Each row keeps what is last known about its file until the check below answers, so a rebuild
-        // neither waits on the disk nor flashes its markers.
-        var known = _allBinders.ToDictionary(item => item.Path, item => item.IsMissing, StringComparer.Ordinal);
+        // A binder still listed keeps its row: its selection and keyboard target stay on it
+        // (composite-control-conventions), and it keeps what is last known about its file until the
+        // check below answers, so a rebuild neither waits on the disk nor flashes its markers.
+        var rows = new Dictionary<string, BinderListItemViewModel>(StringComparer.Ordinal);
+        foreach (var item in _allBinders)
+            rows.TryAdd(item.Path, item);
+
         _allBinders.Clear();
         foreach (var entry in _config.Binders)
         {
-            _allBinders.Add(new BinderListItemViewModel(entry.Path)
+            if (!rows.Remove(entry.Path, out var row))
             {
-                IsMissing = known.GetValueOrDefault(entry.Path),
-                Title = TitleFor(entry.Path),
-            });
+                row = new BinderListItemViewModel(entry.Path);
+            }
+
+            row.Title = TitleFor(entry.Path);
+            _allBinders.Add(row);
         }
 
         ApplyBinderFilter();
