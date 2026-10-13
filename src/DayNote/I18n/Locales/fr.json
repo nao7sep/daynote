@@ -79,6 +79,7 @@
   "dialog.discardTitle": "Abandonner les modifications\u00a0?",
   "dialog.keepEditing": "Continuer à modifier",
   "editor.empty": "Sélectionnez une note ou créez-en une.",
+  "editor.lock": "Verrouiller",
   "editor.locked": "Verrouillée",
   "editor.lockedHint": "Verrouille le titre, le texte et les pièces jointes de cette note contre les modifications. Son statut peut toujours changer, et elle peut toujours être supprimée.",
   "editor.status": "Statut de la note",

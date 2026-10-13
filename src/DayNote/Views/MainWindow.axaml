@@ -372,12 +372,20 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <!-- A toggle button, as in BigMouth: on, it takes the accent fill, so a locked
-                                 note reads apart at a glance. -->
+                            <!-- A toggle button, as in BigMouth. Its words say the state: "Lock" with the
+                                 accent fill while the note is open, because locking is the step that
+                                 finishes a note, and a plain "Locked" once it is done. Each label keeps
+                                 its own width; the accessible name stays "Lock", and the toggle state
+                                 says whether it is on. -->
                             <ToggleButton x:Name="LockedToggle" Grid.Column="2" Classes="lock"
                                           IsChecked="{Binding Editor.Locked}"
-                                          i18n:Localized.Content="editor.locked"
-                                          i18n:Localized.ToolTip="editor.lockedHint"/>
+                                          i18n:Localized.AutomationName="editor.lock"
+                                          i18n:Localized.ToolTip="editor.lockedHint">
+                                <Panel>
+                                    <TextBlock i18n:Localized.Text="editor.lock" IsVisible="{Binding !Editor.Locked}"/>
+                                    <TextBlock i18n:Localized.Text="editor.locked" IsVisible="{Binding Editor.Locked}"/>
+                                </Panel>
+                            </ToggleButton>
                         </Grid>
                         <ctl:ComposingTextBox x:Name="BodyBox" Margin="8,0,8,8"
                                  Text="{Binding Editor.Body}"

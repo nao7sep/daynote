@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -2723,6 +2724,29 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(PathKey.Equal(vm.Binders.Single(binder => binder.IsCurrent).Path, travel));
 
         await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task The_lock_toggle_says_lock_while_open_and_locked_once_locked()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        var toggle = Assert.IsType<ToggleButton>(window.FindControl<ToggleButton>("LockedToggle"));
+        string Shown() => toggle.GetVisualDescendants().OfType<TextBlock>().Single(text => text.IsEffectivelyVisible).Text!;
+
+        Assert.Equal("Lock", Shown());
+        Assert.Contains("lock", toggle.Classes);
+        var open = toggle.Bounds.Width;
+
+        toggle.IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        Assert.True(vm.Editor.Locked);
+        Assert.Equal("Locked", Shown());
+        // Each label keeps its own width, and the accessible name stays the action's.
+        Assert.True(toggle.Bounds.Width > open);
+        Assert.Equal("Lock", Avalonia.Automation.AutomationProperties.GetName(toggle));
+
+        await CloseResultsTestWindowAsync(vm, window);
     }
 
     [AvaloniaFact]

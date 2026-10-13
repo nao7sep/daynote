@@ -336,9 +336,9 @@
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 
-        <!-- An on/off toggle (a note's Locked) is a utility button that takes the accent fill while
-             on, as BigMouth's does, so on and off read apart at a glance. It stands at the control
-             height beside the fields of its row. -->
+        <!-- A note's Lock toggle. Off, it is the accent button, since locking is the step that
+             finishes a note; on, it is a utility button, a settled state that asks for nothing. It
+             stands at the control height beside the fields of its row. -->
         <Style Selector="ToggleButton.lock">
             <Setter Property="Height" Value="{StaticResource ControlHeight}"/>
             <Setter Property="Padding" Value="14,0"/>
@@ -348,35 +348,35 @@
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="FocusAdorner" Value="{StaticResource ControlFocusRing}"/>
-            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
         <Style Selector="ToggleButton.lock:pressed">
             <Setter Property="RenderTransform" Value="none"/>
         </Style>
         <Style Selector="ToggleButton.lock /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-        </Style>
-        <Style Selector="ToggleButton.lock:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-        </Style>
-        <Style Selector="ToggleButton.lock:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource UtilityPressedBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-        </Style>
-        <Style Selector="ToggleButton.lock:checked /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
-        <Style Selector="ToggleButton.lock:checked:pointerover /template/ ContentPresenter">
+        <Style Selector="ToggleButton.lock:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
         </Style>
-        <Style Selector="ToggleButton.lock:checked:pressed /template/ ContentPresenter">
+        <Style Selector="ToggleButton.lock:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
+        </Style>
+        <Style Selector="ToggleButton.lock:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="ToggleButton.lock:checked:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="ToggleButton.lock:checked:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource UtilityPressedBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
 
         <!-- The button that OPENS a destructive path is outlined, never filled: red letters in a red

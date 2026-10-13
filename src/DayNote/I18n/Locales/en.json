@@ -74,6 +74,7 @@
   "dialog.discardTitle": "Discard changes?",
   "dialog.keepEditing": "Keep editing",
   "editor.empty": "Select a note, or create one.",
+  "editor.lock": "Lock",
   "editor.locked": "Locked",
   "editor.lockedHint": "Locks this note's title, text and attachments against edits. Its status can still change, and it can still be deleted.",
   "editor.status": "Lifecycle status",

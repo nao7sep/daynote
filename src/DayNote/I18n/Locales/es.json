@@ -79,6 +79,7 @@
   "dialog.discardTitle": "¿Descartar los cambios?",
   "dialog.keepEditing": "Seguir editando",
   "editor.empty": "Selecciona una nota o crea una.",
+  "editor.lock": "Bloquear",
   "editor.locked": "Bloqueada",
   "editor.lockedHint": "Bloquea el título, el texto y los adjuntos de esta nota para que no se editen. Su estado se puede seguir cambiando y la nota se puede seguir eliminando.",
   "editor.status": "Estado de la nota",

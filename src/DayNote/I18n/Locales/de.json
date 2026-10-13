@@ -74,6 +74,7 @@
   "dialog.discardTitle": "Änderungen verwerfen?",
   "dialog.keepEditing": "Weiter bearbeiten",
   "editor.empty": "Wählen Sie eine Notiz aus, oder erstellen Sie eine.",
+  "editor.lock": "Sperren",
   "editor.locked": "Gesperrt",
   "editor.lockedHint": "Sperrt Titel, Text und Anhänge dieser Notiz gegen Änderungen. Ihr Status lässt sich weiterhin ändern, und sie lässt sich weiterhin löschen.",
   "editor.status": "Status",
