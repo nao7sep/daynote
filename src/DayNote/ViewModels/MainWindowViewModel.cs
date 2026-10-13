@@ -860,7 +860,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var note = target.Note;
         var question = string.IsNullOrWhiteSpace(note.Title)
             ? Message.Of("note.deleteUntitled")
-            : Message.Of("note.deleteNamed", ("title", ShownInWrappingText(note.Title)));
+            : Message.Of("note.deleteNamed", ("title", QuotedTitle(note.Title)));
         var attachmentCount = note.Attachments.Count;
         var message = attachmentCount == 0
             ? question
@@ -1545,14 +1545,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    // A wrapping text block lays out one long unbroken line slowly enough to freeze the window
-    // (text-cleanup-conventions rule 4), so user text shown in one is cut past this length, in the
-    // shown copy only. The value itself is untouched and stays whole where it is edited.
-    private const int WrappingTextLimit = 10_000;
+    // A question names a note by quoting its title, which only needs to be recognizable: a long
+    // title would bury the question, and an enormous unbroken one freezes the wrapping text block
+    // laying it out. The quoted copy is cut past this length; the title stays whole in its field.
+    private const int QuotedTitleLimit = 100;
 
-    private static string ShownInWrappingText(string value)
+    private static string QuotedTitle(string value)
     {
-        var (shown, truncated) = TextCleanup.Truncate(value, WrappingTextLimit);
+        var (shown, truncated) = TextCleanup.Truncate(value, QuotedTitleLimit);
         return truncated ? shown + "…" : value;
     }
 

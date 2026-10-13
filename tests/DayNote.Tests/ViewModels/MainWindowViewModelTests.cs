@@ -1319,8 +1319,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.DeleteNoteCommand.ExecuteAsync(vm.SelectedNote);
 
         var question = Localizer.Of(_dialogs.LastConfirmMessage!);
-        Assert.Contains(new string('x', 10_000) + "…", question, StringComparison.Ordinal);
-        Assert.True(question.Length < 11_000, $"the question holds {question.Length} characters");
+        Assert.Contains(new string('x', 100) + "…", question, StringComparison.Ordinal);
+        Assert.DoesNotContain(new string('x', 101), question, StringComparison.Ordinal);
         Assert.Equal(title, vm.Editor.Title);
 
         await vm.ShutdownAsync();
