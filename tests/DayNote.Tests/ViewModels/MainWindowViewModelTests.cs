@@ -2822,6 +2822,54 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_locked_notes_text_boxes_take_no_edit_from_keys_undo_or_the_edit_menu()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        var title = window.FindControl<TextBox>("TitleBox")!;
+        var body = window.FindControl<TextBox>("BodyBox")!;
+        foreach (var box in new[] { title, body })
+        {
+            Assert.True(box.Focus());
+            Dispatcher.UIThread.RunJobs();
+            window.KeyTextInput("typed");
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        Assert.Equal("typed", vm.Editor.Title);
+        Assert.Equal("typed", vm.Editor.Body);
+        vm.Editor.Locked = true;
+        Dispatcher.UIThread.RunJobs();
+        Avalonia.Input.Platform.IClipboard? clipboard = window.Clipboard;
+        await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard!, "pasted");
+
+        foreach (var box in new[] { title, body })
+        {
+            Assert.True(box.Focus());
+            Dispatcher.UIThread.RunJobs();
+            box.SelectAll();
+            window.KeyTextInput("more");
+            foreach (var key in new[] { PhysicalKey.Backspace, PhysicalKey.Delete })
+            {
+                window.KeyPressQwerty(key, RawInputModifiers.None);
+                window.KeyReleaseQwerty(key, RawInputModifiers.None);
+            }
+
+            // The native Edit menu and the shortcuts reach these through the box's own commands.
+            box.Undo();
+            box.Cut();
+            box.Paste();
+            box.Redo();
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        Assert.Equal("typed", vm.Editor.Title);
+        Assert.Equal("typed", vm.Editor.Body);
+        Assert.Equal(("typed", "typed"), (vm.SelectedNote!.Note.Title, vm.SelectedNote.Note.Body));
+        Assert.Equal(("typed", "typed"), (title.Text, body.Text));
+        await CloseResultsTestWindowAsync(vm, window);
+    }
+
+    [AvaloniaFact]
     public async Task Shell_results_float_over_the_panes_without_moving_them_or_reserving_window_space()
     {
         var (vm, window) = await OpenWindowWithNoteAsync();
