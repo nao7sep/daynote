@@ -35,6 +35,9 @@ public sealed class ListKeyboardTests : WindowTest
         Assert.True(item.IsEditing);
         var field = Assert.IsAssignableFrom<TextBox>(window.FocusManager!.GetFocusedElement());
         Assert.Equal(item.Title, field.Text);
+        Dispatcher.UIThread.RunJobs();
+        // The whole title is selected, so typing replaces it.
+        Assert.Equal((0, item.Title.Length), (System.Math.Min(field.SelectionStart, field.SelectionEnd), System.Math.Max(field.SelectionStart, field.SelectionEnd)));
 
         // Enter submits from the field; on macOS it is also the rename key, and the list leaves it alone.
         field.Text = "Renamed";

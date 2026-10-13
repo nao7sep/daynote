@@ -1209,6 +1209,78 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task An_edit_survives_switching_to_another_binder_and_back()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "written before switching";
+
+        _dialogs.BinderToCreate = Path.Combine(_home, "other.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        Assert.Empty(vm.Notes);
+        await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => PathKey.Equal(row.Path, BinderPath)));
+
+        // The switch saved the edit, and coming back read it from the file.
+        Assert.Equal("written before switching", SavedBody());
+        vm.SelectedNote = Assert.Single(vm.Notes);
+        Assert.Equal("written before switching", vm.Editor.Body);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_session_leaves_one_backup_row_for_its_binder_settings_and_each_added_attachment()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "first save";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        vm.Editor.Body = "second save";
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        var note = vm.SelectedNote!.Note;
+        var photo = Path.Combine(_home, "photo.bin");
+        File.WriteAllBytes(photo, [1, 2, 3]);
+        _dialogs.AttachmentPaths = [photo];
+        await vm.AddAttachmentCommand.ExecuteAsync(null);
+        vm.Editor.Body = "saved by quitting";
+
+        await vm.ShutdownAsync();
+        BackupStore.Close();
+
+        var store = new AppPaths().BackupStoreFile;
+        Assert.Equal(1, RowCountFor(store, BinderPath));
+        Assert.Equal(1, RowCountFor(store, new AppPaths().ConfigFile));
+        Assert.Equal(1, RowCountFor(store, Path.Combine(BinderStore.NoteAssetsDirectory(BinderPath, note.Id), "photo.bin")));
+        Assert.Equal(0, RowCountFor(store, new AppPaths().StateFile));
+    }
+
+    [AvaloniaFact]
+    public void The_main_window_restores_a_saved_placement_on_a_screen_and_otherwise_keeps_its_designed_place()
+    {
+        var probe = new Window();
+        probe.Show();
+        var area = (probe.Screens.ScreenFromWindow(probe) ?? probe.Screens.Primary!).WorkingArea;
+        probe.Close();
+
+        var vm = NewViewModel();
+        vm.CaptureWindowPlacement(area.X + 40, area.Y + 30, 1000, 700, maximized: false);
+        var window = new MainWindow { DataContext = vm };
+        _windows.Add(window);
+        window.RestoreWindowGeometry();
+        Assert.Equal(WindowStartupLocation.Manual, window.WindowStartupLocation);
+        Assert.Equal(new PixelPoint(area.X + 40, area.Y + 30), window.Position);
+        Assert.Equal(1000, window.Width);
+        Assert.Equal(700, window.Height);
+
+        vm.CaptureWindowPlacement(-100_000, -100_000, 1000, 700, maximized: false);
+        var lost = new MainWindow { DataContext = vm };
+        _windows.Add(lost);
+        lost.RestoreWindowGeometry();
+        Assert.NotEqual(new PixelPoint(-100_000, -100_000), lost.Position);
+        Assert.Equal(1200, lost.Width);
+        Assert.Equal(800, lost.Height);
+    }
+
+    [AvaloniaFact]
     public async Task Closing_the_main_window_runs_the_same_quit_and_stays_open_when_the_user_keeps_it()
     {
         var (vm, store, _) = await OpenWithUnsavedEditAsync("kept by closing the question");
@@ -3453,6 +3525,44 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(adding.IsCompleted);
         Assert.False(Directory.Exists(fixture._home));
         Assert.Equal(_home, Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable));
+    }
+
+    [AvaloniaFact]
+    public async Task While_an_add_runs_each_selected_note_shows_only_its_own_files()
+    {
+        var held = new HeldCopy();
+        var vm = NewViewModel(copyFile: (source, destination) =>
+        {
+            if (Path.GetFileName(source) == "video.bin") held.Copy(source, destination);
+            else AtomicFile.CopyNew(source, destination);
+        });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var noteB = vm.SelectedNote!.Note;
+        var own = Path.Combine(_home, "notes-b.txt");
+        File.WriteAllText(own, "B's own file");
+        await AddDroppedFiles(vm, [own]);
+        vm.NewNoteCommand.Execute(null);
+        var noteA = vm.SelectedNote!.Note;
+        var video = Path.Combine(_home, "video.bin");
+        File.WriteAllText(video, "a large video");
+        var adding = AddDroppedFiles(vm, [video]);
+        await held.Entered.Task;
+
+        vm.SelectedNote = vm.Notes.Single(item => ReferenceEquals(item.Note, noteB));
+        Assert.Equal("notes-b.txt", Assert.Single(vm.Attachments).FileName);
+        vm.SelectedNote = vm.Notes.Single(item => ReferenceEquals(item.Note, noteA));
+        Assert.Empty(vm.Attachments);
+        vm.SelectedNote = vm.Notes.Single(item => ReferenceEquals(item.Note, noteB));
+
+        held.Release();
+        await adding;
+
+        Assert.Equal("notes-b.txt", Assert.Single(vm.Attachments).FileName);
+        vm.SelectedNote = vm.Notes.Single(item => ReferenceEquals(item.Note, noteA));
+        Assert.Equal("video.bin", Assert.Single(vm.Attachments).FileName);
+        await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]
