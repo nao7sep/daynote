@@ -19,7 +19,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <!-- Avalonia.Headless.XUnit 12.1.4 calls xUnit 3.2.2 discovery internals and fails
          discovery under xUnit 4 (MissingMethodException in AvaloniaFactDiscoverer). Keep xunit.v3
-         on 3.2.2 until Avalonia publishes compatible integration; the 4.x runner runs it. -->
+         on 3.2.2 until Avalonia publishes compatible integration (AvaloniaUI/Avalonia#22072);
+         the 4.x runner runs it. -->
     <PackageReference Include="xunit.v3" Version="3.2.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
