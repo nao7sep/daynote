@@ -435,13 +435,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private FontFamily _editorFontFamily = UiFont.ResolveEditor(EditorTextStyle.DefaultFixedWidthFamilies);
 
     [ObservableProperty]
-    private double _editorFontSize = 14;
+    private double _editorFontSize = 15;
 
     [ObservableProperty]
     private double _editorLineHeight = double.NaN;
 
     [ObservableProperty]
-    private Thickness _editorPadding = new(12);
+    private Thickness _editorPadding = new(15);
 
     [ObservableProperty]
     private FontWeight _editorFontWeight = FontWeight.Normal;

@@ -12,7 +12,8 @@ namespace DayNote.Tests.Views;
 public sealed class ShortcutsDialogTests : WindowTest
 {
     [Theory]
-    [InlineData(new[] { 4, 3, 2, 1, 3 }, 2)] // 7 | 6
+    [InlineData(new[] { 4, 3, 2, 1, 3 }, 2)] // 7 rows and 2 headings | 6 rows and 3 headings
+    [InlineData(new[] { 5, 4, 2, 1, 2 }, 2)] // 9 rows and 2 headings | 5 rows and 3 headings, not 5 | 9 and 4
     [InlineData(new[] { 1, 1 }, 1)]
     [InlineData(new[] { 5, 1, 1, 1 }, 1)] // 5 | 3 beats 6 | 2
     [InlineData(new[] { 3 }, 0)] // one section: either side holds 3, the earlier split wins

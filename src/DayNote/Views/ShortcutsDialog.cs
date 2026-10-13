@@ -55,15 +55,18 @@ public sealed class ShortcutsDialog : DialogBase
 
     /// <summary>
     /// Where the section list divides into two columns, keeping the sections in order: the split that
-    /// leaves the taller column with the fewest rows, taking the earlier one on a tie.
+    /// leaves the taller column shortest, taking the earlier one on a tie. A section is as tall as its
+    /// rows plus its heading and the gap above it, which stand about as tall as
+    /// <see cref="HeadingRows"/> rows; counting rows alone stacked every short section in one column.
     /// </summary>
     internal static int BalancedSplit(IReadOnlyList<int> rowCounts)
     {
-        var total = rowCounts.Sum();
+        var heights = rowCounts.Select(rows => rows + HeadingRows).ToList();
+        var total = heights.Sum();
         var best = 0;
-        var bestTaller = int.MaxValue;
-        var left = 0;
-        for (var split = 0; split <= rowCounts.Count; split++)
+        var bestTaller = double.MaxValue;
+        var left = 0.0;
+        for (var split = 0; split <= heights.Count; split++)
         {
             var taller = Math.Max(left, total - left);
             if (taller < bestTaller)
@@ -72,14 +75,18 @@ public sealed class ShortcutsDialog : DialogBase
                 bestTaller = taller;
             }
 
-            if (split < rowCounts.Count)
+            if (split < heights.Count)
             {
-                left += rowCounts[split];
+                left += heights[split];
             }
         }
 
         return best;
     }
+
+    // A heading (about 21 px with its margin) and the 20 px between sections, against a row of about
+    // 32 px.
+    private const double HeadingRows = 1.25;
 
     // A reference list carries no card and no rule between rows: the heading above and the space
     // between rows do the separating, and the keycap is the one mark on the surface

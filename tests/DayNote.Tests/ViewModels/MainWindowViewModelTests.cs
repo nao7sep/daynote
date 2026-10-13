@@ -2857,9 +2857,12 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var (vm, window) = await OpenWindowWithNoteAsync();
         var host = Assert.IsType<Panel>(window.FindControl<Panel>("ResultsHost"));
-        // Hit testing reads the composed scene, which a render tick brings up to date.
+        // Hit testing reads the composed scene. One render tick can still hit-test an earlier frame's
+        // positions; a second tick after the dispatcher has run brings the scene up to date.
         bool HitsResults(Point point)
         {
+            Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
             Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             return window.InputHitTest(point) is Visual hit
                 && (hit == host || hit.GetVisualAncestors().Contains(host));

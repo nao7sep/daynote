@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saving settings no longer deletes what DayNote did not understand in `config.json`. Unknown keys are kept, and a binder list or text-style set that fails its check is kept as it was stored until you change it in DayNote; DayNote uses the built-in value meanwhile. An invalid theme, language, font, autosave delay or time zone still falls back to its built-in and is corrected by the next save.
 - A note's lifecycle is draft, discarded, verified, published and retired. Verified replaces Ready, and Retired replaces Expired.
 - Each status keeps the time the note reached it, and a status that implies an earlier one fills that time too: a published note always has a verification time, and a retired one a publication time. Moving back clears the times the new status does not hold, and un-retiring restores the original publication time.
-- Locking is a separate switch beside the status. A locked note's title, text and attachments cannot be edited; its status can still change and it can still be deleted. Publishing no longer locks a note, and editing no longer needs a move back to an earlier status.
+- Locking is a separate Locked button after the status, filled with the accent color while on. A locked note's title, text and attachments cannot be edited; its status can still change and it can still be deleted. Publishing no longer locks a note, and editing no longer needs a move back to an earlier status.
 - The `.daynote` file stores `verified_at` and `retired_at` in place of `ready_at` and `expired_at`, adds `discarded_at` and `locked`, and no longer reads the `ready`, `expired` or `checked` statuses.
 - A binder with a missing, malformed or repeated id, an attachment that is not a plain file name, an unknown status, a time that is not a time, or status times its status contradicts no longer opens with those values replaced or dropped. The message names the binder, and the file is left as it is.
 - When a quit cannot save the open binder, DayNote stays open and asks whether to retry the save, quit anyway or cancel, instead of only showing the error. Cancel, or closing the question, keeps DayNote open with the changes.
@@ -55,7 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The filter and title placeholders and the macOS app menu's Settings item no longer end in "…", and German puts a no-break space before an ellipsis.
 - The Records entry for attachments that were duplicates or were left out by Stop names every file, while the message beside the note still names the first few.
 - Records filter entries wrap instead of being cut short at the window's minimum width.
-- Binder paths and attachment file names wrap in their lists instead of being cut short, so the whole path or name is always readable; their rows grow taller as needed.
+- Binder paths wrap in their list instead of being cut short, so the whole path is always readable; their rows grow taller as needed. Attachment file names take up to two lines and then end in "…"; the whole name shows when the pointer rests on it.
+- The note title field uses the interface's text size instead of a larger heading size.
+- Both built-in text styles use a 15-point size, 1.5 line spacing and 15-pixel padding, and a new style starts from the same values.
+- The status bar's texts share one baseline, so counts in Latin digits no longer sit higher than dates in Japanese, Chinese or Korean.
+- The toolbar's menu button shows only its icon until the pointer is over it or its menu is open.
+- The Keyboard Shortcuts list balances its two columns by their height, headings included, instead of by their row counts.
 
 - The failed-save quit dialog is wide enough for Cancel, Retry and Quit anyway in every interface language.
 - On macOS, text saves create private temporary files before writing any content. Existing files keep their permissions; new binders and settings files are owner-only.

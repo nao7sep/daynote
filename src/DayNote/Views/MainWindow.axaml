@@ -107,7 +107,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
                     <!-- Settings / Records / Shortcuts / About live in a hamburger menu, matching the fleet. -->
-                    <Button Classes="utility compact icon" i18n:Localized.ToolTip="menu.button" i18n:Localized.AutomationName="menu.button">
+                    <Button Classes="ghost compact icon" i18n:Localized.ToolTip="menu.button" i18n:Localized.AutomationName="menu.button">
                         <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across
                              fonts. Bars 16 long and 2 thick with 5 between them: closer together they read as
                              one block rather than a menu, and the round caps stay inside the 18x16 box. -->
@@ -127,70 +127,64 @@
             </Grid>
         </Border>
 
-        <!-- Status bar. Left: save state — a color-coded dot + label, shown whenever a binder is open.
-             Right (single-document app, so the side-pane-flanked editor is narrow and the bar has the
-             spare width): per-note metadata when a note is open — the counts cluster (bright) and the
-             created/modified timestamps (muted), split by a thin rule — or the binder's note count when
-             no note is selected, so the bar is never blank. The two right-side blocks share the column;
-             only one carries content at a time. -->
+        <!-- Status bar. Leading: save state — a color-coded dot + label, shown whenever a binder is
+             open. Trailing (single-document app, so the side-pane-flanked editor is narrow and the bar
+             has the spare width): per-note metadata when a note is open — the counts cluster (bright)
+             and the created/modified timestamps (muted), split by a thin rule — or the binder's note
+             count when no note is selected, so the bar is never blank; only one of the two carries
+             content at a time. Every text sits on one baseline, whatever script it is in, and each
+             complete date flows onto the next line when the bar is too narrow. -->
         <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
-            <Grid ColumnDefinitions="Auto,*" Margin="12,5">
-                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                IsVisible="{Binding HasBinder}">
-                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Classes="saveDot"
-                                 Classes.saving="{Binding IsSaveStateSaving}"
-                                 Classes.unsaved="{Binding IsSaveStateUnsaved}"
-                                 Classes.failed="{Binding IsSaveStateError}"/>
-                        <TextBlock Text="{Binding SaveStateText}" FontWeight="SemiBold"/>
-                    </StackPanel>
-                    <!-- The applied text style, briefly: standing state belongs in the strip that is
-                         always there, not in a card over the workspace. -->
-                    <TextBlock Text="{Binding TextStyleStatusText}" FontSize="12" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               AutomationProperties.LiveSetting="Polite"
-                               IsVisible="{Binding TextStyleStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </StackPanel>
+            <views:BaselineWrapPanel x:Name="StatusLine" Margin="12,5" ItemSpacing="12" LineSpacing="4">
+                <views:BaselineWrapPanel ItemSpacing="8" IsVisible="{Binding HasBinder}">
+                    <Ellipse Width="8" Height="8" Classes="saveDot"
+                             Classes.saving="{Binding IsSaveStateSaving}"
+                             Classes.unsaved="{Binding IsSaveStateUnsaved}"
+                             Classes.failed="{Binding IsSaveStateError}"/>
+                    <TextBlock Text="{Binding SaveStateText}" FontWeight="SemiBold"/>
+                </views:BaselineWrapPanel>
+                <!-- The applied text style, briefly: standing state belongs in the strip that is
+                     always there, not in a card over the workspace. -->
+                <TextBlock Text="{Binding TextStyleStatusText}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           AutomationProperties.LiveSetting="Polite"
+                           IsVisible="{Binding TextStyleStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                <!-- Counts stay together; each complete date flows onto the next line when needed. -->
-                <WrapPanel x:Name="NoteMetadata" Grid.Column="1" Margin="16,0,0,0"
-                           HorizontalAlignment="Right" VerticalAlignment="Center"
-                           IsVisible="{Binding Editor.HasNote}">
-                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,12,2">
-                        <TextBlock Text="{Binding Editor.WordsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                        <TextBlock Text="{Binding Editor.CharsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                        <TextBlock Text="{Binding Editor.XCountText}" FontSize="12"
-                                   Classes="xcount" Classes.over="{Binding !Editor.IsWithinXLimit}"/>
-                        <Border Width="1" Height="14" Margin="4,0,0,0" VerticalAlignment="Center"
-                                Background="{DynamicResource BorderBrush}"/>
-                    </StackPanel>
-                    <TextBlock Text="{Binding Editor.CreatedText}" FontSize="12" Margin="0,2,12,2"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.CreatedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.ModifiedText}" FontSize="12" Margin="0,2,12,2"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.ModifiedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.DiscardedAtText}" FontSize="12" Margin="0,2,12,2"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.DiscardedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.VerifiedAtText}" FontSize="12" Margin="0,2,12,2"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.VerifiedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.PublishedAtText}" FontSize="12" Margin="0,2,12,2"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.PublishedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="{Binding Editor.RetiredAtText}" FontSize="12" Margin="0,2,12,2"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               IsVisible="{Binding Editor.RetiredAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </WrapPanel>
+                <!-- The counts stay together. -->
+                <views:BaselineWrapPanel views:BaselineWrapPanel.AtEnd="True" ItemSpacing="8"
+                                         IsVisible="{Binding Editor.HasNote}">
+                    <TextBlock Text="{Binding Editor.WordsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.CharsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="·" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Editor.XCountText}" FontSize="12"
+                               Classes="xcount" Classes.over="{Binding !Editor.IsWithinXLimit}"/>
+                    <Border Width="1" Height="14" Margin="4,0,0,0" Background="{DynamicResource BorderBrush}"/>
+                </views:BaselineWrapPanel>
+                <TextBlock views:BaselineWrapPanel.AtEnd="True" Text="{Binding Editor.CreatedText}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           IsVisible="{Binding Editor.CreatedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <TextBlock views:BaselineWrapPanel.AtEnd="True" Text="{Binding Editor.ModifiedText}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           IsVisible="{Binding Editor.ModifiedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <TextBlock views:BaselineWrapPanel.AtEnd="True" Text="{Binding Editor.DiscardedAtText}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           IsVisible="{Binding Editor.DiscardedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <TextBlock views:BaselineWrapPanel.AtEnd="True" Text="{Binding Editor.VerifiedAtText}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           IsVisible="{Binding Editor.VerifiedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <TextBlock views:BaselineWrapPanel.AtEnd="True" Text="{Binding Editor.PublishedAtText}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           IsVisible="{Binding Editor.PublishedAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <TextBlock views:BaselineWrapPanel.AtEnd="True" Text="{Binding Editor.RetiredAtText}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           IsVisible="{Binding Editor.RetiredAtText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
-                <TextBlock Grid.Column="1" Text="{Binding BinderStatusText}" FontSize="12"
-                           HorizontalAlignment="Right" VerticalAlignment="Center"
-                           Foreground="{DynamicResource TextSecondaryBrush}"/>
-            </Grid>
+                <TextBlock views:BaselineWrapPanel.AtEnd="True" Text="{Binding BinderStatusText}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           IsVisible="{Binding BinderStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            </views:BaselineWrapPanel>
         </Border>
 
         <Grid x:Name="PaneTrack" Grid.Row="1">
@@ -354,22 +348,20 @@
                     <TextBlock i18n:Localized.Text="editor.empty" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding !Editor.HasNote}"/>
                     <DockPanel IsVisible="{Binding Editor.HasNote}">
-                        <!-- Header: title, lock and lifecycle status in one row, then the body directly
-                             below (no borderline — the metadata lives in the status bar). Locking a note
-                             locks its content only; the status picker stays enabled. -->
-                        <Grid x:Name="EditorHeader" DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="8,8,8,6">
+                        <!-- Header: title, lifecycle status and lock in one row, then the body directly
+                             below (no borderline — the metadata lives in the status bar). The title is an
+                             editing field, not the note as published, so it keeps the interface's own
+                             size. Locking a note locks its content only; the status picker stays enabled.
+                             All three stand at the control height. -->
+                        <Grid x:Name="EditorHeader" DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="8,8,8,6">
                             <ctl:ComposingTextBox x:Name="TitleBox"
                                                   Text="{Binding Editor.Title}" i18n:Localized.PlaceholderText="editor.titlePlaceholder"
-                                                  FontSize="18" FontWeight="SemiBold" AcceptsReturn="False" SubmitOnEnter="True"
+                                                  AcceptsReturn="False" SubmitOnEnter="True"
                                                   IsReadOnly="{Binding !Editor.IsEditable}"
                                                   Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
-                            <CheckBox x:Name="LockedBox" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
-                                      IsChecked="{Binding Editor.Locked}"
-                                      i18n:Localized.Content="editor.locked"
-                                      i18n:Localized.ToolTip="editor.lockedHint"/>
                             <!-- Each status shows as catalogue text, never the enum's own name, and keeps
                                  its workflow order in every language. -->
-                            <ComboBox x:Name="StatusBox" Grid.Column="2" Margin="8,0,0,0" MinWidth="130" VerticalAlignment="Center"
+                            <ComboBox x:Name="StatusBox" Grid.Column="1" MinWidth="130" VerticalAlignment="Center"
                                       ItemsSource="{Binding Editor.StatusOptions}"
                                       SelectedItem="{Binding Editor.Status}"
                                       i18n:Localized.ToolTip="editor.status"
@@ -380,6 +372,12 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
+                            <!-- A toggle button, as in BigMouth: on, it takes the accent fill, so a locked
+                                 note reads apart at a glance. -->
+                            <ToggleButton x:Name="LockedToggle" Grid.Column="2" Classes="lock"
+                                          IsChecked="{Binding Editor.Locked}"
+                                          i18n:Localized.Content="editor.locked"
+                                          i18n:Localized.ToolTip="editor.lockedHint"/>
                         </Grid>
                         <ctl:ComposingTextBox x:Name="BodyBox" Margin="8,0,8,8"
                                  Text="{Binding Editor.Body}"
@@ -447,7 +445,11 @@
                                             </Panel>
                                         </Border>
                                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="AttachmentFileName" Text="{Binding FileName}" TextWrapping="Wrap"/>
+                                            <!-- Two lines, then one "…"; the whole name is the tooltip and the
+                                                 accessible name, and Enter opens the file itself. -->
+                                            <TextBlock x:Name="AttachmentFileName" Text="{Binding FileName}" TextWrapping="Wrap"
+                                                       MaxLines="2" TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding FileName}"/>
                                             <TextBlock Classes="attachmentDetails" Text="{Binding DetailsText}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
                                         <!-- Same hover-✕ remove affordance as the other lists; a locked note

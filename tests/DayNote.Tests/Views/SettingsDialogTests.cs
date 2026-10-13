@@ -27,7 +27,7 @@ public sealed class SettingsDialogTests
         AppConfig? saved = null;
         var dialog = new SettingsDialog(config, candidate => { saved = candidate; return true; });
         Named<Button>(dialog, "ResetTextStylesButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.Equal(14, config.TextStyles[0].FontSize);
+        Assert.Equal(15, config.TextStyles[0].FontSize);
         var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
         Assert.True(save.IsEnabled);
         save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

@@ -119,10 +119,20 @@ public class LabelFitTests : WindowTest
             Dispatcher.UIThread.RunJobs();
             AssertNothingClipped(window, window, tag, atLeast: 20);
             AssertPaneHeadersKeepTheirButtons(window, tag);
-            var metadata = window.FindControl<WrapPanel>("NoteMetadata")!;
+            var metadata = window.FindControl<BaselineWrapPanel>("StatusLine")!;
             var details = window.GetVisualDescendants().OfType<TextBlock>()
-                .Where(text => text.Classes.Contains("attachmentDetails") || text.Name == "AttachmentFileName").ToArray();
-            Assert.True(details.Length >= 4);
+                .Where(text => text.Classes.Contains("attachmentDetails")).ToArray();
+            Assert.True(details.Length >= 2);
+            // A file name takes two lines at most and then trims, inside its row.
+            var fileNames = window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == "AttachmentFileName").ToArray();
+            Assert.True(fileNames.Length >= 2);
+            var attachList = window.FindControl<ListBox>("AttachList")!;
+            foreach (var name in fileNames)
+            {
+                Assert.True(name.TextLayout.TextLines.Count <= 2, $"{tag}: {name.Text} takes {name.TextLayout.TextLines.Count} lines");
+                var origin = name.TranslatePoint(default, attachList)!.Value;
+                Assert.True(origin.X + name.Bounds.Width <= attachList.Bounds.Width + Tolerance);
+            }
             var paths = window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == "BinderPath").ToArray();
             Assert.NotEmpty(paths);
             foreach (var text in metadata.GetVisualDescendants().OfType<TextBlock>().Concat(details).Concat(paths)
@@ -142,6 +152,7 @@ public class LabelFitTests : WindowTest
             var shown = metadata.Children.Where(child => child.IsVisible).ToArray();
             if (shown.Sum(child => child.DesiredSize.Width) > metadata.Bounds.Width + Tolerance)
                 Assert.True(shown.Select(child => child.Bounds.Y).Distinct().Count() > 1, $"{tag}: the metadata did not wrap.");
+            AssertStatusTextSharesBaselines(metadata, tag);
             // Optional rendered evidence uses the same real layout as the regression.
             if (System.Environment.GetEnvironmentVariable("DAYNOTE_LAYOUT_EVIDENCE") is { Length: > 0 } directory)
             {
@@ -267,6 +278,32 @@ public class LabelFitTests : WindowTest
 
     // Each side pane's header keeps its heading whole and its buttons inside the pane: when both do
     // not fit on one line, the buttons move below the heading instead of cutting it short.
+    // Texts on one line of the status bar sit on one baseline, whatever fonts their scripts draw with:
+    // Latin digits beside Japanese dates once stood a pixel higher.
+    private static void AssertStatusTextSharesBaselines(BaselineWrapPanel line, string tag)
+    {
+        var texts = line.GetVisualDescendants().OfType<TextBlock>()
+            .Where(text => text.IsEffectivelyVisible && !string.IsNullOrEmpty(text.Text))
+            .Select(text => (Text: text.Text, Top: text.TranslatePoint(default, line)!.Value.Y,
+                Baseline: text.TranslatePoint(default, line)!.Value.Y + text.Padding.Top + text.TextLayout.TextLines[0].Baseline))
+            .ToArray();
+        Assert.True(texts.Length >= 5);
+        // Lines stand at least a text height apart, while the texts of one line differ by a pixel or two.
+        var rows = new List<List<(string? Text, double Top, double Baseline)>>();
+        foreach (var text in texts.OrderBy(text => text.Top))
+        {
+            if (rows.Count == 0 || text.Top - rows[^1][0].Top > 8) rows.Add([]);
+            rows[^1].Add(text);
+        }
+
+        foreach (var row in rows)
+        {
+            var baselines = row.Select(text => text.Baseline).ToArray();
+            Assert.True(baselines.Max() - baselines.Min() < 0.5,
+                $"{tag}: {string.Join(", ", row.Select(text => $"{text.Text} at {text.Baseline:0.00}"))}");
+        }
+    }
+
     private static void AssertPaneHeadersKeepTheirButtons(Window window, string tag)
     {
         foreach (var header in window.GetVisualDescendants().OfType<Border>().Where(border => border.Classes.Contains("paneHeader")))

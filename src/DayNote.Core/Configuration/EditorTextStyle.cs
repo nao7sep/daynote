@@ -23,13 +23,17 @@ public sealed class EditorTextStyle
     /// </summary>
     public string FontFamily { get; set; } = DefaultFixedWidthFamilies;
 
-    public double FontSize { get; set; } = 14;
+    /// <summary>
+    /// The size, spacing and padding defaults are round values (15, 1.5, 15) so a user tuning a style
+    /// starts from numbers that are easy to reason about.
+    /// </summary>
+    public double FontSize { get; set; } = 15;
 
     /// <summary>Line height as a multiple of the font size (1.0 = single spacing); applied as size × this.</summary>
-    public double LineSpacing { get; set; } = 1.4;
+    public double LineSpacing { get; set; } = 1.5;
 
     /// <summary>Uniform padding, in device-independent pixels, inside the editor around the text.</summary>
-    public double Padding { get; set; } = 12;
+    public double Padding { get; set; } = 15;
 
     public bool Bold { get; set; }
 

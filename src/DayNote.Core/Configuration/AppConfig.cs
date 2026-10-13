@@ -14,12 +14,13 @@ public sealed class AppConfig
 
     /// <summary>
     /// The built-in text-style presets. Returns a fresh list of fresh presets on every call, so each
-    /// caller owns a mutable copy it can edit without touching the built-ins.
+    /// caller owns a mutable copy it can edit without touching the built-ins. Both take the
+    /// preset's own size, spacing and padding, so the built-ins differ only in their font.
     /// </summary>
     public static List<EditorTextStyle> DefaultTextStyles() => new()
     {
-        new EditorTextStyle { IsDefault = true, FontFamily = EditorTextStyle.DefaultFixedWidthFamilies, FontSize = 14, LineSpacing = 1.4, Padding = 12 },
-        new EditorTextStyle { FontFamily = "Inter", FontSize = 15, LineSpacing = 1.5, Padding = 14 },
+        new EditorTextStyle { IsDefault = true, FontFamily = EditorTextStyle.DefaultFixedWidthFamilies },
+        new EditorTextStyle { FontFamily = "Inter" },
     };
 
     /// <summary>The saved language that means "follow the computer's own languages".</summary>
