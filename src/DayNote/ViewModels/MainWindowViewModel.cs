@@ -2363,13 +2363,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     private void RebuildNotes()
     {
-        var selected = SelectedNote;
-        var selectedId = selected?.Note.Id;
+        // A selected note the filter hides hands its selection to its neighbour in the visible order
+        // before its row goes: the next note, else the previous one, else none
+        // (composite-control-conventions). Keeping it listed showed a note that does not match. Edits
+        // live in the binder, so moving on loses none.
+        if (SelectedNote is { } selected && !Matches(NotesFilter, selected.Note.Title))
+        {
+            var position = _allNotes.IndexOf(selected);
+            SelectedNote = _allNotes.Skip(position + 1).FirstOrDefault(n => Matches(NotesFilter, n.Note.Title))
+                ?? _allNotes.Take(Math.Max(position, 0)).LastOrDefault(n => Matches(NotesFilter, n.Note.Title));
+        }
 
-        // Never hide the note currently being edited, even if it no longer matches the filter;
-        // otherwise narrowing the filter would blank the editor and drop the selection.
-        FilterInto(_allNotes, Notes, NotesFilter, n => n.Note.Title, n => ReferenceEquals(n, selected));
-
+        var selectedId = SelectedNote?.Note.Id;
+        FilterInto(_allNotes, Notes, NotesFilter, n => n.Note.Title);
         if (selectedId is not null)
         {
             SelectedNote = Notes.FirstOrDefault(n => n.Note.Id == selectedId);
@@ -2615,6 +2621,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _log.Info("Reordered binders", new { count = order.Count });
     }
 
+    /// <summary>Whether a list item's text passes the filter: a blank filter passes everything.</summary>
+    private static bool Matches(string filter, string text) =>
+        string.IsNullOrWhiteSpace(filter) || text.Contains(filter, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Reconciles <paramref name="target"/> to the subset of <paramref name="source"/> that matches the
     /// filter (case-insensitively), keeping all items when the filter is blank and any item matched by
@@ -2632,9 +2642,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var desired = new List<T>(source.Count);
         foreach (var item in source)
         {
-            if (string.IsNullOrWhiteSpace(filter)
-                || (alwaysKeep?.Invoke(item) ?? false)
-                || textOf(item).Contains(filter, StringComparison.OrdinalIgnoreCase))
+            if ((alwaysKeep?.Invoke(item) ?? false) || Matches(filter, textOf(item)))
             {
                 desired.Add(item);
             }

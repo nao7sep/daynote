@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The notes filter no longer keeps showing the selected note when its title does not match. The selection moves to the next matching note, or the previous one, and the editor follows.
 - Hovering a menu command no longer redirects keyboard navigation. The keyboard target stays distinct from hover, and clicking still runs the clicked command.
 - An OS launch that declines to open an attachment or About link now shows the existing failure message until a successful retry.
 - Storage-folder aliases share one running instance, preventing two DayNote processes from writing the same settings and history.

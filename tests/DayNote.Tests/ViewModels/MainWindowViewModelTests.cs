@@ -1209,6 +1209,40 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_filter_that_hides_the_selected_note_moves_the_selection_to_a_matching_neighbour()
+    {
+        var vm = await OpenNewBinderAsync();
+        foreach (var title in new[] { "念頭に置く", "フォロワー", "念頭", "週報" })
+        {
+            vm.NewNoteCommand.Execute(null);
+            vm.Editor.Title = title;
+        }
+
+        // Newest first: 週報, 念頭, フォロワー, 念頭に置く. The selected note does not match.
+        vm.SelectedNote = vm.Notes.Single(n => n.Note.Title == "フォロワー");
+        vm.NotesFilter = "念頭";
+        Assert.Equal(["念頭", "念頭に置く"], vm.Notes.Select(n => n.Note.Title));
+        Assert.Equal("念頭に置く", vm.SelectedNote!.Note.Title);
+        Assert.Equal("念頭に置く", vm.Editor.Title);
+
+        // A matching selection stays; clearing the filter keeps it rather than going back.
+        vm.NotesFilter = "念頭に";
+        Assert.Equal("念頭に置く", vm.SelectedNote!.Note.Title);
+        vm.NotesFilter = string.Empty;
+        Assert.Equal(4, vm.Notes.Count);
+        Assert.Equal("念頭に置く", vm.SelectedNote!.Note.Title);
+
+        // With no next match the previous one takes it, and with no match at all nothing is selected.
+        vm.NotesFilter = "週";
+        Assert.Equal("週報", vm.SelectedNote!.Note.Title);
+        vm.NotesFilter = "該当なし";
+        Assert.Empty(vm.Notes);
+        Assert.Null(vm.SelectedNote);
+        Assert.False(vm.Editor.HasNote);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task An_edit_survives_switching_to_another_binder_and_back()
     {
         var vm = await OpenNewBinderAsync();
