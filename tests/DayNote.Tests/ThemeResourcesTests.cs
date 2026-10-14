@@ -242,7 +242,8 @@ public sealed class ThemeResourcesTests
             return true;
         });
         var radios = dialog.GetLogicalDescendants().OfType<RadioButton>().ToList();
-        Assert.Equal(new[] { "System", "Light", "Dark" }, radios.Select(radio => (string)radio.Content!));
+        // System names the appearance the headless platform reports, which is light.
+        Assert.Equal(new[] { "System (Light)", "Light", "Dark" }, radios.Select(radio => (string)radio.Content!));
         Assert.Single(radios.Select(radio => radio.Parent).Distinct());
         Assert.Equal("Dark", radios.Single(radio => radio.IsChecked == true).Content);
 

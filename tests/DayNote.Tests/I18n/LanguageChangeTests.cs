@@ -138,13 +138,22 @@ public class LanguageChangeTests : WindowTest
     }
 
     [AvaloniaFact]
+    public void the_system_theme_names_the_appearance_it_follows()
+    {
+        Assert.Equal("System (Dark)", SettingsDialog.SystemThemeLabel(Avalonia.Platform.PlatformThemeVariant.Dark));
+        Assert.Equal("System (Light)", SettingsDialog.SystemThemeLabel(Avalonia.Platform.PlatformThemeVariant.Light));
+        using var speaking = Localizer.Speaking("ja");
+        Assert.Equal("システム（ダーク）", SettingsDialog.SystemThemeLabel(Avalonia.Platform.PlatformThemeVariant.Dark));
+    }
+
+    [AvaloniaFact]
     public void the_language_list_names_every_language_in_its_own_words()
     {
-        var options = LanguageOption.All();
+        var options = LanguageOption.All(["ja-JP", "en-US"]);
 
-        // System first, then the ten languages.
+        // System first, naming the language it resolves to on this computer, then the ten languages.
         Assert.Equal(Languages.System, options[0].Value);
-        Assert.Equal(English.Of("settings.languageSystem"), options[0].Name);
+        Assert.Equal("System (日本語)", options[0].Name);
         Assert.Equal(Languages.Tags, options.Skip(1).Select(option => option.Value));
 
         // Each name is the language's own, not a translation of it.

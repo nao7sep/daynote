@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Avalonia;
+using Avalonia.Platform;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
@@ -158,7 +159,7 @@ public sealed class SettingsDialog : DialogBase
 
         // System first, then each language by its own name, so a reader finds theirs whatever language
         // is showing. Applied on Save like every other field here.
-        var languages = LanguageOption.All();
+        var languages = LanguageOption.All(App.ComputerLanguages);
         _language = new ComboBox
         {
             Name = "LanguageBox",
@@ -174,10 +175,21 @@ public sealed class SettingsDialog : DialogBase
             .Select(choice =>
             {
                 var button = new RadioButton { IsChecked = choice.Value == config.Theme };
-                Localized.SetContent(button, choice.LabelKey);
+                if (choice.Value != ThemePreference.System)
+                    Localized.SetContent(button, choice.LabelKey);
                 return button;
             })
             .ToList();
+        // System names the appearance it follows now, and keeps up while the dialog is open
+        // (app-chrome-conventions, Theme).
+        _systemTheme = _themeButtons[Array.FindIndex(ThemeChoices, choice => choice.Value == ThemePreference.System)];
+        ShowSystemTheme();
+        if (Application.Current?.PlatformSettings is { } platform)
+        {
+            platform.ColorValuesChanged += OnColorValuesChanged;
+            Closed += (_, _) => platform.ColorValuesChanged -= OnColorValuesChanged;
+        }
+
         var themeRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 20 };
         foreach (var button in _themeButtons)
         {
@@ -281,6 +293,17 @@ public sealed class SettingsDialog : DialogBase
     }
 
     public bool Applied => ResultTag == "ok";
+
+    private readonly RadioButton _systemTheme;
+
+    private void OnColorValuesChanged(object? sender, PlatformColorValues values) => ShowSystemTheme();
+
+    private void ShowSystemTheme() =>
+        _systemTheme.Content = SystemThemeLabel(Application.Current?.PlatformSettings?.GetColorValues().ThemeVariant);
+
+    /// <summary>"System (Dark)": the System choice with the appearance it resolves to now.</summary>
+    internal static string SystemThemeLabel(PlatformThemeVariant? variant) =>
+        Localizer.T("settings.themeSystem", ("theme", Localizer.T(variant == PlatformThemeVariant.Dark ? "settings.themeDark" : "settings.themeLight")));
 
     protected override bool HasUnsavedChanges => ConfigSets.ChangedKeys(_config, _original).Count > 0;
 

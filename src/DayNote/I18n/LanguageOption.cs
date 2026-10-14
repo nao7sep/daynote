@@ -12,10 +12,14 @@ namespace DayNote.I18n;
 /// </summary>
 public sealed record LanguageOption(string Value, string Name)
 {
-    /// <summary>System first, then each language by its own name.</summary>
-    internal static IReadOnlyList<LanguageOption> All() =>
+    /// <summary>
+    /// System first, named with the language it resolves to on this computer now, such as
+    /// "System (日本語)", then each language by its own name.
+    /// </summary>
+    internal static IReadOnlyList<LanguageOption> All(IReadOnlyList<string> computerLanguages) =>
     [
-        new(Languages.System, Localizer.T("settings.languageSystem")),
+        new(Languages.System, Localizer.T("settings.languageSystem",
+            ("language", Languages.NameOf(Languages.Resolve(Languages.System, computerLanguages))))),
         .. Languages.All.Select(language => new LanguageOption(language.Tag, language.Name)),
     ];
 
