@@ -129,17 +129,20 @@ public class LabelFitTests : WindowTest
             var attachList = window.FindControl<ListBox>("AttachList")!;
             foreach (var name in fileNames)
             {
-                Assert.True(name.TextLayout.TextLines.Count <= 2, $"{tag}: {name.Text} takes {name.TextLayout.TextLines.Count} lines");
+                if (!name.FindAncestorOfType<ListBoxItem>()!.IsSelected)
+                    Assert.True(name.TextLayout.TextLines.Count <= 2, $"{tag}: {name.Text} takes {name.TextLayout.TextLines.Count} lines");
                 var origin = name.TranslatePoint(default, attachList)!.Value;
                 Assert.True(origin.X + name.Bounds.Width <= attachList.Bounds.Width + Tolerance);
             }
             var paths = window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == "BinderPath").ToArray();
             Assert.NotEmpty(paths);
-            // A binder path takes two lines at most and then trims, inside its row.
+            // A binder path takes one line, except the open binder's, which shows the whole path, inside its row.
             var bindersList = window.FindControl<ListBox>("BindersList")!;
             foreach (var path in paths)
             {
-                Assert.True(path.TextLayout.TextLines.Count <= 2, $"{tag}: {path.Text} takes {path.TextLayout.TextLines.Count} lines");
+                var selected = path.FindAncestorOfType<ListBoxItem>()!.IsSelected;
+                if (!selected)
+                    Assert.Single(path.TextLayout.TextLines);
                 var origin = path.TranslatePoint(default, bindersList)!.Value;
                 Assert.True(origin.X + path.Bounds.Width <= bindersList.Bounds.Width + Tolerance);
             }
@@ -198,9 +201,21 @@ public class LabelFitTests : WindowTest
             foreach (var name in new[] { "BinderTitle", "NoteTitle" })
             foreach (var text in window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == name && text.IsEffectivelyVisible))
                 Assert.Single(text.TextLayout.TextLines);
-            foreach (var name in new[] { "BinderPath", "AttachmentFileName" })
-            foreach (var text in window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == name && text.IsEffectivelyVisible))
-                Assert.True(text.TextLayout.TextLines.Count <= 2, $"{tag}: {text.Text}");
+            // Identifying text is one line, or two beside a thumbnail; the selected row shows it whole,
+            // and a path that has to shorten keeps its file name.
+            foreach (var text in window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name is "BinderPath" or "AttachmentFileName" && text.IsEffectivelyVisible))
+            {
+                var lines = text.TextLayout.TextLines;
+                if (text.FindAncestorOfType<ListBoxItem>()!.IsSelected)
+                    Assert.Equal(TextTrimming.None, text.TextTrimming);
+                else if (text.Name == "BinderPath")
+                {
+                    Assert.Single(lines);
+                    Assert.Equal(TextTrimming.PathSegmentEllipsis, text.TextTrimming);
+                }
+                else
+                    Assert.True(lines.Count <= 2, $"{tag}: {text.Text}");
+            }
 
             // Every row's controls stay inside its list, and the remove buttons stay reachable.
             foreach (var list in window.GetVisualDescendants().OfType<ListBox>())
@@ -216,6 +231,16 @@ public class LabelFitTests : WindowTest
             var lockToggle = window.FindControl<Avalonia.Controls.Primitives.ToggleButton>("LockedToggle")!;
             var editor = window.FindControl<Border>("EditorPane")!;
             Assert.True(lockToggle.TranslatePoint(new Point(lockToggle.Bounds.Width, 0), editor)!.Value.X <= editor.Bounds.Width + Tolerance);
+
+            // Selecting an attachment shows its whole name.
+            var attachList = window.FindControl<ListBox>("AttachList")!;
+            attachList.SelectedIndex = 0;
+            Dispatcher.UIThread.RunJobs();
+            var selectedName = attachList.ContainerFromIndex(0)!.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Name == "AttachmentFileName");
+            Assert.Equal(TextTrimming.None, selectedName.TextTrimming);
+            Assert.True(selectedName.TextLayout.TextLines.Count > 2, $"{tag}: {selectedName.Text} is not shown whole");
+            attachList.SelectedIndex = -1;
+            Dispatcher.UIThread.RunJobs();
 
             var result = window.FindControl<TextBlock>("AttachmentResultText")!;
             Assert.True(result.IsEffectivelyVisible);

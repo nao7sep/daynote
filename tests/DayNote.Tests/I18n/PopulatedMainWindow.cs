@@ -111,6 +111,9 @@ internal sealed class PopulatedMainWindow : IDisposable
         var vm = ViewModel;
         var deep = Path.Combine(Home, "an", "unusually", "deep", "folder", "structure", "for", "binders", "kept", "over", "years");
         Directory.CreateDirectory(deep);
+        // A second binder in the same deep folder, which stays listed but not open.
+        Dialogs.BinderToCreate = Path.Combine(deep, "another-binder-kept-beside-it-in-the-same-folder.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
         Dialogs.BinderToCreate = Path.Combine(deep, "a-binder-file-with-a-rather-long-descriptive-name-for-testing.daynote");
         await vm.NewBinderCommand.ExecuteAsync(null);
         var row = vm.Binders.Single(binder => binder.IsCurrent);

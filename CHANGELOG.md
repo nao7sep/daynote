@@ -57,7 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The filter and title placeholders and the macOS app menu's Settings item no longer end in "…", and German puts a no-break space before an ellipsis.
 - The Records entry for attachments that were duplicates or were left out by Stop names every file, while the message beside the note still names the first few.
 - Records filter entries wrap instead of being cut short at the window's minimum width.
-- Binder paths and attachment file names take up to two lines and then end in "…"; the whole path or name shows when the pointer rests on it.
+- A binder path takes one line and keeps its file name, losing the middle of the folder; the open binder shows its whole path. An attachment file name takes up to two lines beside its thumbnail; the selected attachment shows its whole name. Both still show whole when the pointer rests on them.
+- The attachments pane is at least 200 pixels wide, so the narrowest window is 916 pixels wide instead of 886.
 - The note title field uses the interface's text size instead of a larger heading size.
 - Both built-in text styles use a 15-point size, 1.5 line spacing and 15-pixel padding, and a new style starts from the same values.
 - The status bar's texts share one baseline, so counts in Latin digits no longer sit higher than dates in Japanese, Chinese or Korean.

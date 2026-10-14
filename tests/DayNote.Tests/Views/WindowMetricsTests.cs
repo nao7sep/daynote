@@ -114,7 +114,7 @@ public sealed class WindowMetricsTests
     // columns are Auto with no minimum). Kept here so the derivation assertion reads against a
     // concrete, known set; the separate axaml guard below catches drift between this list and the
     // actual XAML.
-    private static readonly double[] ContentColumnMinWidths = [200, 170, 320, 170];
+    private static readonly double[] ContentColumnMinWidths = [200, 170, 320, 200];
 
     // Chrome budget added on top of the columns: three GridSplitters at Width="6" plus the pane
     // Grid's 4px left+right margin. Mirrors the private constants in WindowMetrics.

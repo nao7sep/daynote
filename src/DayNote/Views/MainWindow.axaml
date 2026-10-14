@@ -27,6 +27,25 @@
             <Setter Property="Foreground" Value="{DynamicResource DangerTextBrush}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
+        <!-- Identifying text (interface-styling-conventions, Labels): a binder's path takes one line and
+             keeps its file name, an attachment's name two lines beside its thumbnail, and the selected
+             row shows the whole value, which arrows and a tap reach (developer decision). -->
+        <Style Selector="TextBlock.binderPath">
+            <Setter Property="TextTrimming" Value="PathSegmentEllipsis"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected TextBlock.binderPath">
+            <Setter Property="TextTrimming" Value="None"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector="TextBlock.attachmentName">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="MaxLines" Value="2"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected TextBlock.attachmentName">
+            <Setter Property="MaxLines" Value="0"/>
+            <Setter Property="TextTrimming" Value="None"/>
+        </Style>
         <Style Selector="Border.pane">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
@@ -201,15 +220,17 @@
                      panes stay fixed and only the editor grows or shrinks. The derived window minimum
                      sums these MinWidths, so at the minimum every pane sits at exactly its MinWidth
                      and none is clipped. The binders pane's minimum holds its New and Open buttons in
-                     the widest language (Russian, about 165 px) below its heading; LabelFitTests
-                     checks every header at the window minimum. -->
+                     the widest language (Russian, about 165 px) below its heading, and the
+                     attachments pane's gives a file name about 70 px beside its thumbnail and remove
+                     button (developer decision); LabelFitTests checks every header at the window
+                     minimum. -->
                 <ColumnDefinition Width="220" MinWidth="200"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="260" MinWidth="170"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*" MinWidth="320"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="260" MinWidth="170"/>
+                <ColumnDefinition Width="260" MinWidth="200"/>
             </Grid.ColumnDefinitions>
 
             <!-- Binders -->
@@ -247,10 +268,10 @@
                                                          Submitted="BinderTitle_Submitted" LostFocus="BinderTitle_LostFocus"
                                                          KeyDown="BinderTitle_KeyDown"/>
                                             </Panel>
-                                            <!-- Two lines, then one "…" (developer decision); the whole path is the
-                                                 tooltip. -->
-                                            <TextBlock x:Name="BinderPath" Text="{Binding Path}" FontSize="11" TextWrapping="Wrap"
-                                                       MaxLines="2" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Path}"
+                                            <!-- One line that keeps the file name and loses the middle of the
+                                                 folder; the open binder's row shows its whole path (styles above). -->
+                                            <TextBlock x:Name="BinderPath" Classes="binderPath" Text="{Binding Path}" FontSize="11"
+                                                       ToolTip.Tip="{Binding Path}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
                                         <!-- The row is where a missing file is reported: it is the narrowest owner
@@ -468,10 +489,9 @@
                                             </Panel>
                                         </Border>
                                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                            <!-- Two lines, then one "…"; the whole name is the tooltip and the
-                                                 accessible name, and Enter opens the file itself. -->
-                                            <TextBlock x:Name="AttachmentFileName" Text="{Binding FileName}" TextWrapping="Wrap"
-                                                       MaxLines="2" TextTrimming="CharacterEllipsis"
+                                            <!-- Two lines beside the thumbnail, then one "…"; the selected row shows
+                                                 the whole name (styles above). -->
+                                            <TextBlock x:Name="AttachmentFileName" Classes="attachmentName" Text="{Binding FileName}"
                                                        ToolTip.Tip="{Binding FileName}"/>
                                             <TextBlock Classes="attachmentDetails" Text="{Binding DetailsText}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
