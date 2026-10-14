@@ -174,6 +174,97 @@ public class LabelFitTests : WindowTest
         }
     }
 
+    public static TheoryData<string> LongestTags() => new() { "en", "de", "ru", "ja" };
+
+    // Long user values on every surface that shows one, at both widths: identifying text stays within
+    // its row at one or two lines, messages stay inside their height limit, and every pane keeps its
+    // controls (interface-styling-conventions, Labels).
+    [AvaloniaTheory]
+    [MemberData(nameof(LongestTags))]
+    public async Task long_values_keep_every_pane_in_shape(string tag)
+    {
+        using var speaking = Localizer.Speaking(tag);
+        using var populated = PopulatedMainWindow.Create();
+        var window = Show(populated.Window);
+        await populated.FillLongAsync();
+        var normalWidth = window.Width;
+        foreach (var width in new[] { window.MinWidth, normalWidth })
+        {
+            window.Width = width;
+            Dispatcher.UIThread.RunJobs();
+            AssertNothingClipped(window, window, tag, atLeast: 10);
+            AssertPaneHeadersKeepTheirButtons(window, tag);
+
+            foreach (var name in new[] { "BinderTitle", "NoteTitle" })
+            foreach (var text in window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == name && text.IsEffectivelyVisible))
+                Assert.Single(text.TextLayout.TextLines);
+            foreach (var name in new[] { "BinderPath", "AttachmentFileName" })
+            foreach (var text in window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == name && text.IsEffectivelyVisible))
+                Assert.True(text.TextLayout.TextLines.Count <= 2, $"{tag}: {text.Text}");
+
+            // Every row's controls stay inside its list, and the remove buttons stay reachable.
+            foreach (var list in window.GetVisualDescendants().OfType<ListBox>())
+            foreach (var control in list.GetVisualDescendants().OfType<Control>().Where(control => control.IsEffectivelyVisible && control is TextBlock or Button))
+            {
+                var right = control.TranslatePoint(new Point(control.Bounds.Width, 0), list)!.Value.X;
+                Assert.True(right <= list.Bounds.Width + Tolerance, $"{tag}: {control.GetType().Name} {(control as TextBlock)?.Text} ends at {right:0} in {list.Bounds.Width:0}");
+            }
+
+            // The title field keeps room to type in; its status and lock move below it before squeezing it.
+            var title = window.FindControl<TextBox>("TitleBox")!;
+            Assert.True(title.Bounds.Width >= title.MinWidth - Tolerance, $"{tag}: the title field is {title.Bounds.Width:0} px wide.");
+            var lockToggle = window.FindControl<Avalonia.Controls.Primitives.ToggleButton>("LockedToggle")!;
+            var editor = window.FindControl<Border>("EditorPane")!;
+            Assert.True(lockToggle.TranslatePoint(new Point(lockToggle.Bounds.Width, 0), editor)!.Value.X <= editor.Bounds.Width + Tolerance);
+
+            var result = window.FindControl<TextBlock>("AttachmentResultText")!;
+            Assert.True(result.IsEffectivelyVisible);
+            var viewport = result.FindAncestorOfType<ScrollViewer>()!;
+            Assert.True(viewport.Bounds.Height <= viewport.MaxHeight + Tolerance);
+
+            if (System.Environment.GetEnvironmentVariable("DAYNOTE_LAYOUT_EVIDENCE") is { Length: > 0 } directory)
+            {
+                System.IO.Directory.CreateDirectory(directory);
+                using var frame = window.CaptureRenderedFrame();
+                frame!.Save(System.IO.Path.Combine(directory, $"long-{tag}-{width:0}.png"), new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+            }
+        }
+    }
+
+    // The questions that quote a user's value keep it to one shortened mention and keep their actions.
+    [AvaloniaTheory]
+    [MemberData(nameof(LongestTags))]
+    public async Task questions_quoting_long_values_keep_their_actions(string tag)
+    {
+        using var speaking = Localizer.Speaking(tag);
+        var owner = Show(new Window());
+        var service = new DialogService(new NullLogger()) { Owner = owner };
+        var longName = string.Concat(Enumerable.Repeat("Ein-sehr-langer-Bindername-", 12));
+
+        async Task Check<T>(Task<T> asking, string answerTag, string file)
+        {
+            Dispatcher.UIThread.RunJobs();
+            var dialog = Assert.Single(owner.OwnedWindows);
+            AssertNothingClipped(dialog, dialog, tag, atLeast: 2);
+            var message = dialog.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text?.Contains("Ein-sehr") == true);
+            Assert.DoesNotContain(longName, message.Text!, System.StringComparison.Ordinal);
+            if (System.Environment.GetEnvironmentVariable("DAYNOTE_LAYOUT_EVIDENCE") is { Length: > 0 } directory)
+            {
+                System.IO.Directory.CreateDirectory(directory);
+                using var frame = dialog.CaptureRenderedFrame();
+                frame!.Save(System.IO.Path.Combine(directory, $"{file}-{tag}.png"), new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+            }
+
+            dialog.GetVisualDescendants().OfType<Button>().First(button => Equals(button.Tag, answerTag))
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await asking;
+        }
+
+        await Check(service.AskExternalChangeAsync(QuotedValue.Name(longName)), "keep", "outside-change");
+        await Check(service.AskQuitWithUnsavedBinderAsync(QuotedValue.Name(longName)), "cancel", "quit");
+        await Check(service.ConfirmAsync(Message.Of("note.deleteTitle"), Message.Of("note.deleteNamed", ("title", QuotedValue.Name(longName))), "common.delete", destructive: true), "cancel", "delete");
+    }
+
     [AvaloniaTheory]
     [MemberData(nameof(Tags))]
     public async Task the_save_and_attachment_questions_keep_their_actions_visible(string tag)

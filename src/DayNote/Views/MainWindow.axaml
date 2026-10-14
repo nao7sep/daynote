@@ -358,15 +358,20 @@
                              editing field, not the note as published, so it keeps the interface's own
                              size. Locking a note locks its content only; the status picker stays enabled.
                              All three stand at the control height. -->
-                        <Grid x:Name="EditorHeader" DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="8,8,8,6">
-                            <ctl:ComposingTextBox x:Name="TitleBox"
+                        <!-- The title takes the room its status and lock leave; when that would be under 160 DIP, as
+                             at the narrowest window in a language with a long Lock label, they move
+                             below it instead of squeezing it to a few letters. -->
+                        <views:LeadingTrailingRow x:Name="EditorHeader" DockPanel.Dock="Top" FillLeading="True"
+                                                  Spacing="8" LineSpacing="6" Margin="8,8,8,6">
+                            <ctl:ComposingTextBox x:Name="TitleBox" MinWidth="160"
                                                   Text="{Binding Editor.Title}" i18n:Localized.PlaceholderText="editor.titlePlaceholder"
                                                   AcceptsReturn="False" SubmitOnEnter="True"
                                                   IsReadOnly="{Binding !Editor.IsEditable}"
                                                   Submitted="Title_Submitted" LostFocus="Title_LostFocus"/>
                             <!-- Each status shows as catalogue text, never the enum's own name, and keeps
                                  its workflow order in every language. -->
-                            <ComboBox x:Name="StatusBox" Grid.Column="1" MinWidth="130" VerticalAlignment="Center"
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ComboBox x:Name="StatusBox" MinWidth="130" VerticalAlignment="Center"
                                       ItemsSource="{Binding Editor.StatusOptions}"
                                       SelectedItem="{Binding Editor.Status}"
                                       i18n:Localized.ToolTip="editor.status"
@@ -382,7 +387,7 @@
                                  finishes a note, and a plain "Locked" once it is done. Each label keeps
                                  its own width; the accessible name stays "Lock", and the toggle state
                                  says whether it is on. -->
-                            <ToggleButton x:Name="LockedToggle" Grid.Column="2" Classes="lock"
+                            <ToggleButton x:Name="LockedToggle" Classes="lock"
                                           IsChecked="{Binding Editor.Locked}"
                                           i18n:Localized.AutomationName="editor.lock"
                                           i18n:Localized.ToolTip="editor.lockedHint">
@@ -391,7 +396,8 @@
                                     <TextBlock i18n:Localized.Text="editor.locked" IsVisible="{Binding Editor.Locked}"/>
                                 </Panel>
                             </ToggleButton>
-                        </Grid>
+                            </StackPanel>
+                        </views:LeadingTrailingRow>
                         <ctl:ComposingTextBox x:Name="BodyBox" Margin="8,0,8,8"
                                  Text="{Binding Editor.Body}"
                                  IsReadOnly="{Binding !Editor.IsEditable}"

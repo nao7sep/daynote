@@ -17,7 +17,10 @@ internal sealed class LeadingTrailingRow : Panel
     public static readonly StyledProperty<double> LineSpacingProperty =
         AvaloniaProperty.Register<LeadingTrailingRow, double>(nameof(LineSpacing));
 
-    static LeadingTrailingRow() => AffectsMeasure<LeadingTrailingRow>(SpacingProperty, LineSpacingProperty);
+    public static readonly StyledProperty<bool> FillLeadingProperty =
+        AvaloniaProperty.Register<LeadingTrailingRow, bool>(nameof(FillLeading));
+
+    static LeadingTrailingRow() => AffectsMeasure<LeadingTrailingRow>(SpacingProperty, LineSpacingProperty, FillLeadingProperty);
 
     /// <summary>For markup, whose first two children are the leading and trailing controls.</summary>
     public LeadingTrailingRow()
@@ -44,18 +47,41 @@ internal sealed class LeadingTrailingRow : Panel
         set => SetValue(LineSpacingProperty, value);
     }
 
+    /// <summary>
+    /// Whether the leading control is a field that takes the room left on its line, as the note's title
+    /// does beside its status and lock. Its <see cref="Layoutable.MinWidth"/>, not its text, decides
+    /// whether the two share a line, and below that the trailing control moves down and the field
+    /// spans the whole width.
+    /// </summary>
+    public bool FillLeading
+    {
+        get => GetValue(FillLeadingProperty);
+        set => SetValue(FillLeadingProperty, value);
+    }
+
     private Control Leading => Children[0];
 
     private Control Trailing => Children[1];
 
     private bool FitsOnOneLine(double width) =>
-        Leading.DesiredSize.Width + Spacing + Trailing.DesiredSize.Width <= width;
+        (FillLeading ? Leading.MinWidth : Leading.DesiredSize.Width) + Spacing + Trailing.DesiredSize.Width <= width;
 
     protected override Size MeasureOverride(Size availableSize)
     {
         var unbounded = new Size(double.PositiveInfinity, availableSize.Height);
-        Leading.Measure(unbounded);
         Trailing.Measure(unbounded);
+        if (FillLeading)
+        {
+            var fits = FitsOnOneLine(availableSize.Width);
+            var room = fits ? availableSize.Width - Spacing - Trailing.DesiredSize.Width : availableSize.Width;
+            Leading.Measure(new Size(double.IsInfinity(room) ? Leading.MinWidth : room, availableSize.Height));
+            var leadingWidth = double.IsInfinity(room) ? Leading.MinWidth : room;
+            return fits
+                ? new Size(leadingWidth + Spacing + Trailing.DesiredSize.Width, Math.Max(Leading.DesiredSize.Height, Trailing.DesiredSize.Height))
+                : new Size(Math.Max(leadingWidth, Trailing.DesiredSize.Width), Leading.DesiredSize.Height + LineSpacing + Trailing.DesiredSize.Height);
+        }
+
+        Leading.Measure(unbounded);
 
         return FitsOnOneLine(availableSize.Width)
             ? new Size(
@@ -70,6 +96,13 @@ internal sealed class LeadingTrailingRow : Panel
     {
         var leading = Leading.DesiredSize;
         var trailing = Trailing.DesiredSize;
+        if (FillLeading)
+        {
+            leading = new Size(
+                FitsOnOneLine(finalSize.Width) ? Math.Max(0, finalSize.Width - Spacing - trailing.Width) : finalSize.Width,
+                leading.Height);
+        }
+
         if (FitsOnOneLine(finalSize.Width))
         {
             var height = Math.Max(leading.Height, trailing.Height);

@@ -101,6 +101,43 @@ internal sealed class PopulatedMainWindow : IDisposable
         Dispatcher.UIThread.RunJobs();
     }
 
+    /// <summary>
+    /// Every surface that holds a user's value, filled with long ones: a long binder title in a deep
+    /// folder, a long note title, a long untitled preview, several long attachment names, a message
+    /// naming several files and a long text style. The text-fit rules are read against this.
+    /// </summary>
+    internal async Task FillLongAsync()
+    {
+        var vm = ViewModel;
+        var deep = Path.Combine(Home, "an", "unusually", "deep", "folder", "structure", "for", "binders", "kept", "over", "years");
+        Directory.CreateDirectory(deep);
+        Dialogs.BinderToCreate = Path.Combine(deep, "a-binder-file-with-a-rather-long-descriptive-name-for-testing.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var row = vm.Binders.Single(binder => binder.IsCurrent);
+        vm.ApplyBinderRename(row, "A binder title long enough to need more room than the pane can give it");
+
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "An untitled note whose body runs on well past what the notes list can show on one line of text.";
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Title = "A note title that is far longer than any notes pane is wide, so it has to give way somehow";
+        vm.Editor.Body = "Some words to count.";
+
+        var files = new List<string>();
+        foreach (var stem in new[] { "quarterly-report-for-the-regional-office-final-revised", "photograph-taken-at-the-harbour-at-dawn", "scanned-receipt-from-the-hardware-store", "meeting-minutes-with-every-attendee-listed" })
+        {
+            var file = Path.Combine(Home, stem + ".pdf");
+            File.WriteAllText(file, stem);
+            files.Add(file);
+        }
+
+        await vm.AddDroppedFiles(files);
+        // Adding them again names several and counts the rest.
+        await vm.AddDroppedFiles(files);
+
+        vm.CycleTextStyleCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+    }
+
     public void Dispose()
     {
         // Quit through the app's own path before Home is deleted. Shutdown writes state.json under
