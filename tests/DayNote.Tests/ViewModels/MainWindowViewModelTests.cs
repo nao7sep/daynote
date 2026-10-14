@@ -1243,6 +1243,109 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task The_filters_match_composed_and_decomposed_forms_and_the_label_an_untitled_note_shows()
+    {
+        var vm = await OpenNewBinderAsync();
+        foreach (var title in new[] { "Café", "ノート", "がっこう" })
+        {
+            vm.NewNoteCommand.Execute(null);
+            vm.Editor.Title = title;
+        }
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Body = "念頭に置くこと";
+
+        string[] Shown() => vm.Notes.Select(n => n.Title).ToArray();
+        vm.NotesFilter = "cafe\u0301"; // e + combining acute
+        Assert.Equal(["Café"], Shown());
+        vm.NotesFilter = "\u304B\u3099"; // か + combining voiced mark
+        Assert.Equal(["がっこう"], Shown());
+        vm.NotesFilter = "のーと"; // hiragana is not katakana
+        Assert.Empty(Shown());
+        vm.NotesFilter = "念頭";
+        Assert.Equal(["念頭に置くこと"], Shown());
+
+        // A note is found by its body and its attachments' file names too.
+        vm.NotesFilter = string.Empty;
+        vm.SelectedNote = vm.Notes.Single(n => n.Note.Title == "ノート");
+        vm.Editor.Body = "本文だけにある語";
+        var receipt = Path.Combine(_home, "領収書.pdf");
+        File.WriteAllText(receipt, "receipt");
+        await AddDroppedFiles(vm, [receipt]);
+        vm.NotesFilter = "本文だけ";
+        Assert.Equal(["ノート"], Shown());
+        vm.NotesFilter = "領収";
+        Assert.Equal(["ノート"], Shown());
+        vm.NotesFilter = "語領"; // no match across the body and a file name
+        Assert.Empty(Shown());
+
+        // A binder whose file name stores the decomposed form, as macOS file names often do.
+        vm.NotesFilter = string.Empty;
+        _dialogs.BinderToCreate = Path.Combine(_home, "Cafe\u0301.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.BindersFilter = "café";
+        Assert.Single(vm.Binders);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_binder_filter_that_hides_the_open_binder_opens_the_next_match_or_closes_it()
+    {
+        var vm = NewViewModel();
+        foreach (var name in new[] { "alpha", "beta", "gamma" })
+        {
+            _dialogs.BinderToCreate = Path.Combine(_home, name + ".daynote");
+            await vm.NewBinderCommand.ExecuteAsync(null);
+            vm.NewNoteCommand.Execute(null);
+            vm.Editor.Title = "in " + name;
+        }
+
+        var order = vm.Binders.Select(row => row.Name).ToArray();
+        await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Name == order[0]));
+        vm.BindersFilter = order[1];
+        await PumpUntilAsync(() => vm.Binders.Count == 1 && vm.Binders[0].IsCurrent);
+        Assert.Equal("in " + order[1], Assert.Single(vm.Notes).Note.Title);
+        Assert.Same(vm.Binders[0], vm.SelectedBinder);
+
+        // Nothing matches: the binder closes, and every pane is blank.
+        vm.BindersFilter = "no such binder";
+        await PumpUntilAsync(() => !vm.HasBinder);
+        Assert.Empty(vm.Binders);
+        Assert.Empty(vm.Notes);
+        Assert.False(vm.Editor.HasNote);
+        Assert.Empty(vm.Attachments);
+        Assert.Null(vm.SelectedBinder);
+
+        // Closing for the filter forgets nothing.
+        vm.BindersFilter = string.Empty;
+        Assert.Equal(order, vm.Binders.Select(row => row.Name));
+        Assert.False(vm.HasBinder);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_binder_filter_close_refused_by_a_failed_save_keeps_the_open_binder_listed()
+    {
+        var store = new GatedBinderStore();
+        var vm = NewViewModel(binderStore: store);
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        vm.Editor.Body = "unsaved";
+        store.SaveFailure = new IOException("No space left on device");
+
+        vm.BindersFilter = "no such binder";
+        await PumpUntilAsync(() => vm.IsSaveStateError);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(vm.HasBinder);
+        Assert.Equal("unsaved", vm.Editor.Body);
+        Assert.True(Assert.Single(vm.Binders).IsCurrent);
+        store.SaveFailure = null;
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task An_edit_survives_switching_to_another_binder_and_back()
     {
         var vm = await OpenNewBinderAsync();

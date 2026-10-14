@@ -34,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The notes filter no longer keeps showing the selected note when its title does not match. The selection moves to the next matching note, or the previous one, and the editor follows.
+- The notes filter no longer keeps showing the selected note when it does not match. The selection moves to the next matching note, or the previous one, and the editor follows.
+- The binders filter no longer keeps showing the open binder when it does not match. The next matching binder opens, or the previous one; when no binder matches, the open one closes and the notes, editor and attachments are blank. It stays in the list.
 - Hovering a menu command no longer redirects keyboard navigation. The keyboard target stays distinct from hover, and clicking still runs the clicked command.
 - An OS launch that declines to open an attachment or About link now shows the existing failure message until a successful retry.
 - Storage-folder aliases share one running instance, preventing two DayNote processes from writing the same settings and history.
@@ -61,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Both built-in text styles use a 15-point size, 1.5 line spacing and 15-pixel padding, and a new style starts from the same values.
 - The status bar's texts share one baseline, so counts in Latin digits no longer sit higher than dates in Japanese, Chinese or Korean.
 - The toolbar's menu button shows only its icon until the pointer is over it or its menu is open.
+- The notes filter searches each note's title, text and attachment file names, not only its title.
+- Filtering ignores how an accented or voiced character is encoded: é typed as one character matches é stored as e plus an accent, as macOS file names often store it, and the same holds for が. Hiragana and katakana, and full-width and half-width characters, still count as different.
 - The Keyboard Shortcuts list balances its two columns by their height, headings included, instead of by their row counts.
 
 - The failed-save quit dialog is wide enough for Cancel, Retry and Quit anyway in every interface language.

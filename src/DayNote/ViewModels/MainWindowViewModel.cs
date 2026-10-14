@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -2367,15 +2368,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // before its row goes: the next note, else the previous one, else none
         // (composite-control-conventions). Keeping it listed showed a note that does not match. Edits
         // live in the binder, so moving on loses none.
-        if (SelectedNote is { } selected && !Matches(NotesFilter, selected.Note.Title))
+        if (SelectedNote is { } selected && !Matches(NotesFilter, NoteFilterText(selected)))
         {
             var position = _allNotes.IndexOf(selected);
-            SelectedNote = _allNotes.Skip(position + 1).FirstOrDefault(n => Matches(NotesFilter, n.Note.Title))
-                ?? _allNotes.Take(Math.Max(position, 0)).LastOrDefault(n => Matches(NotesFilter, n.Note.Title));
+            SelectedNote = _allNotes.Skip(position + 1).FirstOrDefault(n => Matches(NotesFilter, NoteFilterText(n)))
+                ?? _allNotes.Take(Math.Max(position, 0)).LastOrDefault(n => Matches(NotesFilter, NoteFilterText(n)));
         }
 
         var selectedId = SelectedNote?.Note.Id;
-        FilterInto(_allNotes, Notes, NotesFilter, n => n.Note.Title);
+        FilterInto(_allNotes, Notes, NotesFilter, NoteFilterText);
         if (selectedId is not null)
         {
             SelectedNote = Notes.FirstOrDefault(n => n.Note.Id == selectedId);
@@ -2472,7 +2473,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             foreach (var binder in _allBinders)
                 binder.IsCurrent = _current is not null && SameBinderPath(binder.Path, _current.Path);
 
-            FilterInto(_allBinders, Binders, BindersFilter, r => r.Title + " " + r.Name, r => r.IsCurrent);
+            FilterInto(_allBinders, Binders, BindersFilter, BinderFilterText, r => r.IsCurrent);
             SelectedBinder = _current is null
                 ? null
                 : Binders.FirstOrDefault(r => SameBinderPath(r.Path, _current.Path));
@@ -2621,9 +2622,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _log.Info("Reordered binders", new { count = order.Count });
     }
 
-    /// <summary>Whether a list item's text passes the filter: a blank filter passes everything.</summary>
+    /// <summary>
+    /// Whether a list item's text passes the filter: a blank filter passes everything. Case is ignored,
+    /// and a character written precomposed or as a base with combining marks matches either way (é and
+    /// e + U+0301, が and か + U+3099), as file names on macOS often store the latter. Other differences
+    /// stay: hiragana is not katakana and full width is not half width (developer decision).
+    /// </summary>
     private static bool Matches(string filter, string text) =>
-        string.IsNullOrWhiteSpace(filter) || text.Contains(filter, StringComparison.OrdinalIgnoreCase);
+        string.IsNullOrWhiteSpace(filter)
+        || text.Normalize(NormalizationForm.FormC).Contains(filter.Normalize(NormalizationForm.FormC), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Reconciles <paramref name="target"/> to the subset of <paramref name="source"/> that matches the
@@ -2859,6 +2866,54 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         ApplyBinderFilter();
         OnPropertyChanged(nameof(BindersEmptyStateText));
+        FollowBinderFilter();
+    }
+
+    private static string BinderFilterText(BinderListItemViewModel row) => row.Title + " " + row.Name;
+
+    // A note is found by everything it holds: its title, its body and its attachments' file names
+    // (developer decision). Line breaks join them, which a one-line filter cannot contain, so no match
+    // spans two of them.
+    private static string NoteFilterText(NoteListItemViewModel item) =>
+        string.Join('\n', [item.Note.Title, item.Note.Body, .. item.Note.Attachments]);
+
+    /// <summary>
+    /// A filter that hides the open binder moves on from it, as the notes filter does from a hidden note:
+    /// the next matching binder opens, else the previous one, and with no match the binder closes, so the
+    /// notes, editor and attachments go blank rather than show a binder the list no longer does (developer
+    /// decision). Closing here does not forget the binder. The open binder stays listed until the switch
+    /// or close completes, so one refused by a failed save keeps it listed and selected. Only a change to
+    /// the filter moves on; a rename or rebuild never switches binders.
+    /// </summary>
+    private void FollowBinderFilter()
+    {
+        if (!IsReady || _shuttingDown || _current is null
+            || _allBinders.FirstOrDefault(row => row.IsCurrent) is not { } open
+            || Matches(BindersFilter, BinderFilterText(open)))
+        {
+            return;
+        }
+
+        var position = _allBinders.IndexOf(open);
+        var next = _allBinders.Skip(position + 1).FirstOrDefault(row => Matches(BindersFilter, BinderFilterText(row)))
+            ?? _allBinders.Take(position).LastOrDefault(row => Matches(BindersFilter, BinderFilterText(row)));
+        if (next is not null)
+        {
+            SelectedBinder = next; // opens it
+            return;
+        }
+
+        _ = CloseForFilterAsync(++_openGeneration);
+    }
+
+    private async Task CloseForFilterAsync(long generation)
+    {
+        if (await CloseCurrentAsync(clearSelection: true, requestGeneration: generation)
+            && !_shuttingDown && generation == _openGeneration)
+        {
+            ApplyBinderFilter();
+            OnPropertyChanged(nameof(BindersEmptyStateText));
+        }
     }
 
     partial void OnHasBinderChanged(bool value) => OnPropertyChanged(nameof(NotesEmptyStateText));
