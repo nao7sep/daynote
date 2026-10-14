@@ -203,7 +203,7 @@ public sealed class ListReorder<T>
             _list,
             e.Pointer,
             topLevel,
-            point.Position,
+            point.Position - DragImageOffset,
             e.Timestamp,
             point.Properties,
             e.KeyModifiers);
@@ -228,6 +228,12 @@ public sealed class ListReorder<T>
             Finish(item, commit: result == DragDropEffects.Move);
         }
     }
+
+    // On macOS, Avalonia (12.1.4) draws its generic 32-point document image with the image's top-left
+    // corner at the trigger position, so the icon hung below and to the right of the pointer. Moving
+    // the position up and left by half the image centres it on the pointer. The position serves only
+    // as that image's origin; Windows draws no drag image from it.
+    private static readonly Vector DragImageOffset = OperatingSystem.IsMacOS() ? new Vector(16, 16) : default;
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
