@@ -143,8 +143,12 @@ public class LabelFitTests : WindowTest
                 var origin = path.TranslatePoint(default, bindersList)!.Value;
                 Assert.True(origin.X + path.Bounds.Width <= bindersList.Bounds.Width + Tolerance);
             }
+            // The text style names a font the user typed, so it alone trims, at one line and its width.
+            var style = window.FindControl<TextBlock>("TextStyleStatus")!;
+            Assert.Equal(TextTrimming.CharacterEllipsis, style.TextTrimming);
+            Assert.True(style.Bounds.Width <= style.MaxWidth + Tolerance);
             foreach (var text in metadata.GetVisualDescendants().OfType<TextBlock>().Concat(details)
-                         .Where(text => text.IsEffectivelyVisible && !string.IsNullOrEmpty(text.Text)))
+                         .Where(text => text.IsEffectivelyVisible && !string.IsNullOrEmpty(text.Text) && text != style))
             {
                 Assert.Equal(TextTrimming.None, text.TextTrimming);
                 var surface = details.Contains(text) ? (Visual)window.FindControl<ListBox>("AttachList")! : metadata;

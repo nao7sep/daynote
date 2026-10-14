@@ -63,8 +63,9 @@
         <Border Grid.Column="0" Classes="pane">
             <DockPanel>
                 <!-- Every filter is off ("All") when the window opens and applies on change; the
-                     search applies shortly after the last keystroke. A filter entry wraps rather than
-                     trims, so a long launch label stays readable at the minimum width. -->
+                     search applies shortly after the last keystroke. A filter entry is one line, as a
+                     picker's items are, and trims where the pane is narrower than it; launch labels are
+                     dates and levels are words, so that happens only at the narrowest widths. -->
                 <Border x:Name="FiltersBand" DockPanel.Dock="Top" Classes="paneHeader">
                     <StackPanel Spacing="8">
                         <ctl:ComposingTextBox x:Name="SearchBox" Text="{Binding SearchText}"
@@ -75,7 +76,7 @@
                                   i18n:Localized.AutomationName="records.launch">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:RecordFilterOption">
-                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis"/>
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
@@ -84,7 +85,7 @@
                                   i18n:Localized.AutomationName="records.level">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:RecordFilterOption">
-                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis"/>
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>

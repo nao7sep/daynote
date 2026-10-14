@@ -861,7 +861,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var note = target.Note;
         var question = string.IsNullOrWhiteSpace(note.Title)
             ? Message.Of("note.deleteUntitled")
-            : Message.Of("note.deleteNamed", ("title", QuotedTitle(note.Title)));
+            : Message.Of("note.deleteNamed", ("title", QuotedValue.Name(note.Title)));
         var attachmentCount = note.Attachments.Count;
         var message = attachmentCount == 0
             ? question
@@ -1546,16 +1546,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    // A question names a note by quoting its title, which only needs to be recognizable: a long
-    // title would bury the question, and an enormous unbroken one freezes the wrapping text block
-    // laying it out. The quoted copy is cut past this length; the title stays whole in its field.
-    private const int QuotedTitleLimit = 100;
-
-    private static string QuotedTitle(string value)
-    {
-        var (shown, truncated) = TextCleanup.Truncate(value, QuotedTitleLimit);
-        return truncated ? shown + "…" : value;
-    }
 
     // The first few names, joined through the catalogue's list entry, and a count of the rest. The
     // answer is a value for a placeholder: a file name as it is, or a message holding several.
@@ -1575,8 +1565,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     private static object JoinNames(IReadOnlyList<string> names) => names.Count == 1
-        ? names[0]
-        : Message.Of("files.join", ("first", names[0]), ("rest", JoinNames(names.Skip(1).ToArray())));
+        ? QuotedValue.Name(names[0])
+        : Message.Of("files.join", ("first", QuotedValue.Name(names[0])), ("rest", JoinNames(names.Skip(1).ToArray())));
 
     [RelayCommand]
     private async Task RemoveAttachment(AttachmentItemViewModel item)
@@ -1598,7 +1588,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         if (!await _dialogs.ConfirmAsync(
                 Message.Of("attachments.removeTitle"),
-                Message.Of("attachments.removeMessage", ("name", item.FileName)),
+                Message.Of("attachments.removeMessage", ("name", QuotedValue.Name(item.FileName))),
                 "common.remove",
                 destructive: true))
         {

@@ -22,19 +22,19 @@ public static class FailurePresentation
         NewerFormatException => "failure.startupSettingsNewer",
         InvalidDataException => "failure.startupSettingsMalformed",
         _ => "failure.startupSettings",
-    }, ("path", configFile));
+    }, ("path", QuotedValue.Path(configFile)));
 
     public static Message OpenBinder(Exception error, string binderTitle) => error switch
     {
         NewerFormatException => NewerBinder(binderTitle),
-        BinderFormatException => Message.Of("failure.openBinderFormat", ("name", binderTitle)),
+        BinderFormatException => Message.Of("failure.openBinderFormat", ("name", QuotedValue.Name(binderTitle))),
         UnauthorizedAccessException => Message.Of("failure.openBinderPermission"),
         FileNotFoundException or DirectoryNotFoundException => Message.Of("failure.openBinderGone"),
         _ => Message.Of("failure.openBinder"),
     };
 
     /// <summary>A binder written by a newer DayNote, which this build neither opens nor writes.</summary>
-    public static Message NewerBinder(string binderTitle) => Message.Of("failure.openBinderNewer", ("name", binderTitle));
+    public static Message NewerBinder(string binderTitle) => Message.Of("failure.openBinderNewer", ("name", QuotedValue.Name(binderTitle)));
 
     public static Message SaveBinder(Exception error) => Message.Of(error switch
     {

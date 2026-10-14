@@ -146,7 +146,10 @@
                 </views:BaselineWrapPanel>
                 <!-- The applied text style, briefly: standing state belongs in the strip that is
                      always there, not in a card over the workspace. -->
-                <TextBlock Text="{Binding TextStyleStatusText}" FontSize="12"
+                <!-- It names a font the user typed, so it takes one line up to a width and then trims;
+                     the whole value is in Settings. -->
+                <TextBlock x:Name="TextStyleStatus" Text="{Binding TextStyleStatusText}" FontSize="12"
+                           MaxWidth="240" TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            AutomationProperties.LiveSetting="Polite"
                            IsVisible="{Binding TextStyleStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
@@ -423,8 +426,12 @@
                             AutomationProperties.Name="{Binding AttachmentResult.AccessibleMessage}"
                             AutomationProperties.LiveSetting="{Binding AttachmentResult.LiveSetting}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBlock x:Name="AttachmentResultText" Text="{Binding AttachmentResult.Text}" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <!-- A message is read whole: it wraps in full and scrolls past a height limit. -->
+                            <ScrollViewer MaxHeight="{StaticResource ResultTextMaxHeight}"
+                                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                                <TextBlock x:Name="AttachmentResultText" Text="{Binding AttachmentResult.Text}" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            </ScrollViewer>
                             <Button Grid.Column="1" Classes="resultClose" VerticalAlignment="Top"
                                     views:FirstLine.Text="{Binding #AttachmentResultText}"
                                     Click="DismissAttachmentResult_Click" i18n:Localized.ToolTip="common.close"
@@ -481,8 +488,11 @@
                                             IsVisible="{Binding HasResult}"
                                             AutomationProperties.Name="{Binding Result.AccessibleMessage}"
                                             AutomationProperties.LiveSetting="{Binding Result.LiveSetting}">
-                                        <TextBlock Text="{Binding Result.Text}" TextWrapping="Wrap"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        <ScrollViewer MaxHeight="{StaticResource ResultTextMaxHeight}"
+                                                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                                            <TextBlock Text="{Binding Result.Text}" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        </ScrollViewer>
                                     </Border>
                                     </StackPanel>
                                 </DataTemplate>

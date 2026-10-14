@@ -111,7 +111,7 @@ public sealed class DialogService : IDialogService
     {
         var dialog = new MessageDialog(
             Message.Of("binder.changedTitle"),
-            Message.Of("binder.changedMessage", ("name", binderName)),
+            Message.Of("binder.changedMessage", ("name", QuotedValue.Name(binderName))),
             new[]
             {
                 new DialogButton("binder.keepMine", "keep"),
@@ -146,7 +146,7 @@ public sealed class DialogService : IDialogService
     {
         var dialog = new MessageDialog(
             Message.Of("quit.unsavedTitle"),
-            Message.Of("quit.unsavedMessage", ("name", binderName)),
+            Message.Of("quit.unsavedMessage", ("name", QuotedValue.Name(binderName))),
             new[]
             {
                 // Cancel keeps the app open with the binder and its edits, so it is the labelled way out

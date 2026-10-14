@@ -1346,6 +1346,24 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task An_attachment_message_shortens_each_long_file_name_it_quotes()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var longName = "Start-" + new string('x', 200) + ".txt";
+        var file = Path.Combine(_home, longName);
+        File.WriteAllText(file, "same");
+        await AddDroppedFiles(vm, [file]);
+        await AddDroppedFiles(vm, [file]); // already attached
+
+        var text = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult).Text;
+        Assert.Contains("Start-", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(longName, text, StringComparison.Ordinal);
+        Assert.Contains("…", text, StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task An_edit_survives_switching_to_another_binder_and_back()
     {
         var vm = await OpenNewBinderAsync();
