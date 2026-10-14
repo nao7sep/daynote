@@ -135,12 +135,19 @@ public class LabelFitTests : WindowTest
             }
             var paths = window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.Name == "BinderPath").ToArray();
             Assert.NotEmpty(paths);
-            foreach (var text in metadata.GetVisualDescendants().OfType<TextBlock>().Concat(details).Concat(paths)
+            // A binder path takes two lines at most and then trims, inside its row.
+            var bindersList = window.FindControl<ListBox>("BindersList")!;
+            foreach (var path in paths)
+            {
+                Assert.True(path.TextLayout.TextLines.Count <= 2, $"{tag}: {path.Text} takes {path.TextLayout.TextLines.Count} lines");
+                var origin = path.TranslatePoint(default, bindersList)!.Value;
+                Assert.True(origin.X + path.Bounds.Width <= bindersList.Bounds.Width + Tolerance);
+            }
+            foreach (var text in metadata.GetVisualDescendants().OfType<TextBlock>().Concat(details)
                          .Where(text => text.IsEffectivelyVisible && !string.IsNullOrEmpty(text.Text)))
             {
                 Assert.Equal(TextTrimming.None, text.TextTrimming);
-                var surface = text.Name == "BinderPath" ? (Visual)window.FindControl<ListBox>("BindersList")!
-                    : details.Contains(text) ? window.FindControl<ListBox>("AttachList")! : metadata;
+                var surface = details.Contains(text) ? (Visual)window.FindControl<ListBox>("AttachList")! : metadata;
                 var start = text.TranslatePoint(default, surface)!.Value;
                 Assert.True(start.X >= -Tolerance && start.Y >= -Tolerance);
                 Assert.True(start.X + text.Bounds.Width <= surface.Bounds.Width + Tolerance);

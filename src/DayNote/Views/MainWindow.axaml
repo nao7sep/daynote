@@ -244,8 +244,10 @@
                                                          Submitted="BinderTitle_Submitted" LostFocus="BinderTitle_LostFocus"
                                                          KeyDown="BinderTitle_KeyDown"/>
                                             </Panel>
-                                            <!-- The whole path wraps, so it is readable at any pane width. -->
+                                            <!-- Two lines, then one "…" (developer decision); the whole path is the
+                                                 tooltip. -->
                                             <TextBlock x:Name="BinderPath" Text="{Binding Path}" FontSize="11" TextWrapping="Wrap"
+                                                       MaxLines="2" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Path}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
                                         <!-- The row is where a missing file is reported: it is the narrowest owner
