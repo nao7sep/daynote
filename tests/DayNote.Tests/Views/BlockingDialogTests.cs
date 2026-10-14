@@ -57,6 +57,21 @@ public sealed class BlockingDialogTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_dialog_takes_focus_over_its_owner()
+    {
+        var (service, owner) = Service();
+        var confirming = service.ConfirmAsync(DayNote.I18n.Message.Of("note.deleteTitle"), DayNote.I18n.Message.Of("note.deleteUntitled"), "common.delete", destructive: true);
+        var dialog = OpenDialog(owner);
+
+        // Modal over its owner, which keeps it above the window it came from, and activated.
+        Assert.True(dialog.IsActive);
+        Assert.Same(owner, dialog.Owner);
+
+        ButtonTagged(dialog, "cancel").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await confirming;
+    }
+
+    [AvaloniaFact]
     public async Task Cmd_or_Ctrl_W_closes_a_dialog_as_its_close_button_does()
     {
         var (service, owner) = Service();

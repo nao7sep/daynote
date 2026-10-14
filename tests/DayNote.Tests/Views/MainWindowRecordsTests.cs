@@ -35,6 +35,33 @@ public sealed class MainWindowRecordsTests : WindowTest
         Assert.True(records.IsVisible);
     }
 
+    // A window the user opens takes focus above the one it came from, and opening it again while it
+    // sits behind or minimized brings it back with focus (window-conventions, activation).
+    [AvaloniaFact]
+    public void The_records_window_takes_focus_when_opened_and_when_opened_again()
+    {
+        using var populated = PopulatedMainWindow.Empty();
+        var main = Show(populated.Window);
+        main.RecordsSource = new FakeRecordsSource();
+
+        main.OpenRecordsWindow();
+        var records = Track(main.RecordsWindow!);
+        Dispatcher.UIThread.RunJobs();
+        // The headless platform never takes activation away from a window, so what is checked is that
+        // the records window is activated each time, not that the main window loses it.
+        Assert.True(records.IsActive);
+
+        var activations = 0;
+        records.Activated += (_, _) => activations++;
+        main.Activate();
+        records.WindowState = Avalonia.Controls.WindowState.Minimized;
+        Dispatcher.UIThread.RunJobs();
+        main.OpenRecordsWindow();
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(activations > 0);
+        Assert.Equal(Avalonia.Controls.WindowState.Normal, records.WindowState);
+    }
+
     [AvaloniaFact]
     public void Quitting_closes_the_records_window_first_and_keeps_its_placement()
     {
