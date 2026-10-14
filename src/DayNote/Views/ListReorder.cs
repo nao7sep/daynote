@@ -20,6 +20,9 @@ public static class ListReorder
     /// Preserves ordinary row selection until the pointer moves far enough to express drag intent.
     /// Avalonia owns all transport behavior after this application-level decision.
     /// </summary>
+    /// <summary>How far a drag's trigger position moves up and left to centre macOS's drag image.</summary>
+    internal static Vector DragImageOffsetFor(bool macOS) => macOS ? new Vector(16, 16) : default;
+
     public static bool ExceedsDragThreshold(Point origin, Point current, double threshold = 3) =>
         Math.Abs(current.X - origin.X) >= threshold || Math.Abs(current.Y - origin.Y) >= threshold;
 
@@ -233,7 +236,7 @@ public sealed class ListReorder<T>
     // corner at the trigger position, so the icon hung below and to the right of the pointer. Moving
     // the position up and left by half the image centres it on the pointer. The position serves only
     // as that image's origin; Windows draws no drag image from it.
-    private static readonly Vector DragImageOffset = OperatingSystem.IsMacOS() ? new Vector(16, 16) : default;
+    private static readonly Vector DragImageOffset = ListReorder.DragImageOffsetFor(OperatingSystem.IsMacOS());
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {

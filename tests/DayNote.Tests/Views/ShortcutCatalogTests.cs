@@ -81,4 +81,11 @@ public sealed class ShortcutCatalogTests : WindowTest
         Assert.Null(item.Gesture); // list-scoped, not dispatched as a window accelerator
         Assert.Null(item.Action);
     }
+
+    [Fact]
+    public void Rename_is_Enter_where_the_command_key_is_Cmd_and_F2_elsewhere()
+    {
+        Assert.Equal(Key.Enter, ShortcutCatalog.RenameKeyFor(KeyModifiers.Meta));
+        Assert.Equal(Key.F2, ShortcutCatalog.RenameKeyFor(KeyModifiers.Control));
+    }
 }

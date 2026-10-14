@@ -42,4 +42,11 @@ public sealed class ListReorderTests
         Assert.Equal("Cmd+Shift+Up/Down", ListReorder.KeyboardLabel("Cmd"));
         Assert.Equal("Ctrl+Shift+Up/Down", ListReorder.KeyboardLabel("Ctrl"));
     }
+
+    [Fact]
+    public void A_drag_starts_half_the_macOS_drag_image_up_and_left_and_unmoved_elsewhere()
+    {
+        Assert.Equal(new Vector(16, 16), ListReorder.DragImageOffsetFor(macOS: true));
+        Assert.Equal(default, ListReorder.DragImageOffsetFor(macOS: false));
+    }
 }

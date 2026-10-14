@@ -1958,8 +1958,8 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task Known_directory_alias_rows_keep_their_own_names_order_and_removal()
     {
-        if (!OperatingSystem.IsMacOS())
-            return; // Creating file links on Windows needs host privileges; native qualification owns it.
+        // Creating file links on Windows needs host privileges, so this is macOS evidence only.
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Runs on macOS only: file links on Windows need host privileges.");
         Directory.CreateDirectory(_home);
         var directory = Path.Combine(_home, "real");
         Directory.CreateDirectory(directory);

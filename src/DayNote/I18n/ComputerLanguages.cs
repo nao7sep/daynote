@@ -65,8 +65,13 @@ internal static class ComputerLanguages
         if (!GetUserPreferredUILanguages(byName, out languages, buffer, ref length))
             return [];
 
-        // A double-null-terminated block of names.
-        var preferred = new List<string>((int)languages);
+        return NamesFromMultiString(buffer);
+    }
+
+    /// <summary>The names in a double-null-terminated block, as Windows returns them.</summary>
+    internal static IReadOnlyList<string> NamesFromMultiString(char[] buffer)
+    {
+        var preferred = new List<string>();
         var name = new StringBuilder();
         foreach (var character in buffer)
         {

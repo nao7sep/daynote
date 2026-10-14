@@ -202,4 +202,13 @@ public sealed class AppStylesTests
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };
+
+    [AvaloniaFact]
+    public void The_Windows_window_icon_asset_loads()
+    {
+        // The main and Records windows load it only on Windows, where a missing asset would stop startup.
+        using var stream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://DayNote/Assets/icon-win.png"));
+        using var icon = new Avalonia.Media.Imaging.Bitmap(stream);
+        Assert.True(icon.PixelSize.Width > 0);
+    }
 }

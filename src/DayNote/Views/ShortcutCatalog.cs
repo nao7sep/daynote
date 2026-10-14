@@ -94,7 +94,9 @@ public static class ShortcutCatalog
     /// The key that renames the selected list item: Enter on macOS, as in Finder, and F2 elsewhere, as
     /// in File Explorer. Read from the same platform signal as <see cref="CommandModifier"/>.
     /// </summary>
-    public static Key RenameKey(TopLevel top) => CommandModifier(top) == KeyModifiers.Meta ? Key.Enter : Key.F2;
+    public static Key RenameKey(TopLevel top) => RenameKeyFor(CommandModifier(top));
+
+    internal static Key RenameKeyFor(KeyModifiers command) => command == KeyModifiers.Meta ? Key.Enter : Key.F2;
 
     public static IReadOnlyList<ShortcutItem> Build(TopLevel top)
     {

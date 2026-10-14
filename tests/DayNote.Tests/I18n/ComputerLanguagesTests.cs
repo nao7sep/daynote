@@ -23,6 +23,22 @@ public sealed class ComputerLanguagesTests
         Assert.Equal(expected, read.Take(expected.Length));
     }
 
+    [Fact]
+    public void A_windows_multi_string_block_yields_its_names_in_order()
+    {
+        Assert.Equal(["ja-JP", "en-US"], ComputerLanguages.NamesFromMultiString("ja-JP\0en-US\0\0".ToCharArray()));
+        Assert.Empty(ComputerLanguages.NamesFromMultiString("\0\0".ToCharArray()));
+    }
+
+    [WindowsOnlyFact]
+    public void On_Windows_the_list_is_the_users_preferred_ui_languages()
+    {
+        var read = ComputerLanguages.Read();
+
+        Assert.NotEmpty(read);
+        Assert.All(read, tag => Assert.NotNull(System.Globalization.CultureInfo.GetCultureInfo(tag)));
+    }
+
     // `defaults read -g AppleLanguages` prints a property-list array of quoted or bare tags.
     private static string[] SystemPreferredLanguages()
     {

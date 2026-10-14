@@ -173,4 +173,14 @@ public sealed class AppPathsPermissionsTests : IDisposable
         var mode = File.GetUnixFileMode(root) & (UnixFileMode)0x1FF;
         Assert.Equal(OwnerOnly, mode);
     }
+
+    [WindowsOnlyFact]
+    public void On_Windows_the_root_is_created_without_a_mode()
+    {
+        var paths = new AppPaths();
+
+        paths.EnsureCreated();
+
+        Assert.True(Directory.Exists(paths.Root));
+    }
 }
