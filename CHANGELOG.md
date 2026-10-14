@@ -63,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The status bar's texts share one baseline, so counts in Latin digits no longer sit higher than dates in Japanese, Chinese or Korean.
 - The toolbar's menu button shows only its icon until the pointer is over it or its menu is open.
 - On macOS, the icon shown while dragging a binder or an attachment to reorder it sits centred on the pointer instead of below and to its right.
+- Cmd+W on macOS and Ctrl+W on Windows close the Records window and any dialog, as their close buttons do; a question that must be answered still waits for its answer. In the main window it closes the open binder as before, and with no binder open it closes the window, which quits DayNote.
 - The notes filter searches each note's title, text and attachment file names, not only its title.
 - Filtering ignores how an accented or voiced character is encoded: é typed as one character matches é stored as e plus an accent, as macOS file names often store it, and the same holds for が. Hiragana and katakana, and full-width and half-width characters, still count as different.
 - The Keyboard Shortcuts list balances its two columns by their height, headings included, instead of by their row counts.

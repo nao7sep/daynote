@@ -1364,6 +1364,25 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Cmd_or_Ctrl_W_closes_the_open_binder_and_with_none_open_the_window()
+    {
+        var (vm, window) = await OpenWindowWithNoteAsync();
+        var modifiers = ShortcutCatalog.CommandModifier(window) == KeyModifiers.Meta ? RawInputModifiers.Meta : RawInputModifiers.Control;
+        void PressClose()
+        {
+            window.KeyPress(Key.W, modifiers, PhysicalKey.W, null);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        PressClose();
+        await PumpUntilAsync(() => !vm.HasBinder);
+        Assert.True(window.IsVisible);
+
+        PressClose();
+        await PumpUntilAsync(() => !window.IsVisible);
+    }
+
+    [AvaloniaFact]
     public async Task An_edit_survives_switching_to_another_binder_and_back()
     {
         var vm = await OpenNewBinderAsync();

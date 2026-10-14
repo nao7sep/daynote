@@ -167,6 +167,12 @@ public partial class DialogBase : Window
         {
             Close();
         }
+        else if (ShortcutCatalog.IsCloseWindowChord(this, e))
+        {
+            // As the close button: a question that must be answered refuses it in OnClosing.
+            e.Handled = true;
+            Close();
+        }
     }
 
     private void OnButtonClick(object? sender, RoutedEventArgs e)

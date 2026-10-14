@@ -94,6 +94,14 @@ public static class ShortcutCatalog
     /// The key that renames the selected list item: Enter on macOS, as in Finder, and F2 elsewhere, as
     /// in File Explorer. Read from the same platform signal as <see cref="CommandModifier"/>.
     /// </summary>
+    /// <summary>
+    /// Cmd/Ctrl+W, which closes the key window the way its close button would
+    /// (keyboard-shortcut-conventions, Closing a window). The main window binds it to closing the
+    /// open binder, its current document, and every other window closes itself.
+    /// </summary>
+    public static bool IsCloseWindowChord(TopLevel top, KeyEventArgs e) =>
+        e.Key == Key.W && e.KeyModifiers == CommandModifier(top);
+
     public static Key RenameKey(TopLevel top) => RenameKeyFor(CommandModifier(top));
 
     internal static Key RenameKeyFor(KeyModifiers command) => command == KeyModifiers.Meta ? Key.Enter : Key.F2;

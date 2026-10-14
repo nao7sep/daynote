@@ -49,6 +49,33 @@ public sealed class BlockingDialogTests : IDisposable
         Dispatcher.UIThread.RunJobs();
     }
 
+    private static void PressClose(Window window)
+    {
+        var modifiers = ShortcutCatalog.CommandModifier(window) == KeyModifiers.Meta ? RawInputModifiers.Meta : RawInputModifiers.Control;
+        window.KeyPress(Key.W, modifiers, PhysicalKey.W, null);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    [AvaloniaFact]
+    public async Task Cmd_or_Ctrl_W_closes_a_dialog_as_its_close_button_does()
+    {
+        var (service, owner) = Service();
+
+        // A dialog that may be dismissed closes, giving the dismissal answer.
+        var confirming = service.ConfirmAsync(DayNote.I18n.Message.Of("note.deleteTitle"), DayNote.I18n.Message.Of("note.deleteUntitled"), "common.delete", destructive: true);
+        PressClose(OpenDialog(owner));
+        Assert.False(await confirming);
+        Assert.Empty(owner.OwnedWindows);
+
+        // A question that must be answered refuses it, as it refuses its close button.
+        var asking = service.AskExternalChangeAsync("Journal");
+        var dialog = OpenDialog(owner);
+        PressClose(dialog);
+        Assert.False(asking.IsCompleted);
+        ButtonTagged(dialog, "keep").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await asking;
+    }
+
     [AvaloniaFact]
     public async Task The_outside_change_question_focuses_no_answer_and_escape_enter_or_close_answer_nothing()
     {

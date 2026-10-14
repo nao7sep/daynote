@@ -778,6 +778,14 @@ public partial class MainWindow : Window
             return true;
         }
 
+        // With no binder open there is no document to close, so Cmd/Ctrl+W closes the window the way
+        // its close button does, which quits (keyboard-shortcut-conventions, Closing a window).
+        if (action == ShortcutAction.CloseBinder && !vm.HasBinder)
+        {
+            Close();
+            return true;
+        }
+
         var command = ShortcutRouter.CommandFor(vm, action);
         return command is not null && Run(command);
     }

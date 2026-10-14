@@ -125,6 +125,19 @@ public sealed class RecordsWindowTests : WindowTest
     }
 
     [AvaloniaFact]
+    public void Cmd_or_Ctrl_W_closes_the_records_window()
+    {
+        var window = Create();
+        Show(window);
+        var modifiers = ShortcutCatalog.CommandModifier(window) == KeyModifiers.Meta ? RawInputModifiers.Meta : RawInputModifiers.Control;
+
+        window.KeyPress(Key.W, modifiers, PhysicalKey.W, null);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.False(window.IsVisible);
+    }
+
+    [AvaloniaFact]
     public void A_placement_no_screen_shows_leaves_the_designed_size()
     {
         _host.RecordsWindowPlacement = new WindowPlacement(-100_000, -100_000, 900, 640, Maximized: false);

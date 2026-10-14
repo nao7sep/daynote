@@ -118,6 +118,18 @@ public partial class RecordsWindow : Window
         Activate();
     }
 
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (!e.Handled && ShortcutCatalog.IsCloseWindowChord(this, e))
+        {
+            e.Handled = true;
+            Close();
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
+
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
