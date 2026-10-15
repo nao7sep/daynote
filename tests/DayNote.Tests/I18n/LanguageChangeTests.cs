@@ -153,7 +153,11 @@ public class LanguageChangeTests : WindowTest
 
         // System first, naming the language it resolves to on this computer, then the ten languages.
         Assert.Equal(Languages.System, options[0].Value);
-        Assert.Equal("System (日本語)", options[0].Name);
+        Assert.Equal("System (Japanese)", options[0].Name);
+        using (Localizer.Speaking("ja"))
+            Assert.Equal("システム（日本語）", LanguageOption.All(["ja-JP"])[0].Name);
+        using (Localizer.Speaking("de"))
+            Assert.Equal("Systemsprache (Koreanisch)", LanguageOption.All(["ko-KR"])[0].Name);
         Assert.Equal(Languages.Tags, options.Skip(1).Select(option => option.Value));
 
         // Each name is the language's own, not a translation of it.
