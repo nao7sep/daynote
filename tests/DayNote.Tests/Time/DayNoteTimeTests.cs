@@ -175,4 +175,23 @@ public sealed class DayNoteTimeTests
         Assert.Equal(seconds, DayNoteTime.ToPreciseDisplay(value, TimeZoneInfo.Utc, given));
         Assert.Equal(milliseconds, DayNoteTime.ToPreciseDisplay(value, TimeZoneInfo.Utc, given, milliseconds: true));
     }
+
+    [Fact]
+    public void The_system_zone_is_named_by_where_localtime_links()
+    {
+        Assert.Equal("Asia/Tokyo", DayNoteTime.ZoneFromLink("/var/db/timezone/zoneinfo/Asia/Tokyo"));
+        Assert.Equal("America/Argentina/Buenos_Aires", DayNoteTime.ZoneFromLink("/usr/share/zoneinfo/America/Argentina/Buenos_Aires"));
+        Assert.Null(DayNoteTime.ZoneFromLink(null));
+        Assert.Null(DayNoteTime.ZoneFromLink("/etc/some-other-file"));
+        Assert.Null(DayNoteTime.ZoneFromLink("/usr/share/zoneinfo/"));
+        Assert.Null(DayNoteTime.ZoneFromLink("/usr/share/zoneinfo/Not/AZone"));
+    }
+
+    [MacOnlyFact]
+    public void On_macOS_the_system_zone_is_the_name_localtime_links_to()
+    {
+        var link = new System.IO.FileInfo("/etc/localtime").LinkTarget!;
+
+        Assert.Equal(link[(link.LastIndexOf("zoneinfo/", StringComparison.Ordinal) + "zoneinfo/".Length)..], DayNoteTime.SystemZoneId());
+    }
 }

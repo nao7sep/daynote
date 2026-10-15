@@ -75,7 +75,40 @@ public static class DayNoteTime
     /// The IANA id of the computer's zone, as the list names it: macOS reports IANA ids already, and a
     /// Windows zone id is converted to its IANA equivalent.
     /// </summary>
-    public static string SystemZoneId() => IanaIdOf(TimeZoneInfo.Local) ?? TimeZoneInfo.Local.Id;
+    public static string SystemZoneId() =>
+        (OperatingSystem.IsWindows() ? null : ZoneFromLink(LocalTimeLink()))
+        ?? IanaIdOf(TimeZoneInfo.Local)
+        ?? TimeZoneInfo.Local.Id;
+
+    // macOS and Linux name the computer's zone by where /etc/localtime links, as macOS's own time-zone
+    // API does. .NET instead matches the zone data when the link points outside /usr/share/zoneinfo, as
+    // macOS's /var/db/timezone does, and can report a legacy alias such as "Japan"
+    // (timestamp-conventions, Time zones).
+    private static string? LocalTimeLink()
+    {
+        try
+        {
+            return new FileInfo("/etc/localtime").LinkTarget;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The IANA name after <c>zoneinfo/</c> in a link target, when it names a known zone.</summary>
+    internal static string? ZoneFromLink(string? linkTarget)
+    {
+        const string marker = "zoneinfo/";
+        var at = linkTarget?.LastIndexOf(marker, StringComparison.Ordinal) ?? -1;
+        if (at < 0)
+        {
+            return null;
+        }
+
+        var id = linkTarget![(at + marker.Length)..];
+        return id.Length > 0 && TryResolveTimeZone(id, out _) ? id : null;
+    }
 
     /// <summary>
     /// The zones a user chooses from after System: every zone the platform knows, by IANA id, plus UTC
