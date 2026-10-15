@@ -17,6 +17,19 @@ namespace DayNote.Tests.ViewModels;
 public sealed class AttachmentItemViewModelTests : IDisposable
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), "daynote-thumbnail-" + Guid.NewGuid() + ".png");
+    private readonly string _thumbnails = Path.Combine(Path.GetTempPath(), "daynote-thumbnails-" + Guid.NewGuid());
+
+    private Task<(Bitmap Bitmap, PixelSize Size)> Thumbnail(Func<long?>? availableMemory = null, IAppLogger? log = null) =>
+        AttachmentThumbnails.LoadAsync(_path, _thumbnails, availableMemory ?? (() => null), log ?? new NullLogger());
+
+    private void WriteImage(int width, int height, SKEncodedImageFormat format = SKEncodedImageFormat.Png)
+    {
+        using var image = new SKBitmap(width, height);
+        image.Erase(SKColors.CornflowerBlue);
+        using var bytes = image.Encode(format, 80);
+        using var file = File.Create(_path);
+        bytes.SaveTo(file);
+    }
 
     public AttachmentItemViewModelTests() => File.WriteAllBytes(_path, [1]);
 
@@ -92,19 +105,89 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     [AvaloniaTheory]
     [InlineData(SKEncodedImageFormat.Jpeg)]
     [InlineData(SKEncodedImageFormat.Png)]
-    public async Task Native_decoding_keeps_original_dimensions_with_a_small_preview(SKEncodedImageFormat format)
+    [InlineData(SKEncodedImageFormat.Webp)]
+    public async Task A_thumbnail_keeps_the_original_dimensions_and_is_kept_as_webp(SKEncodedImageFormat format)
     {
-        using (var image = new SKBitmap(1600, 800))
-        using (var bytes = image.Encode(format, 80))
-        using (var file = File.Create(_path))
-            bytes.SaveTo(file);
+        WriteImage(1600, 800, format);
 
-        var (preview, dimensions) = await AttachmentItemViewModel.DecodeThumbnailAsync(_path);
+        var (preview, dimensions) = await Thumbnail();
         using (preview)
         {
             Assert.Equal(new PixelSize(1600, 800), dimensions);
-            Assert.Equal(new PixelSize(240, 120), preview.PixelSize);
+            Assert.Equal(new PixelSize(360, 180), preview.PixelSize);
         }
+
+        var kept = Assert.Single(Directory.GetFiles(_thumbnails));
+        Assert.Equal(AttachmentThumbnails.NameFor(new FileInfo(_path)), Path.GetFileName(kept));
+        using var codec = SKCodec.Create(kept);
+        Assert.Equal(SKEncodedImageFormat.Webp, codec.EncodedFormat);
+        Assert.Equal(new SKSizeI(360, 180), codec.Info.Size);
+    }
+
+    [AvaloniaFact]
+    public async Task A_kept_thumbnail_is_shown_without_decoding_the_original_again()
+    {
+        WriteImage(1600, 800);
+        using (var first = (await Thumbnail()).Bitmap) { }
+        var written = File.GetLastWriteTimeUtc(_path);
+        // The same name, size and time, but pixels nobody could decode: only the kept thumbnail can answer.
+        var bytes = File.ReadAllBytes(_path);
+        Array.Fill(bytes, (byte)0, 100, bytes.Length - 100);
+        File.WriteAllBytes(_path, bytes);
+        File.SetLastWriteTimeUtc(_path, written);
+
+        var (preview, dimensions) = await Thumbnail(availableMemory: () => 0);
+        using (preview)
+        {
+            Assert.Equal(new PixelSize(1600, 800), dimensions);
+            Assert.Equal(new PixelSize(360, 180), preview.PixelSize);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task An_edited_image_gets_a_new_thumbnail()
+    {
+        WriteImage(1600, 800);
+        using (var first = (await Thumbnail()).Bitmap) { }
+        var before = AttachmentThumbnails.NameFor(new FileInfo(_path));
+
+        WriteImage(800, 1600);
+        File.SetLastWriteTimeUtc(_path, File.GetLastWriteTimeUtc(_path).AddSeconds(5));
+        var (preview, _) = await Thumbnail();
+        using (preview)
+            Assert.Equal(new PixelSize(180, 360), preview.PixelSize);
+
+        Assert.NotEqual(before, AttachmentThumbnails.NameFor(new FileInfo(_path)));
+        Assert.Equal(2, Directory.GetFiles(_thumbnails).Length);
+    }
+
+    [AvaloniaFact]
+    public async Task An_image_too_large_for_the_memory_free_now_keeps_the_file_icon_and_tries_again_later()
+    {
+        WriteImage(1600, 800);
+        var log = new RecordingLog();
+
+        // A PNG decodes whole: 1600 x 800 x 4 bytes plus the thumbnail, more than half of 4 MB.
+        await Assert.ThrowsAsync<AttachmentThumbnails.NotEnoughMemoryException>(() => Thumbnail(() => 4_000_000, log));
+        Assert.False(Directory.Exists(_thumbnails) && Directory.GetFiles(_thumbnails).Length > 0);
+
+        using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), log,
+            path => AttachmentThumbnails.LoadAsync(path, _thumbnails, () => 4_000_000, log));
+        await row.ThumbnailTask;
+        Assert.Null(row.Thumbnail);
+        Assert.True(row.ShowFilePlaceholder);
+        Assert.Contains("Attachment thumbnail waits for free memory", log.Infos);
+
+        // With room, the next showing makes it.
+        var (preview, _) = await Thumbnail(() => 1_000_000_000);
+        preview.Dispose();
+        Assert.Single(Directory.GetFiles(_thumbnails));
+    }
+
+    [Fact]
+    public void A_thumbnail_costs_its_decoded_raster_and_its_own()
+    {
+        Assert.Equal(4L * 1600 * 800 + 4L * 360 * 180, AttachmentThumbnails.CostOf(new SKSizeI(1600, 800), new PixelSize(360, 180)));
     }
 
     private AttachmentItemViewModel Row(Func<string, Task<(Bitmap, PixelSize)>> decode) =>
@@ -203,14 +286,14 @@ public sealed class AttachmentItemViewModelTests : IDisposable
             using (var bytes = pixels.Encode(SKEncodedImageFormat.Png, 80))
             using (var file = File.Create(_path))
                 bytes.SaveTo(file);
-            var (preview, dimensions) = await AttachmentItemViewModel.DecodeThumbnailAsync(_path);
+            var (preview, dimensions) = await Thumbnail();
             using (preview) Assert.Equal(new PixelSize(9, 7), dimensions);
             using (var exclusive = File.Open(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {
                 exclusive.SetLength(0);
                 exclusive.Write([1, 2, 3]);
             }
-            await Assert.ThrowsAsync<InvalidDataException>(() => AttachmentItemViewModel.DecodeThumbnailAsync(_path));
+            await Assert.ThrowsAsync<InvalidDataException>(() => Thumbnail());
             using var afterFailure = File.Open(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
             afterFailure.SetLength(0);
         }
@@ -238,5 +321,19 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         public void Error(string message, object? data = null, Exception? error = null) { }
     }
 
-    public void Dispose() => File.Delete(_path);
+    private sealed class RecordingLog : IAppLogger
+    {
+        public List<string> Infos { get; } = [];
+        public void Debug(string message, object? data = null, Exception? error = null) { }
+        public void Info(string message, object? data = null, Exception? error = null) => Infos.Add(message);
+        public void Warn(string message, object? data = null, Exception? error = null) { }
+        public void Error(string message, object? data = null, Exception? error = null) { }
+    }
+
+    public void Dispose()
+    {
+        File.Delete(_path);
+        if (Directory.Exists(_thumbnails))
+            Directory.Delete(_thumbnails, recursive: true);
+    }
 }

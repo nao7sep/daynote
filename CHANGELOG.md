@@ -65,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On macOS, the icon shown while dragging a binder or an attachment to reorder it sits centred on the pointer instead of below and to its right.
 - Cmd+W on macOS and Ctrl+W on Windows close the Records window and any dialog, as their close buttons do; a question that must be answered still waits for its answer. In the main window it closes the open binder as before, and with no binder open it closes the window, which quits DayNote.
 - In Settings, the System choices for language and theme name what they follow now, such as "System (Japanese)" and "System (Dark)", both in the interface language, as the time zone's already did; the theme's updates when the computer's appearance changes.
+- Image attachments' thumbnails are made once and kept in `~/.daynote/thumbnails`, so selecting a note no longer decodes its images again. A very large PNG or GIF whose thumbnail would not fit the memory free at that moment shows the file icon until a later showing has room.
 - The notes filter searches each note's title, text and attachment file names, not only its title.
 - Filtering ignores how an accented or voiced character is encoded: é typed as one character matches é stored as e plus an accent, as macOS file names often store it, and the same holds for が. Hiragana and katakana, and full-width and half-width characters, still count as different.
 - The Keyboard Shortcuts list balances its two columns by their height, headings included, instead of by their row counts.

@@ -2748,7 +2748,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             }
             else
             {
-                Attachments.Add(new AttachmentItemViewModel(attachment, _log));
+                Attachments.Add(new AttachmentItemViewModel(attachment, _log, _paths.ThumbnailsDirectory));
             }
         }
 

@@ -40,6 +40,13 @@ public sealed class AppPaths
     /// </summary>
     public string BackupStoreFile => Path.Combine(Root, "backups.sqlite3");
 
+    /// <summary>
+    /// Attachment thumbnails, made once from each image and named after the file they came from. Derived
+    /// and safe to delete: a missing one is made again the next time its attachment is shown. Created by
+    /// the first thumbnail written, never up front, and not part of the backup history.
+    /// </summary>
+    public string ThumbnailsDirectory => Path.Combine(Root, "thumbnails");
+
     /// <summary>Installs the warn sink used to report a failure to tighten the storage root's
     /// permissions to owner-only (<c>0700</c>) on POSIX. Optional: DayNote.Core stays logger-framework-
     /// free (see <see cref="DayNote.Core.Backup.BackupStore.ConfigureWarn"/> for the same pattern), so with

@@ -33,6 +33,8 @@ Move or back up a binder together with its adjacent `<binder-name>-assets` folde
 
 DayNote also keeps a history in `~/.daynote/backups.sqlite3`: the last version of each binder and of its settings saved in each session, and a copy of each attachment as it is added, whatever its size. Window and selection state is excluded. Attachments added before this history covered them are not in it. There is no in-app restore browser; an earlier version can be read back from the file by hand. A history failure never blocks or delays the live save, so the history is a recovery aid rather than a substitute for your normal file backups.
 
+Image attachments get a small thumbnail, made once and kept in `~/.daynote/thumbnails`. That folder is safe to delete; DayNote makes a thumbnail again the next time its attachment is shown.
+
 ## Run from source
 
 The fastest way to try it:

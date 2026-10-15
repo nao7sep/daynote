@@ -5,18 +5,19 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
 using DayNote.I18n;
 using DayNote.Logging;
+using DayNote.Services;
 using SkiaSharp;
 
 namespace DayNote.ViewModels;
 
 /// <summary>
-/// A row in the attachments pane. Images are decoded to a bounded thumbnail; other files and failed
-/// previews use the view's generic document placeholder. A details line shows the image dimensions
+/// A row in the attachments pane. Images show a thumbnail kept on disk (<see cref="AttachmentThumbnails"/>);
+/// other files, failed previews and images too large for the memory free now use the view's generic
+/// document placeholder. A details line shows the image dimensions
 /// (for images) and the file size, in the current language (<see cref="Retranslate"/>).
 /// </summary>
 public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposable
 {
-    private const int ThumbnailWidth = 240;
     // A note can contain many camera images. Own one physical decode through completion, including
     // after its row is disposed; queued obsolete rows never start another full native decode.
     private static readonly SemaphoreSlim DecodeAdmission = new(1, 1);
@@ -31,8 +32,8 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
     internal Task ThumbnailTask { get; private set; } = Task.CompletedTask;
 
-    public AttachmentItemViewModel(Attachment attachment, IAppLogger log)
-        : this(attachment, log, DecodeThumbnailAsync) { }
+    public AttachmentItemViewModel(Attachment attachment, IAppLogger log, string thumbnailsDirectory)
+        : this(attachment, log, path => AttachmentThumbnails.LoadAsync(path, thumbnailsDirectory, AvailableMemory.Bytes, log)) { }
 
     internal AttachmentItemViewModel(Attachment attachment, IAppLogger log,
         Func<string, Task<(Bitmap Bitmap, PixelSize Size)>> decodeThumbnail)
@@ -184,37 +185,30 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             _dimensions = size;
             OnPropertyChanged(nameof(DetailsText));
         }
+        catch (AttachmentThumbnails.NotEnoughMemoryException ex)
+        {
+            // Not a failure of the file: the row shows the file icon, and showing it again tries again.
+            _log.Info("Attachment thumbnail waits for free memory", new { path, cost = ex.Cost });
+            ClearThumbnail(generation);
+        }
         catch (Exception ex)
         {
             // A corrupt or unsupported image is recoverable — the row just shows no preview — but it
             // is unexpected for a file we classified as an image, so it is recorded rather than swallowed.
             _log.Warn("Could not decode attachment thumbnail", new { path }, ex);
-            if (!_disposed && generation == _thumbnailGeneration)
-            {
-                Thumbnail?.Dispose();
-                Thumbnail = null;
-            }
+            ClearThumbnail(generation);
         }
     }
 
-    internal static Task<(Bitmap Bitmap, PixelSize Size)> DecodeThumbnailAsync(string path) => Task.Run(() =>
+    private void ClearThumbnail(int generation)
     {
-        // Codec metadata supplies the original dimensions without a full pixel allocation or an
-        // in-memory copy of the encoded file. Some formats still need a full raster; admission above
-        // prevents several of those allocations at once, rather than claiming a per-image memory cap.
-        using var codec = SKCodec.Create(File.OpenRead(path)) ?? throw new InvalidDataException("Image codec could not be opened.");
-        var original = new PixelSize(codec.Info.Width, codec.Info.Height);
-        var scale = Math.Min(1d, ThumbnailWidth / (double)Math.Max(original.Width, original.Height));
-        var dimensions = codec.GetScaledDimensions((float)scale);
-        var info = new SKImageInfo(dimensions.Width, dimensions.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        using var decoded = new SKBitmap(info);
-        if (codec.GetPixels(info, decoded.GetPixels()) != SKCodecResult.Success)
-            throw new InvalidDataException("Image pixels could not be decoded.");
-        var size = new PixelSize(Math.Max(1, (int)Math.Round(original.Width * scale)), Math.Max(1, (int)Math.Round(original.Height * scale)));
-        using var preview = decoded.Resize(new SKImageInfo(size.Width, size.Height, SKColorType.Bgra8888, SKAlphaType.Premul),
-            new SKSamplingOptions(SKFilterMode.Linear)) ?? throw new InvalidDataException("Image preview could not be resized.");
-        return (new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, preview.GetPixels(), size, new Vector(96, 96), preview.RowBytes), original);
-    });
+        if (!_disposed && generation == _thumbnailGeneration)
+        {
+            Thumbnail?.Dispose();
+            Thumbnail = null;
+        }
+    }
+
 
     private static long FileSize(string path)
     {
