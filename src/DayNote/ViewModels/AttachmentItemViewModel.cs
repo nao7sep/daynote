@@ -5,15 +5,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
 using DayNote.I18n;
 using DayNote.Logging;
-using DayNote.Services;
 using SkiaSharp;
 
 namespace DayNote.ViewModels;
 
 /// <summary>
 /// A row in the attachments pane. Images show a thumbnail kept on disk (<see cref="AttachmentThumbnails"/>);
-/// other files, failed previews and images too large for the memory free now use the view's generic
-/// document placeholder. A details line shows the image dimensions
+/// other files and failed previews, including a decode whose memory could not be allocated, use the
+/// view's generic document placeholder. A details line shows the image dimensions
 /// (for images) and the file size, in the current language (<see cref="Retranslate"/>).
 /// </summary>
 public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposable
@@ -33,7 +32,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     internal Task ThumbnailTask { get; private set; } = Task.CompletedTask;
 
     public AttachmentItemViewModel(Attachment attachment, IAppLogger log, string thumbnailsDirectory)
-        : this(attachment, log, path => AttachmentThumbnails.LoadAsync(path, thumbnailsDirectory, AvailableMemory.Bytes, log)) { }
+        : this(attachment, log, path => AttachmentThumbnails.LoadAsync(path, thumbnailsDirectory, log)) { }
 
     internal AttachmentItemViewModel(Attachment attachment, IAppLogger log,
         Func<string, Task<(Bitmap Bitmap, PixelSize Size)>> decodeThumbnail)
@@ -184,12 +183,6 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             Thumbnail = bitmap;
             _dimensions = size;
             OnPropertyChanged(nameof(DetailsText));
-        }
-        catch (AttachmentThumbnails.NotEnoughMemoryException ex)
-        {
-            // Not a failure of the file: the row shows the file icon, and showing it again tries again.
-            _log.Info("Attachment thumbnail waits for free memory", new { path, cost = ex.Cost });
-            ClearThumbnail(generation);
         }
         catch (Exception ex)
         {

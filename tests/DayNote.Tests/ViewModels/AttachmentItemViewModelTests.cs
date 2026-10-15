@@ -19,8 +19,8 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     private readonly string _path = Path.Combine(Path.GetTempPath(), "daynote-thumbnail-" + Guid.NewGuid() + ".png");
     private readonly string _thumbnails = Path.Combine(Path.GetTempPath(), "daynote-thumbnails-" + Guid.NewGuid());
 
-    private Task<(Bitmap Bitmap, PixelSize Size)> Thumbnail(Func<long?>? availableMemory = null, IAppLogger? log = null) =>
-        AttachmentThumbnails.LoadAsync(_path, _thumbnails, availableMemory ?? (() => null), log ?? new NullLogger());
+    private Task<(Bitmap Bitmap, PixelSize Size)> Thumbnail() =>
+        AttachmentThumbnails.LoadAsync(_path, _thumbnails, new NullLogger());
 
     private void WriteImage(int width, int height, SKEncodedImageFormat format = SKEncodedImageFormat.Png)
     {
@@ -136,7 +136,7 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         File.WriteAllBytes(_path, bytes);
         File.SetLastWriteTimeUtc(_path, written);
 
-        var (preview, dimensions) = await Thumbnail(availableMemory: () => 0);
+        var (preview, dimensions) = await Thumbnail();
         using (preview)
         {
             Assert.Equal(new PixelSize(1600, 800), dimensions);
@@ -162,32 +162,17 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task An_image_too_large_for_the_memory_free_now_keeps_the_file_icon_and_tries_again_later()
+    public async Task An_image_that_cannot_be_decoded_keeps_the_file_icon_and_keeps_nothing()
     {
-        WriteImage(1600, 800);
-        var log = new RecordingLog();
+        File.WriteAllBytes(_path, [1, 2, 3]);
 
-        // A PNG decodes whole: 1600 x 800 x 4 bytes plus the thumbnail, more than half of 4 MB.
-        await Assert.ThrowsAsync<AttachmentThumbnails.NotEnoughMemoryException>(() => Thumbnail(() => 4_000_000, log));
-        Assert.False(Directory.Exists(_thumbnails) && Directory.GetFiles(_thumbnails).Length > 0);
-
-        using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), log,
-            path => AttachmentThumbnails.LoadAsync(path, _thumbnails, () => 4_000_000, log));
+        using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), new NullLogger(),
+            path => AttachmentThumbnails.LoadAsync(path, _thumbnails, new NullLogger()));
         await row.ThumbnailTask;
+
         Assert.Null(row.Thumbnail);
         Assert.True(row.ShowFilePlaceholder);
-        Assert.Contains("Attachment thumbnail waits for free memory", log.Infos);
-
-        // With room, the next showing makes it.
-        var (preview, _) = await Thumbnail(() => 1_000_000_000);
-        preview.Dispose();
-        Assert.Single(Directory.GetFiles(_thumbnails));
-    }
-
-    [Fact]
-    public void A_thumbnail_costs_its_decoded_raster_and_its_own()
-    {
-        Assert.Equal(4L * 1600 * 800 + 4L * 360 * 180, AttachmentThumbnails.CostOf(new SKSizeI(1600, 800), new PixelSize(360, 180)));
+        Assert.False(Directory.Exists(_thumbnails) && Directory.GetFiles(_thumbnails).Length > 0);
     }
 
     private AttachmentItemViewModel Row(Func<string, Task<(Bitmap, PixelSize)>> decode) =>
@@ -317,15 +302,6 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     {
         public void Debug(string message, object? data = null, Exception? error = null) { }
         public void Info(string message, object? data = null, Exception? error = null) { }
-        public void Warn(string message, object? data = null, Exception? error = null) { }
-        public void Error(string message, object? data = null, Exception? error = null) { }
-    }
-
-    private sealed class RecordingLog : IAppLogger
-    {
-        public List<string> Infos { get; } = [];
-        public void Debug(string message, object? data = null, Exception? error = null) { }
-        public void Info(string message, object? data = null, Exception? error = null) => Infos.Add(message);
         public void Warn(string message, object? data = null, Exception? error = null) { }
         public void Error(string message, object? data = null, Exception? error = null) { }
     }

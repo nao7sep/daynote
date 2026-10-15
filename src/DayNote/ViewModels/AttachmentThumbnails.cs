@@ -4,7 +4,6 @@ using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using DayNote.Logging;
-using DayNote.Services;
 using SkiaSharp;
 
 namespace DayNote.ViewModels;
@@ -22,8 +21,8 @@ namespace DayNote.ViewModels;
 /// disk use is out of scope (developer decision), and each is a few kilobytes.
 ///
 /// Making one decodes the original once. JPEG and WebP decode at a reduced size; PNG and GIF decode
-/// whole, since Skia scales neither, so the cost is compared with the memory the system can give now
-/// first, and an image that does not fit shows the file icon until a later attempt fits.
+/// whole, since Skia scales neither. A decode that fails, as when its memory cannot be allocated, leaves
+/// the row on its file icon, and the next showing tries again.
 /// </summary>
 internal static class AttachmentThumbnails
 {
@@ -31,16 +30,8 @@ internal static class AttachmentThumbnails
     internal const int FormatVersion = 1;
     private const int Quality = 75;
 
-    /// <summary>The image did not fit the memory the system could give when its thumbnail was due.</summary>
-    internal sealed class NotEnoughMemoryException(long cost, long available)
-        : Exception($"A thumbnail needs about {cost} bytes, more than half of the {available} the system can give now.")
-    {
-        public long Cost { get; } = cost;
-    }
-
     /// <summary>The thumbnail of <paramref name="path"/> and the image's own dimensions.</summary>
-    internal static Task<(Bitmap Bitmap, PixelSize Size)> LoadAsync(
-        string path, string directory, Func<long?> availableMemory, IAppLogger log) => Task.Run(() =>
+    internal static Task<(Bitmap Bitmap, PixelSize Size)> LoadAsync(string path, string directory, IAppLogger log) => Task.Run(() =>
     {
         var file = new FileInfo(path);
         // The codec reads only the header here; the pixels are decoded below, and only when no
@@ -62,7 +53,7 @@ internal static class AttachmentThumbnails
             }
         }
 
-        using var made = Make(codec, original, availableMemory);
+        using var made = Make(codec, original);
         Keep(made, kept, log);
         return (new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, made.GetPixels(), new PixelSize(made.Width, made.Height),
             new Vector(96, 96), made.RowBytes), original);
@@ -76,22 +67,13 @@ internal static class AttachmentThumbnails
         return $"{hash}-v{FormatVersion}.webp";
     }
 
-    /// <summary>What decoding at <paramref name="decoded"/> and resizing to <paramref name="thumbnail"/> holds at once.</summary>
-    internal static long CostOf(SKSizeI decoded, PixelSize thumbnail) =>
-        4L * decoded.Width * decoded.Height + 4L * thumbnail.Width * thumbnail.Height;
-
-    private static SKBitmap Make(SKCodec codec, PixelSize original, Func<long?> availableMemory)
+    private static SKBitmap Make(SKCodec codec, PixelSize original)
     {
         var scale = Math.Min(1d, Size / (double)Math.Max(original.Width, original.Height));
         var decodedSize = codec.GetScaledDimensions((float)scale);
         var size = new PixelSize(
             Math.Max(1, (int)Math.Round(original.Width * scale)),
             Math.Max(1, (int)Math.Round(original.Height * scale)));
-        var cost = CostOf(decodedSize, size);
-        var available = availableMemory();
-        if (!AvailableMemory.Fits(cost, available))
-            throw new NotEnoughMemoryException(cost, available!.Value);
-
         var info = new SKImageInfo(decodedSize.Width, decodedSize.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         using var decoded = new SKBitmap(info);
         if (codec.GetPixels(info, decoded.GetPixels()) != SKCodecResult.Success)
