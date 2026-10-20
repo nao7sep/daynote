@@ -296,8 +296,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private OperationResultViewModel? _announcedResult;
 
     /// <summary>
-    /// The text style just applied, which the status bar shows briefly and then drops, per the
-    /// app-chrome-conventions.
+    /// The text style just applied, which the status bar shows briefly and then drops: it confirms a
+    /// keyboard switch without leaving standing text in the bar.
     /// </summary>
     public string TextStyleStatusText => _textStyleStatus is null ? string.Empty : Localizer.Of(_textStyleStatus);
 

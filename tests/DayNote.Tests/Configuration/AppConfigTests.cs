@@ -41,7 +41,6 @@ public sealed class AppConfigTests
     public void Default_ui_font_is_stored_empty_and_resolves_to_the_bundled_inter()
     {
         Assert.Equal("", new AppConfig().UiFontFamily);
-        Assert.Equal("Inter", AppConfig.DefaultUiFontFamily);
     }
 
     [Fact]

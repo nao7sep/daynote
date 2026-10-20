@@ -8,22 +8,30 @@ public sealed class RecordsLayoutTests
     [Fact]
     public void The_window_minimum_is_both_pane_minimums_and_what_sits_beside_them()
     {
-        // Grid margin, list minimum, splitter, detail minimum.
-        Assert.Equal(8 + 320 + 6 + 420, RecordsLayout.MinWidth);
+        // At the minimum width neither pane can grow past its minimum.
+        Assert.Equal(RecordsLayout.ListMin, RecordsLayout.ListWidth(RecordsLayout.ListMax, RecordsLayout.MinWidth));
+        Assert.True(RecordsLayout.MinWidth > RecordsLayout.ListMin + RecordsLayout.DetailMin);
         Assert.True(RecordsLayout.MinHeight(140) > 140 + RecordsLayout.ListBodyMin);
     }
 
     [Theory]
-    [InlineData(380, 1100, 380)]
-    [InlineData(900, 1400, 640)]
-    [InlineData(100, 1100, 320)]
-    // The detail pane keeps its minimum: 800 - 8 - 6 - 420 leaves the list 366.
-    [InlineData(500, 800, 366)]
+    [InlineData(RecordsLayout.ListDefault, 1100, RecordsLayout.ListDefault)]
+    [InlineData(900, 1400, RecordsLayout.ListMax)]
+    [InlineData(100, 1100, RecordsLayout.ListMin)]
     // Below the window minimum the list still keeps its own.
-    [InlineData(500, 600, 320)]
+    [InlineData(500, 600, RecordsLayout.ListMin)]
     public void The_list_shows_its_intent_within_its_bounds_and_what_the_detail_pane_leaves(double intent, double window, double shown)
     {
         Assert.Equal(shown, RecordsLayout.ListWidth(intent, window));
+    }
+
+    [Fact]
+    public void A_narrow_window_narrows_the_list_so_the_detail_pane_keeps_its_minimum()
+    {
+        // What sits beside the panes is what the minimum window adds to both pane minimums.
+        var beside = RecordsLayout.MinWidth - RecordsLayout.ListMin - RecordsLayout.DetailMin;
+
+        Assert.Equal(800 - beside - RecordsLayout.DetailMin, RecordsLayout.ListWidth(500, 800));
     }
 
     [Fact]

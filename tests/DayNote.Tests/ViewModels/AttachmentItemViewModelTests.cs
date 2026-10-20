@@ -114,14 +114,14 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         using (preview)
         {
             Assert.Equal(new PixelSize(1600, 800), dimensions);
-            Assert.Equal(new PixelSize(360, 180), preview.PixelSize);
+            Assert.Equal(new PixelSize(AttachmentThumbnails.Size, AttachmentThumbnails.Size / 2), preview.PixelSize);
         }
 
         var kept = Assert.Single(Directory.GetFiles(_thumbnails));
         Assert.Equal(AttachmentThumbnails.NameFor(new FileInfo(_path)), Path.GetFileName(kept));
         using var codec = SKCodec.Create(kept);
         Assert.Equal(SKEncodedImageFormat.Webp, codec.EncodedFormat);
-        Assert.Equal(new SKSizeI(360, 180), codec.Info.Size);
+        Assert.Equal(new SKSizeI(AttachmentThumbnails.Size, AttachmentThumbnails.Size / 2), codec.Info.Size);
     }
 
     [AvaloniaFact]
@@ -140,7 +140,7 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         using (preview)
         {
             Assert.Equal(new PixelSize(1600, 800), dimensions);
-            Assert.Equal(new PixelSize(360, 180), preview.PixelSize);
+            Assert.Equal(new PixelSize(AttachmentThumbnails.Size, AttachmentThumbnails.Size / 2), preview.PixelSize);
         }
     }
 
@@ -155,7 +155,7 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         File.SetLastWriteTimeUtc(_path, File.GetLastWriteTimeUtc(_path).AddSeconds(5));
         var (preview, _) = await Thumbnail();
         using (preview)
-            Assert.Equal(new PixelSize(180, 360), preview.PixelSize);
+            Assert.Equal(new PixelSize(AttachmentThumbnails.Size / 2, AttachmentThumbnails.Size), preview.PixelSize);
 
         Assert.NotEqual(before, AttachmentThumbnails.NameFor(new FileInfo(_path)));
         Assert.Equal(2, Directory.GetFiles(_thumbnails).Length);

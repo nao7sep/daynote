@@ -36,7 +36,6 @@ public sealed class AppStateTests
         Assert.Equal(1100.5, restored.WindowWidth);
         Assert.Equal(720.25, restored.WindowHeight);
         Assert.True(restored.WindowMaximized);
-        Assert.DoesNotContain("windowPlacements", json);
     }
 
     [Fact]

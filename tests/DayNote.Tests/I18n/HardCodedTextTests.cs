@@ -20,11 +20,10 @@ namespace DayNote.Tests.I18n;
 public class HardCodedTextTests
 {
     /// <summary>
-    /// Literals allowed in a text position: the app's own name, and punctuation and separators, which
-    /// read the same in every language.
+    /// Literals allowed in a text position: the app's own name, which reads the same in every language.
+    /// Punctuation and separators pass on their own, having no letters.
     /// </summary>
-    private static readonly string[] AllowedLiterals =
-        ["DayNote", "·", "—", "-", "/", ":", ""];
+    private static readonly string[] AllowedLiterals = ["DayNote"];
 
     private static readonly string[] TextProperties =
         ["Text", "Content", "Header", "Title", "PlaceholderText", "Watermark"];
@@ -34,22 +33,7 @@ public class HardCodedTextTests
     {
         var offenders = new List<string>();
         foreach (var file in Directory.GetFiles(SourceDirectory(), "*.axaml", SearchOption.AllDirectories))
-        {
-            var markup = File.ReadAllText(file);
-            var name = Path.GetFileName(file);
-
-            foreach (var property in TextProperties)
-            {
-                foreach (Match match in Regex.Matches(markup, $@"(?<![\w.]){property}\s*=\s*""([^""]*)"""))
-                    Record(offenders, name, property, match.Groups[1].Value);
-            }
-
-            foreach (Match match in Regex.Matches(markup, @"ToolTip\.Tip\s*=\s*""([^""]*)"""))
-                Record(offenders, name, "ToolTip.Tip", match.Groups[1].Value);
-
-            foreach (Match match in Regex.Matches(markup, @"AutomationProperties\.(Name|HelpText)\s*=\s*""([^""]*)"""))
-                Record(offenders, name, "AutomationProperties." + match.Groups[1].Value, match.Groups[2].Value);
-        }
+            offenders.AddRange(Offenders(MarkupTexts(File.ReadAllText(file)), Path.GetFileName(file)));
 
         Assert.Empty(offenders);
     }
@@ -62,27 +46,73 @@ public class HardCodedTextTests
         {
             if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
                 continue;
-
-            var code = File.ReadAllText(file);
-            var name = Path.GetFileName(file);
-
-            // Text = "…", Content = "…", Title = "…" and their kin, including an interpolated string,
-            // which is how a sentence used to be assembled here.
-            foreach (var property in TextProperties)
-            {
-                foreach (Match match in Regex.Matches(code, $@"(?<![\w.]){property}\s*=\s*\$?""([^""]*)"""))
-                    Record(offenders, name, property, match.Groups[1].Value);
-            }
-
-            foreach (Match match in Regex.Matches(code, @"AutomationProperties\.SetName\([^,]+,\s*\$?""([^""]*)"""))
-                Record(offenders, name, "AutomationProperties.SetName", match.Groups[1].Value);
-
-            foreach (Match match in Regex.Matches(code, @"ToolTip\.SetTip\([^,]+,\s*\$?""([^""]*)"""))
-                Record(offenders, name, "ToolTip.SetTip", match.Groups[1].Value);
+            offenders.AddRange(Offenders(CodeTexts(File.ReadAllText(file)), Path.GetFileName(file)));
         }
 
         Assert.Empty(offenders);
     }
+
+    // The scans above prove nothing unless they can fail: each finds a sentence planted in its own
+    // kind of source, and passes the forms it is meant to let through.
+    [Fact]
+    public void the_scans_find_a_planted_sentence()
+    {
+        Assert.Single(Offenders(MarkupTexts("""<TextBlock Text="Save the note"/>"""), "planted"));
+        Assert.Single(Offenders(MarkupTexts("""<Button ToolTip.Tip="Close this"/>"""), "planted"));
+        Assert.Single(Offenders(CodeTexts("""block.Text = $"Saved {count} notes";"""), "planted"));
+        Assert.Empty(Offenders(MarkupTexts("""<TextBlock Text="{Binding Title}" Title="DayNote"/>"""), "planted"));
+    }
+
+    // An allowance nothing in the source needs any more would let a sentence through unseen.
+    [Fact]
+    public void every_allowed_literal_is_still_used()
+    {
+        var texts = Directory.GetFiles(SourceDirectory(), "*.axaml", SearchOption.AllDirectories)
+            .SelectMany(file => MarkupTexts(File.ReadAllText(file)))
+            .Concat(Directory.GetFiles(SourceDirectory(), "*.cs", SearchOption.AllDirectories)
+                .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+                .SelectMany(file => CodeTexts(File.ReadAllText(file))))
+            .Select(text => text.Value.Trim())
+            .ToHashSet(StringComparer.Ordinal);
+
+        var unused = AllowedLiterals.Where(literal => literal.Length > 0 && !texts.Contains(literal)).ToArray();
+        Assert.True(unused.Length == 0, "Allowed literals no source uses: " + string.Join(", ", unused));
+    }
+
+    private static IEnumerable<(string Property, string Value)> MarkupTexts(string markup)
+    {
+        foreach (var property in TextProperties)
+        {
+            foreach (Match match in Regex.Matches(markup, $@"(?<![\w.]){property}\s*=\s*""([^""]*)"""))
+                yield return (property, match.Groups[1].Value);
+        }
+
+        foreach (Match match in Regex.Matches(markup, @"ToolTip\.Tip\s*=\s*""([^""]*)"""))
+            yield return ("ToolTip.Tip", match.Groups[1].Value);
+
+        foreach (Match match in Regex.Matches(markup, @"AutomationProperties\.(Name|HelpText)\s*=\s*""([^""]*)"""))
+            yield return ("AutomationProperties." + match.Groups[1].Value, match.Groups[2].Value);
+    }
+
+    // Text = "…", Content = "…", Title = "…" and their kin, including an interpolated string.
+    private static IEnumerable<(string Property, string Value)> CodeTexts(string code)
+    {
+        foreach (var property in TextProperties)
+        {
+            // Both an initializer (Text = "…") and an assignment to a member (block.Text = "…").
+            foreach (Match match in Regex.Matches(code, $@"(?<!\w){property}\s*=\s*\$?""([^""]*)"""))
+                yield return (property, match.Groups[1].Value);
+        }
+
+        foreach (Match match in Regex.Matches(code, @"AutomationProperties\.SetName\([^,]+,\s*\$?""([^""]*)"""))
+            yield return ("AutomationProperties.SetName", match.Groups[1].Value);
+
+        foreach (Match match in Regex.Matches(code, @"ToolTip\.SetTip\([^,]+,\s*\$?""([^""]*)"""))
+            yield return ("ToolTip.SetTip", match.Groups[1].Value);
+    }
+
+    private static IEnumerable<string> Offenders(IEnumerable<(string Property, string Value)> texts, string file) =>
+        texts.Where(text => IsSentence(text.Value)).Select(text => $"{file}: {text.Property}=\"{text.Value}\"");
 
     [Fact]
     public void every_key_the_source_names_is_in_the_catalogue()
@@ -135,19 +165,16 @@ public class HardCodedTextTests
         Assert.Empty(unused);
     }
 
-    private static void Record(List<string> offenders, string file, string property, string value)
+    private static bool IsSentence(string value)
     {
         var text = value.Trim();
         if (text.Length == 0 || AllowedLiterals.Contains(text))
-            return;
+            return false;
         // A binding, a resource, a static reference or a number is not a sentence.
         if (text.StartsWith('{') || text.StartsWith('/') || !text.Any(char.IsLetter))
-            return;
+            return false;
         // A single lower-case token is a name or a value, not a sentence a reader reads.
-        if (!text.Any(char.IsWhiteSpace) && char.IsLower(text[0]) && !text.Contains('’'))
-            return;
-
-        offenders.Add($"{file}: {property}=\"{value}\"");
+        return text.Any(char.IsWhiteSpace) || !char.IsLower(text[0]) || text.Contains('’');
     }
 
     private static HashSet<string> Keys()

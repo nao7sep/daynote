@@ -12,7 +12,7 @@ public sealed partial class NoteListItemViewModel : ObservableObject
     // A label cap well above any pane width; CharacterEllipsis does the visual fit (per text-cleanup-conventions).
     // A preview cut here ends in one "…", which the drawn trimming replaces when the pane is narrower,
     // so a wide pane still shows that the body continues.
-    private const int LabelLength = 80;
+    internal const int LabelLength = 80;
 
     public NoteListItemViewModel(Note note, TimeZoneInfo displayZone)
     {

@@ -42,11 +42,12 @@ public sealed class NoteListItemViewModelTests
     [Fact]
     public void A_cut_preview_ends_in_one_ellipsis_and_a_whole_one_in_none()
     {
-        var cut = new NoteListItemViewModel(Note(body: new string('a', 100)), TimeZoneInfo.Utc);
-        var whole = new NoteListItemViewModel(Note(body: new string('a', 80) + "   "), TimeZoneInfo.Utc);
+        var length = NoteListItemViewModel.LabelLength;
+        var cut = new NoteListItemViewModel(Note(body: new string('a', length + 20)), TimeZoneInfo.Utc);
+        var whole = new NoteListItemViewModel(Note(body: new string('a', length) + "   "), TimeZoneInfo.Utc);
 
-        Assert.Equal(new string('a', 80) + "…", cut.Title);
-        Assert.Equal(new string('a', 80), whole.Title);
+        Assert.Equal(new string('a', length) + "…", cut.Title);
+        Assert.Equal(new string('a', length), whole.Title);
     }
 
     [Fact]

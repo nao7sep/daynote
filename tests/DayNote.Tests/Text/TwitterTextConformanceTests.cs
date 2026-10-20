@@ -55,6 +55,13 @@ public sealed class TwitterTextConformanceTests
         Assert.NotEqual(vector.WeightedLength, TwitterText.WeightedLength(vector.Text));
     }
 
+    [Fact]
+    public void Every_known_divergence_names_a_vector_in_the_file()
+    {
+        // An entry whose vector the official file no longer has would otherwise be skipped in silence.
+        Assert.All(KnownDivergences, description => Assert.Contains(description, Vectors.Keys));
+    }
+
     private static TheoryData<string> Descriptions(Func<string, bool> predicate)
     {
         var data = new TheoryData<string>();

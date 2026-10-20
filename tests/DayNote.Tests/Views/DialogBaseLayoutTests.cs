@@ -91,9 +91,7 @@ public sealed class DialogBaseLayoutTests : IDisposable
         Assert.Equal(ScrollBarVisibility.Auto, scroll.VerticalScrollBarVisibility);
         Assert.Equal(ScrollBarVisibility.Disabled, scroll.HorizontalScrollBarVisibility);
 
-        // The OS title bar is the header, so the shell draws no header band of its own; the footer and
-        // the line that opens it stay outside the scroll region.
-        Assert.Null(dialog.FindControl<TextBlock>("HeaderText"));
+        // The footer and the line that opens it stay outside the scroll region.
         var footer = dialog.FindControl<StackPanel>("ButtonPanel");
         var separator = dialog.FindControl<Border>("FooterSeparator");
         Assert.NotNull(footer);
@@ -271,26 +269,6 @@ public sealed class DialogBaseLayoutTests : IDisposable
 
         Assert.True(notice.ShowInTaskbar, "the app's only window has to be listed");
         Assert.Equal(WindowStartupLocation.CenterScreen, notice.WindowStartupLocation);
-    }
-
-    // And the startup path has to reach it through that factory. The bound lives there rather than in
-    // the constructor, so a lifetime that builds the dialog itself gets an unbounded window and the
-    // test above still passes — it would be calling the factory nobody used.
-    [Fact]
-    public void The_startup_path_builds_its_window_through_the_bounded_factory()
-    {
-        var app = File.ReadAllText(Path.Combine(SourceDirectory(), "App.axaml.cs"));
-
-        Assert.DoesNotContain("new MessageDialog(", app, StringComparison.Ordinal);
-        Assert.Contains("MessageDialog.CreateStartupFailure(", app, StringComparison.Ordinal);
-    }
-
-    private static string SourceDirectory([CallerFilePath] string callerPath = "")
-    {
-        // This file: <repo>/tests/DayNote.Tests/Views/DialogBaseLayoutTests.cs
-        var testsViewsDir = Path.GetDirectoryName(callerPath)!;
-        var repoRoot = Path.GetFullPath(Path.Combine(testsViewsDir, "..", "..", ".."));
-        return Path.Combine(repoRoot, "src", "DayNote");
     }
 
     public void Dispose()

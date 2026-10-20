@@ -38,7 +38,7 @@ public class LabelFitTests : WindowTest
     // Avalonia's arrangement round differently, and a fraction of a pixel is not a defect.
     private const double Tolerance = 1.0;
 
-    public static TheoryData<string> Tags() => new() { "en", "de", "es", "fr", "it", "pt-BR", "ru", "ja", "ko", "zh-Hans" };
+    public static TheoryData<string> Tags() => new(DayNote.Core.Configuration.AppConfig.LanguageTags);
 
     [AvaloniaTheory]
     [MemberData(nameof(Tags))]

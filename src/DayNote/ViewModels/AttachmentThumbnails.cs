@@ -10,13 +10,14 @@ namespace DayNote.ViewModels;
 
 /// <summary>
 /// An image attachment's thumbnail, made once and kept on disk, so showing a row never decodes the
-/// original again (volume-handling-conventions, Pixels). As in BigMouth, the thumbnail's longest edge
-/// is 360 px, stored as WebP at quality 75, under <see cref="DayNote.Core.Storage.AppPaths.ThumbnailsDirectory"/>.
+/// original again (volume-handling-conventions, Pixels). The thumbnail's longest edge is 360 px, which
+/// stays sharp in its row on high-density displays, stored as WebP at quality 75, a few kilobytes each,
+/// under <see cref="DayNote.Core.Storage.AppPaths.ThumbnailsDirectory"/>.
 ///
 /// A thumbnail is named after the file it came from: the SHA-256 of its full path, size and modified
-/// time, plus <see cref="FormatVersion"/>, so a replaced or edited file gets a new one. BigMouth names
-/// its derivatives by a hash of the bytes because it records each file's hash; DayNote records none, and
-/// hashing every image each time a note is shown would read it whole again. A file replaced with the same
+/// time, plus <see cref="FormatVersion"/>, so a replaced or edited file gets a new one. A hash of the
+/// bytes would need each image read whole every time a note is shown, since DayNote records no file
+/// hashes. A file replaced with the same
 /// size and modified time keeps the old picture, which is only cosmetic. Nothing sweeps old thumbnails:
 /// disk use is out of scope (developer decision), and each is a few kilobytes.
 ///

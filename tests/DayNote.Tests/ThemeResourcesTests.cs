@@ -16,6 +16,7 @@ using Avalonia.Threading;
 using DayNote.Core.Configuration;
 using DayNote.ViewModels;
 using DayNote.Views;
+using DayNote.Tests.I18n;
 using Xunit;
 
 namespace DayNote.Tests;
@@ -243,9 +244,12 @@ public sealed class ThemeResourcesTests
         });
         var radios = dialog.GetLogicalDescendants().OfType<RadioButton>().ToList();
         // System names the appearance the headless platform reports, which is light.
-        Assert.Equal(new[] { "System (Light)", "Light", "Dark" }, radios.Select(radio => (string)radio.Content!));
+        var light = English.Of("settings.themeLight");
+        Assert.Equal(
+            new[] { English.Of("settings.themeSystem", ("theme", light)), light, English.Of("settings.themeDark") },
+            radios.Select(radio => (string)radio.Content!));
         Assert.Single(radios.Select(radio => radio.Parent).Distinct());
-        Assert.Equal("Dark", radios.Single(radio => radio.IsChecked == true).Content);
+        Assert.Equal(English.Of("settings.themeDark"), radios.Single(radio => radio.IsChecked == true).Content);
 
         radios[1].IsChecked = true;
         Assert.Null(saved);

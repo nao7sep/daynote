@@ -57,8 +57,8 @@ public class CatalogueTests
         "size.bytes", "size.kilobytes", "size.megabytes", "size.gigabytes", "size.terabytes",
     ];
 
-    private static readonly string[] Tags =
-        ["en", "de", "es", "fr", "it", "pt-BR", "ru", "ja", "ko", "zh-Hans"];
+    // The app's own language list is the source every catalogue file and packaging list is checked against.
+    private static readonly string[] Tags = [.. Languages.Tags];
 
     [Fact]
     public void the_set_is_exactly_the_ten_interface_languages()
@@ -69,7 +69,6 @@ public class CatalogueTests
             .ToArray();
 
         Assert.Equal(Tags.OrderBy(tag => tag, StringComparer.Ordinal).ToArray(), files);
-        Assert.Equal(Tags.OrderBy(tag => tag, StringComparer.Ordinal), Languages.Tags.OrderBy(tag => tag, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -223,6 +222,31 @@ public class CatalogueTests
             }
             Assert.EndsWith("\n", text);
         }
+    }
+
+    // The Windows installer speaks every interface language Inno Setup ships wizard text for, English
+    // first as its fallback; Korean and Simplified Chinese have none in Inno, so their readers see English.
+    [Fact]
+    public void the_windows_installer_speaks_every_language_inno_has()
+    {
+        string[] innoHasNone = ["ko", "zh-Hans"];
+        var names = Regex.Matches(File.ReadAllText(Path.Combine(RepoRoot(), "scripts", "daynote.iss")),
+                @"^Name:\s*""([^""]+)"";\s*MessagesFile:", RegexOptions.Multiline)
+            .Select(match => match.Groups[1].Value.Replace('_', '-'))
+            .ToArray();
+
+        Assert.Equal("en", names[0]);
+        Assert.Equal(
+            Tags.Except(innoHasNone).OrderBy(tag => tag, StringComparer.Ordinal),
+            names.OrderBy(tag => tag, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void every_brand_key_is_a_key()
+    {
+        // A brand key the catalogue no longer has would exempt nothing and hide that it went stale.
+        var english = Read("en").Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
+        Assert.All(BrandKeys, key => Assert.Contains(key, english));
     }
 
     [Fact]

@@ -106,7 +106,8 @@
                     <TextBlock Text="DayNote" FontWeight="Bold" FontSize="15" VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="8">
-                    <!-- Settings / Records / Shortcuts / About live in a hamburger menu, matching the fleet. -->
+                    <!-- Settings / Records / Shortcuts / About live in a hamburger menu: commands used now and
+                         then, kept out of the toolbar so it holds only the app's name. -->
                     <Button Classes="ghost compact icon" i18n:Localized.ToolTip="menu.button" i18n:Localized.AutomationName="menu.button">
                         <!-- Hamburger as a vector (three equal strokes); the glyph ☰ renders unevenly across
                              fonts. Bars 16 long and 2 thick with 5 between them: closer together they read as
@@ -383,7 +384,7 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <!-- A toggle button, as in BigMouth. Its words say the state: "Lock" with the
+                            <!-- A toggle button. Its words say the state: "Lock" with the
                                  accent fill while the note is open, because locking is the step that
                                  finishes a note, and a plain "Locked" once it is done. Each label keeps
                                  its own width; the accessible name stays "Lock", and the toggle state

@@ -58,7 +58,8 @@ public sealed class AboutDialogTests
     }
 
     // About opens with the app's own name at the product-title size, and the version on its own line
-    // under it rather than sharing the name's line (modal-dialog conventions; the fleet About pattern).
+    // under it rather than sharing the name's line, so the name reads first and the version stays
+    // findable without competing with it.
     [AvaloniaFact]
     public void The_name_leads_with_the_version_under_it()
     {

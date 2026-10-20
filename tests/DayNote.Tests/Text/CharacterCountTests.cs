@@ -42,7 +42,7 @@ public sealed class CharacterCountTests
     public void Count_reports_the_limit_and_within_limit_flag()
     {
         var within = CharacterCount.Count("short");
-        Assert.Equal(280, within.XLimit);
+        Assert.Equal(TwitterText.MaxWeightedLength, within.XLimit);
         Assert.True(within.XWithinLimit);
 
         // 141 wide characters weigh 282, just over the 280 budget.

@@ -7,7 +7,8 @@ using Avalonia.Layout;
 namespace DayNote.Views;
 
 /// <summary>
-/// Keyboard resizing for a pane splitter (fleet decision): the arrow keys along its axis move it 16 px, and
+/// Keyboard resizing for a pane splitter, so a pane can be sized without a pointer: the arrow keys along
+/// its axis move it 16 px, a step large enough to see and small enough to place a pane closely, and
 /// Home and End move it to either end. The pane's new size is the user's intent, as a drag's is, so a later
 /// window resize keeps it; a size saved on its own is saved once, when the key is released or focus leaves.
 /// The toolkit's own 10 px step neither recorded the intent nor saved it.

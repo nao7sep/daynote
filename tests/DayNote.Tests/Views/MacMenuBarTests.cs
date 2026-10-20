@@ -51,7 +51,7 @@ public sealed class MacMenuBarTests
     [Fact]
     public void The_bar_is_the_app_menu_then_Edit_then_Window()
     {
-        Assert.Equal(new[] { "DayNote", "Edit", "Window" }, Layout("DayNote").Select(menu => menu.Title));
+        Assert.Equal(new[] { "DayNote", English.Of("nativeMenu.edit"), English.Of("nativeMenu.window") }, Layout("DayNote").Select(menu => menu.Title));
     }
 
     [Fact]
@@ -60,24 +60,24 @@ public sealed class MacMenuBarTests
         Assert.Equal(
             new[]
             {
-                "About DayNote", "—", "Settings", "—", "Services", "—",
-                "Hide DayNote", "Hide Others", "Show All", "—", "Quit DayNote",
+                English.Of("nativeMenu.about", ("app", "DayNote")), "—", English.Of("nativeMenu.settings"), "—", English.Of("nativeMenu.services"), "—",
+                English.Of("nativeMenu.hide", ("app", "DayNote")), English.Of("nativeMenu.hideOthers"), English.Of("nativeMenu.showAll"), "—", English.Of("nativeMenu.quit", ("app", "DayNote")),
             },
             Titles(Menu("DayNote")));
-        Assert.Equal((",", Cmd), KeyOf(Menu("DayNote"), "Settings"));
-        Assert.Equal(("q", Cmd), KeyOf(Menu("DayNote"), "Quit DayNote"));
+        Assert.Equal((",", Cmd), KeyOf(Menu("DayNote"), English.Of("nativeMenu.settings")));
+        Assert.Equal(("q", Cmd), KeyOf(Menu("DayNote"), English.Of("nativeMenu.quit", ("app", "DayNote"))));
     }
 
     [Fact]
     public void Edit_and_Window_items_send_AppKits_standard_actions_with_the_standard_keys()
     {
-        Assert.Equal(new[] { "Undo", "Redo", "—", "Cut", "Copy", "Paste", "Select All" }, Titles(Menu("Edit")));
+        Assert.Equal(new[] { English.Of("nativeMenu.undo"), English.Of("nativeMenu.redo"), "—", English.Of("nativeMenu.cut"), English.Of("nativeMenu.copy"), English.Of("nativeMenu.paste"), English.Of("nativeMenu.selectAll") }, Titles(Menu("Edit")));
         Assert.Equal(EditActions, Menu("Edit").OfType<Item>().Select(item => item.Action));
         Assert.Equal(
             new[] { ("z", Cmd), ("Z", Cmd), ("x", Cmd), ("c", Cmd), ("v", Cmd), ("a", Cmd) },
             Menu("Edit").OfType<Item>().Select(item => (item.Key, item.Modifiers)));
 
-        Assert.Equal(new[] { "Minimize", "Zoom", "—", "Bring All to Front" }, Titles(Menu("Window")));
+        Assert.Equal(new[] { English.Of("nativeMenu.minimize"), English.Of("nativeMenu.zoom"), "—", English.Of("nativeMenu.bringAllToFront") }, Titles(Menu("Window")));
         Assert.Equal(
             new[] { "performMiniaturize:", "performZoom:", "arrangeInFront:" },
             Menu("Window").OfType<Item>().Select(item => item.Action));
@@ -172,7 +172,7 @@ public sealed class MacMenuBarTests
     public void No_window_or_the_app_declares_an_Avalonia_NativeMenu()
     {
         // With Avalonia's menus off, one would be silently ignored; the bar is MacMenuBar's alone.
-        var declaration = new Regex(@"<NativeMenu|NativeMenu\.(Set)?Menu|new NativeMenu");
+        var declaration = NativeMenuDeclaration;
         var offenders = Directory.EnumerateFiles(Path.Combine(RepoRoot(), "src", "DayNote"), "*.*", SearchOption.AllDirectories)
             .Where(path => path.EndsWith(".axaml", StringComparison.Ordinal) || path.EndsWith(".cs", StringComparison.Ordinal))
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
@@ -180,6 +180,16 @@ public sealed class MacMenuBarTests
             .Where(path => declaration.IsMatch(File.ReadAllText(path)))
             .ToList();
         Assert.Empty(offenders);
+    }
+
+    private static readonly Regex NativeMenuDeclaration = new(@"<NativeMenu|NativeMenu\.(Set)?Menu|new NativeMenu");
+
+    [Fact]
+    public void The_NativeMenu_scan_finds_a_planted_declaration()
+    {
+        Assert.Matches(NativeMenuDeclaration, "<NativeMenu.Menu><NativeMenu/></NativeMenu.Menu>");
+        Assert.Matches(NativeMenuDeclaration, "NativeMenu.SetMenu(window, menu);");
+        Assert.Matches(NativeMenuDeclaration, "var menu = new NativeMenu();");
     }
 
     [AvaloniaFact]

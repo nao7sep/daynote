@@ -288,23 +288,23 @@ public sealed class MainWindowViewModelTests : IDisposable
     public async Task Mandatory_panes_explain_prerequisites_and_ordinary_empty_states()
     {
         var vm = NewViewModel();
-        Assert.Equal("No binders yet. Create or open one.", vm.BindersEmptyStateText);
-        Assert.Equal("Open or create a binder to add notes.", vm.NotesEmptyStateText);
-        Assert.Equal("Select or create a note to add attachments.", vm.AttachmentsEmptyStateText);
+        Assert.Equal(English.Of("binders.empty"), vm.BindersEmptyStateText);
+        Assert.Equal(English.Of("notes.noBinder"), vm.NotesEmptyStateText);
+        Assert.Equal(English.Of("attachments.noNote"), vm.AttachmentsEmptyStateText);
 
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         Assert.Equal(string.Empty, vm.BindersEmptyStateText);
-        Assert.Equal("No notes yet. Create one to get started.", vm.NotesEmptyStateText);
+        Assert.Equal(English.Of("notes.empty"), vm.NotesEmptyStateText);
 
         vm.NewNoteCommand.Execute(null);
         Assert.Equal(string.Empty, vm.NotesEmptyStateText);
-        Assert.Equal("No attachments yet.", vm.AttachmentsEmptyStateText);
+        Assert.Equal(English.Of("attachments.empty"), vm.AttachmentsEmptyStateText);
 
         await vm.CloseBinderCommand.ExecuteAsync(null);
-        Assert.Equal("No binders yet. Create or open one.", vm.BindersEmptyStateText);
-        Assert.Equal("Open or create a binder to add notes.", vm.NotesEmptyStateText);
-        Assert.Equal("Select or create a note to add attachments.", vm.AttachmentsEmptyStateText);
+        Assert.Equal(English.Of("binders.empty"), vm.BindersEmptyStateText);
+        Assert.Equal(English.Of("notes.noBinder"), vm.NotesEmptyStateText);
+        Assert.Equal(English.Of("attachments.noNote"), vm.AttachmentsEmptyStateText);
 
         await vm.ShutdownAsync();
     }
@@ -746,7 +746,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.True(File.Exists(BinderPath));
         Assert.Single(vm.Binders);
-        Assert.Equal("No notes", vm.BinderStatusText);
+        Assert.Equal(English.Of("binder.noNotes"), vm.BinderStatusText);
 
         await vm.ShutdownAsync();
     }
@@ -760,7 +760,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Single(vm.Notes);
         Assert.NotNull(vm.SelectedNote);
-        Assert.Equal("Unsaved changes", vm.SaveStateText);
+        Assert.Equal(English.Of("save.unsaved"), vm.SaveStateText);
 
         await vm.ShutdownAsync();
     }
@@ -775,7 +775,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         await vm.SaveNowCommand.ExecuteAsync(null);
 
-        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal(English.Of("save.saved"), vm.SaveStateText);
 
         var reloaded = new BinderStore().Load(BinderPath);
         Assert.Single(reloaded.Binder.Notes);
@@ -788,7 +788,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task Overlapping_saves_of_the_same_binder_never_lose_the_latest_edit()
     {
-        // The binder write now runs on a background thread (DN-1); a manual Save landing while the
+        // The binder write runs on a background thread; a manual Save landing while the
         // autosave timer's own save is still writing must queue behind it rather than starting a second,
         // overlapping write to the same file. Simulate that by starting one save, dirtying the note
         // again before it can possibly have finished its background I/O, and starting a second save
@@ -804,7 +804,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         await Task.WhenAll(firstSave, secondSave);
 
-        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal(English.Of("save.saved"), vm.SaveStateText);
         Assert.Empty(vm.Results);
         var reloaded = new BinderStore().Load(BinderPath);
         Assert.Equal("second body", reloaded.Binder.Notes[0].Body);
@@ -850,7 +850,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(1, _dialogs.ExternalChangeQuestions);
         var saved = new BinderStore().Load(BinderPath).Binder.Notes[0];
         Assert.Equal("local edit", saved.Body);
-        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal(English.Of("save.saved"), vm.SaveStateText);
 
         // The app's own write is the new baseline, so the next save asks nothing.
         vm.Editor.Body = "another local edit";
@@ -884,7 +884,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(2, _dialogs.ExternalChangeQuestions);
         Assert.Equal("Second outside change", new BinderStore().Load(BinderPath).Binder.Notes[0].Title);
         Assert.Equal("Second outside change", vm.Editor.Title);
-        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal(English.Of("save.saved"), vm.SaveStateText);
         await vm.ShutdownAsync();
     }
 
@@ -903,7 +903,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Equal("Changed outside", vm.Editor.Title);
         Assert.Equal(string.Empty, vm.Editor.Body);
-        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal(English.Of("save.saved"), vm.SaveStateText);
         Assert.Equal(outside, File.ReadAllBytes(BinderPath));
         await vm.ShutdownAsync();
     }
@@ -938,7 +938,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(1, _dialogs.ExternalChangeQuestions);
         Assert.Equal("Changed outside", vm.Editor.Title);
         Assert.Equal(string.Empty, vm.Editor.Body);
-        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal(English.Of("save.saved"), vm.SaveStateText);
         await vm.ShutdownAsync();
     }
 
@@ -1525,7 +1525,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     public async Task Binder_status_shows_the_note_count_only_when_no_note_is_selected()
     {
         var vm = await OpenNewBinderAsync();
-        Assert.Equal("No notes", vm.BinderStatusText);
+        Assert.Equal(English.Of("binder.noNotes"), vm.BinderStatusText);
 
         vm.NewNoteCommand.Execute(null);
         Assert.Equal(string.Empty, vm.BinderStatusText);
@@ -1709,7 +1709,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Empty(vm.Results);
         Assert.NotNull(vm.AttachmentResult);
-        Assert.Equal("Saved", vm.SaveStateText);
+        Assert.Equal(English.Of("save.saved"), vm.SaveStateText);
         Assert.True(File.Exists(BinderPath));
 
         await vm.ShutdownAsync();
@@ -1811,7 +1811,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var result = Assert.IsType<OperationResultViewModel>(item.Result);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
         Assert.Contains("unavailable on disk", result.Text);
-        Assert.Equal("Unavailable", item.DetailsText);
+        Assert.Equal(English.Of("attachment.unavailable"), item.DetailsText);
         Assert.Null(vm.AttachmentResult);
         Assert.Empty(vm.Results);
 
@@ -1885,7 +1885,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Dispatcher.UIThread.RunJobs();
         Assert.True(vm.IsAttachmentDropActive);
 
-        // The drop handler now hashes and copies the file on a background thread (DN-3), so the
+        // The drop handler hashes and copies the file on a background thread, so the
         // attachment lands asynchronously; pump the dispatcher until the background add's UI-thread
         // continuation has run rather than asserting immediately after one synchronous RunJobs.
         window.DragDrop(panePoint.Value, RawDragEventType.Drop, transfer, DragDropEffects.Copy, RawInputModifiers.None);
@@ -2115,7 +2115,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.OpenBinderCommand.ExecuteAsync(null);
         Assert.Same(selected, vm.SelectedNote);
         Assert.Equal("unsaved local edit", vm.Editor.Body);
-        Assert.Equal("Unsaved changes", vm.SaveStateText);
+        Assert.Equal(English.Of("save.unsaved"), vm.SaveStateText);
         Assert.Single(vm.Binders);
         await vm.ShutdownAsync();
     }
@@ -2640,7 +2640,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Status = NoteStatus.Verified;
         writing.Release();
         await firstSave;
-        Assert.Equal("Unsaved changes", vm.SaveStateText);
+        Assert.Equal(English.Of("save.unsaved"), vm.SaveStateText);
         var modified = SavedNote().Modified;
         _clock.Advance(TimeSpan.FromMinutes(1));
 
@@ -2733,7 +2733,7 @@ public sealed class MainWindowViewModelTests : IDisposable
             await reload;
         }
         Assert.Equal("later input", vm.Editor.Body);
-        Assert.Equal("Unsaved changes", vm.SaveStateText);
+        Assert.Equal(English.Of("save.unsaved"), vm.SaveStateText);
         await vm.ShutdownAsync();
     }
 
@@ -2979,7 +2979,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var toggle = Assert.IsType<ToggleButton>(window.FindControl<ToggleButton>("LockedToggle"));
         string Shown() => toggle.GetVisualDescendants().OfType<TextBlock>().Single(text => text.IsEffectivelyVisible).Text!;
 
-        Assert.Equal("Lock", Shown());
+        Assert.Equal(English.Of("editor.lock"), Shown());
         Assert.Contains("lock", toggle.Classes);
         var open = toggle.Bounds.Width;
 
@@ -2987,10 +2987,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();
         Assert.True(vm.Editor.Locked);
-        Assert.Equal("Locked", Shown());
+        Assert.Equal(English.Of("editor.locked"), Shown());
         // Each label keeps its own width, and the accessible name stays the action's.
         Assert.True(toggle.Bounds.Width > open);
-        Assert.Equal("Lock", Avalonia.Automation.AutomationProperties.GetName(toggle));
+        Assert.Equal(English.Of("editor.lock"), Avalonia.Automation.AutomationProperties.GetName(toggle));
 
         await CloseResultsTestWindowAsync(vm, window);
     }
@@ -4002,7 +4002,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Equal(outside, File.ReadAllBytes(BinderPath));
         Assert.Equal("local edit", vm.Editor.Body);
-        Assert.Equal("Unsaved changes", vm.SaveStateText);
+        Assert.Equal(English.Of("save.unsaved"), vm.SaveStateText);
         vm.BeginShutdown();
     }
 

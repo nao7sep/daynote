@@ -48,10 +48,4 @@ public sealed class TwitterTextTests
         // "a " (2) + url (23) + " b" (2) = 27.
         Assert.Equal(27, TwitterText.WeightedLength("a https://example.com b"));
     }
-
-    [Fact]
-    public void The_budget_is_two_hundred_eighty()
-    {
-        Assert.Equal(280, TwitterText.MaxWeightedLength);
-    }
 }

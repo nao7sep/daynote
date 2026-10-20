@@ -37,7 +37,7 @@ public sealed class RecordsWindowViewModelTests
         var vm = Started();
 
         Assert.Equal(RecordsListState.Ready, vm.ListState);
-        Assert.Equal(100, vm.Records.Count);
+        Assert.Equal(DayNote.Logging.RecordsReads.PageSize, vm.Records.Count);
         Assert.Equal(150, vm.Records[0].Record.Id);
         Assert.Null(vm.ListNote);
         var query = Assert.Single(_source.PageQueries);

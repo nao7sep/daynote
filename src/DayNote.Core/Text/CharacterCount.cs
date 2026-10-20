@@ -4,8 +4,8 @@ namespace DayNote.Core.Text;
 
 /// <summary>
 /// Counts words, Unicode characters, and the X/Twitter weighted-character length of a body of
-/// text. Ported from quickdeck, where characters were counted by code point and the weighted
-/// length came from twitter-text.
+/// text. The weighted length follows twitter-text's rules, so the X budget the status bar shows
+/// matches what X itself will count.
 /// </summary>
 public static class CharacterCount
 {
@@ -21,7 +21,11 @@ public static class CharacterCount
             XWithinLimit: weighted <= TwitterText.MaxWeightedLength);
     }
 
-    /// <summary>Number of whitespace-separated words, mirroring quickdeck's <c>trim().split(/\s+/)</c>.</summary>
+    /// <summary>
+    /// Number of whitespace-separated words. A run of spaces, tabs or line breaks is one separator, so
+    /// a writer's spacing never changes the count; a language written without spaces counts as one word
+    /// per run, which is why the character count stands beside it.
+    /// </summary>
     public static int Words(string text)
     {
         var trimmed = text.Trim();
@@ -33,7 +37,10 @@ public static class CharacterCount
         return trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
     }
 
-    /// <summary>Number of Unicode code points, matching quickdeck's <c>Array.from(text).length</c>.</summary>
+    /// <summary>
+    /// Number of Unicode code points, so an emoji or a character outside the Basic Multilingual Plane
+    /// counts as one, as a reader sees it, rather than as the two UTF-16 units it is stored in.
+    /// </summary>
     public static int Chars(string text)
     {
         var count = 0;

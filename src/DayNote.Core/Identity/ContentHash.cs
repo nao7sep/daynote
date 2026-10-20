@@ -4,8 +4,8 @@ using System.Text;
 namespace DayNote.Core.Identity;
 
 /// <summary>
-/// SHA-256 content hashing, used to detect external modification of binder files. Ported from
-/// quickdeck's content-hash comparison.
+/// SHA-256 content hashing, used to detect external modification of binder files: a save compares the
+/// file's hash with the one DayNote last read or wrote, which catches any change, whatever its time.
 /// </summary>
 public static class ContentHash
 {

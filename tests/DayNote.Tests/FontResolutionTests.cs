@@ -1,6 +1,8 @@
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using DayNote;
+using DayNote.Core.Configuration;
+using System;
 
 using Xunit;
 
@@ -42,6 +44,6 @@ public sealed class FontResolutionTests
     public void EditorFamilyNobodyHasFallsBackToTheFixedWidthDefault()
     {
         var resolved = UiFont.ResolveEditor("No Such Font 99999").ToString();
-        Assert.Contains(resolved, new[] { "Menlo", "Consolas", "monospace" });
+        Assert.Contains(resolved, EditorTextStyle.DefaultFixedWidthFamilies.Split(',', StringSplitOptions.TrimEntries));
     }
 }

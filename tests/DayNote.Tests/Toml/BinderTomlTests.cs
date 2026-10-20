@@ -57,7 +57,7 @@ public sealed class BinderTomlTests
     {
         var text = BinderTomlWriter.Write(SampleBinder());
 
-        Assert.StartsWith("format_version = 1\nid = ", text);
+        Assert.StartsWith($"format_version = {FormatVersions.Binder}\nid = ", text);
         var noteStart = text.IndexOf("[[note]]", StringComparison.Ordinal);
         // The binder has no title line (its title is local app state, not stored in the file).
         Assert.DoesNotContain("title =", text[..noteStart]);

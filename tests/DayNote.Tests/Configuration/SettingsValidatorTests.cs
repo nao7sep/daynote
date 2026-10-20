@@ -29,8 +29,8 @@ public sealed class SettingsValidatorTests
     public void Unresolvable_timezone_fails() => Assert.False(SettingsValidator.IsValid(Draft(tz: "Not/AZone")));
 
     [Theory]
-    [InlineData(0.24)] // below the 0.25 minimum
-    [InlineData(60.1)] // above the 60 maximum
+    [InlineData(SettingsValidator.MinAutosaveSeconds - 0.01)]
+    [InlineData(SettingsValidator.MaxAutosaveSeconds + 0.1)]
     public void Autosave_out_of_range_fails(double seconds) =>
         Assert.False(SettingsValidator.IsValid(Draft(autosave: seconds)));
 
@@ -44,8 +44,8 @@ public sealed class SettingsValidatorTests
     public void Blank_font_fails() => Assert.False(SettingsValidator.IsValid(Draft(new[] { Style(font: " ") })));
 
     [Theory]
-    [InlineData(7)] // font below 8
-    [InlineData(49)] // font above 48
+    [InlineData(SettingsValidator.MinFontSize - 1)]
+    [InlineData(SettingsValidator.MaxFontSize + 1)]
     public void Font_size_out_of_range_fails(double size) =>
         Assert.False(SettingsValidator.IsValid(Draft(new[] { Style(size: size) })));
 
