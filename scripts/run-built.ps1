@@ -44,13 +44,13 @@ try {
 
     $builtAt = (Get-Item $exePath).LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
     Claim-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-    Stop-OwnedRuntime -Kind dotnet -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $exePath
+    Stop-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $exePath
     Write-Step "Launching the existing build (built: $builtAt)"
     Write-Host "If you changed source since then, run rebuild instead."
 
     # GUI app: launch non-blocking via Start-Process.
     Start-Process -FilePath $exePath | Out-Null
-    Wait-OwnedRuntime -Kind dotnet -Label "DayNote" -RepoDir $repoDir -ProjectFile "" -ExecutableName "DayNote" -BuiltExecutable $exePath -TimeoutSeconds 30
+    Wait-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile "" -ExecutableName "DayNote" -BuiltExecutable $exePath -TimeoutSeconds 30
 }
 catch {
     Write-Host ""

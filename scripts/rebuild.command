@@ -42,6 +42,6 @@ rm -rf "$REPO_DIR/publish"
 dotnet publish "$PROJECT_FILE" -c Release -r "$RID" --self-contained true -o "$REPO_DIR/publish"
 
 claim_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
-stop_owned_runtime dotnet "DayNote" "$REPO_DIR" "$PROJECT_FILE" "DayNote" "$APP_EXECUTABLE"
+stop_owned_runtime "DayNote" "$REPO_DIR" "$PROJECT_FILE" "DayNote" "$APP_EXECUTABLE"
 open -n "$APP_BUNDLE"
-wait_for_owned_runtime dotnet "DayNote" "$REPO_DIR" "$PROJECT_FILE" "DayNote" "$APP_EXECUTABLE" 30
+wait_for_owned_runtime "DayNote" "$REPO_DIR" "$PROJECT_FILE" "DayNote" "$APP_EXECUTABLE" 30

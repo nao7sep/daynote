@@ -60,14 +60,14 @@ try {
 
     Write-Step "Replacing any existing DayNote runtime"
     Claim-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-    Stop-OwnedRuntime -Kind dotnet -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $builtExecutable
+    Stop-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $builtExecutable
 
     Write-Step "Restoring packages required for launch"
     Invoke-Native -FilePath "dotnet" -ArgumentList @("restore", $projectFile)
 
     Write-Step "Starting DayNote (Debug, from source)"
     $devProcess = Start-Process -FilePath "dotnet" -ArgumentList @("run", "--project", $projectFile) -NoNewWindow -PassThru
-    Wait-OwnedRuntime -Kind dotnet -Label "DayNote" -RepoDir $repoDir -ProjectFile "" -ExecutableName "DayNote" -BuiltExecutable $builtExecutable -TimeoutSeconds 120
+    Wait-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile "" -ExecutableName "DayNote" -BuiltExecutable $builtExecutable -TimeoutSeconds 120
     Write-Step "DayNote is ready"
     $devProcess.WaitForExit()
     if ($devProcess.ExitCode -notin @(0, 130, -1073741510)) {
@@ -81,7 +81,7 @@ catch {
 }
 finally {
     if (Test-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir) {
-        Stop-OwnedRuntime -Kind dotnet -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $builtExecutable
+        Stop-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $builtExecutable
         Release-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
         Read-Host "Press Enter to close" | Out-Null
     }

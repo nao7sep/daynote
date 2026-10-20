@@ -16,8 +16,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      # The SDK follows the target framework in Directory.Build.props, its one source.
+      - name: Read the .NET version
+        id: dotnet
+        shell: bash
+        run: echo "version=$(sed -n 's/.*<TargetFramework>net\([0-9.]*\)<.*/\1/p' Directory.Build.props).x" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: ${{ steps.dotnet.outputs.version }}
       - name: Default tests
         run: dotnet test tests/DayNote.Tests --nologo
