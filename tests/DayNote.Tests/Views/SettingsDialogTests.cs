@@ -13,6 +13,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using DayNote.Core.Configuration;
 using DayNote.Views;
+using DayNote.Tests.I18n;
 using Xunit;
 
 namespace DayNote.Tests.Views;
@@ -156,7 +157,7 @@ public sealed class SettingsDialogTests
         Assert.False(dialog.Applied);
         Assert.Equal("Menlo", font.Text);
         var error = dialog.GetLogicalDescendants().OfType<TextBlock>().Single(block =>
-            block.IsVisible && block.Text?.Contains("could not be saved") == true);
+            block.IsVisible && block.Text == English.Of("failure.settingsSave"));
         Assert.True(error.Foreground?.Opacity > 0);
     }
 

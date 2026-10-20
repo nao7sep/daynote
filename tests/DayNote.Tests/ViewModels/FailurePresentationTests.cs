@@ -19,9 +19,8 @@ public sealed class FailurePresentationTests
 
         var text = English.Of(FailurePresentation.StartupSettings(config, new IOException(Hostile)));
 
+        Assert.Equal("failure.startupSettings", FailurePresentation.StartupSettings(config, new IOException(Hostile)).Key);
         Assert.Contains(config, text, StringComparison.Ordinal);
-        Assert.Contains("settings file", text, StringComparison.Ordinal);
-        Assert.Contains("left in place", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -31,9 +30,8 @@ public sealed class FailurePresentationTests
 
         var text = English.Of(FailurePresentation.StartupSettings(config, new InvalidDataException(Hostile)));
 
+        Assert.Equal("failure.startupSettingsMalformed", FailurePresentation.StartupSettings(config, new InvalidDataException(Hostile)).Key);
         Assert.Contains(config, text, StringComparison.Ordinal);
-        Assert.Contains("left in place", text, StringComparison.Ordinal);
-        Assert.Contains("Fix the file", text, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, text, StringComparison.Ordinal);
     }
 
@@ -61,38 +59,38 @@ public sealed class FailurePresentationTests
         Assert.DoesNotContain(Hostile, attachmentPicker, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, reload, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, link, StringComparison.Ordinal);
-        Assert.Contains("could not be opened", open, StringComparison.Ordinal);
-        Assert.Contains("changes are still in DayNote", save, StringComparison.Ordinal);
+        Assert.Equal("failure.openBinder", FailurePresentation.OpenBinder(error, "Journal").Key);
+        Assert.Equal("failure.saveBinder", FailurePresentation.SaveBinder(error).Key);
         Assert.NotNull(error.InnerException);
     }
 
     [Fact]
     public void KnownStructuredFailuresSelectUsefulRecovery()
     {
-        Assert.Contains("permission", English.Of(FailurePresentation.OpenBinder(new UnauthorizedAccessException(Hostile), "Journal")), StringComparison.Ordinal);
-        Assert.Contains("no longer available", English.Of(FailurePresentation.OpenBinder(new FileNotFoundException(Hostile), "Journal")), StringComparison.Ordinal);
-        Assert.Contains("writable", English.Of(FailurePresentation.SaveBinder(new UnauthorizedAccessException(Hostile))), StringComparison.Ordinal);
+        Assert.Equal("failure.openBinderPermission", FailurePresentation.OpenBinder(new UnauthorizedAccessException(Hostile), "Journal").Key);
+        Assert.Equal("failure.openBinderGone", FailurePresentation.OpenBinder(new FileNotFoundException(Hostile), "Journal").Key);
+        Assert.Equal("failure.saveBinderPermission", FailurePresentation.SaveBinder(new UnauthorizedAccessException(Hostile)).Key);
     }
 
     [Fact]
     public void A_malformed_binder_is_named_and_reported_as_left_untouched()
     {
-        var text = English.Of(FailurePresentation.OpenBinder(new BinderFormatException(Hostile), "Journal"));
+        var message = FailurePresentation.OpenBinder(new BinderFormatException(Hostile), "Journal");
+        var text = English.Of(message);
 
-        Assert.Contains("“Journal”", text, StringComparison.Ordinal);
-        Assert.Contains("not valid DayNote data", text, StringComparison.Ordinal);
-        Assert.Contains("left untouched", text, StringComparison.Ordinal);
+        Assert.Equal("failure.openBinderFormat", message.Key);
+        Assert.Contains("Journal", text, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, text, StringComparison.Ordinal);
     }
 
     [Fact]
     public void A_newer_binder_is_named_and_reported_as_left_untouched()
     {
-        var text = English.Of(FailurePresentation.OpenBinder(new NewerFormatException(Hostile, 2, 1), "Journal"));
+        var message = FailurePresentation.OpenBinder(new NewerFormatException(Hostile, 2, 1), "Journal");
+        var text = English.Of(message);
 
-        Assert.Contains("“Journal”", text, StringComparison.Ordinal);
-        Assert.Contains("newer version of DayNote", text, StringComparison.Ordinal);
-        Assert.Contains("left untouched", text, StringComparison.Ordinal);
+        Assert.Equal("failure.openBinderNewer", message.Key);
+        Assert.Contains("Journal", text, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, text, StringComparison.Ordinal);
     }
 
@@ -103,9 +101,8 @@ public sealed class FailurePresentationTests
 
         var text = English.Of(FailurePresentation.StartupSettings(config, new NewerFormatException(Hostile, 2, 1)));
 
+        Assert.Equal("failure.startupSettingsNewer", FailurePresentation.StartupSettings(config, new NewerFormatException(Hostile, 2, 1)).Key);
         Assert.Contains(config, text, StringComparison.Ordinal);
-        Assert.Contains("newer version of DayNote", text, StringComparison.Ordinal);
-        Assert.Contains("left in place", text, StringComparison.Ordinal);
         Assert.DoesNotContain(Hostile, text, StringComparison.Ordinal);
     }
 }

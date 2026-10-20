@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using DayNote.I18n;
 
@@ -16,4 +17,27 @@ internal static class English
     internal static string Of(Message? message) => Translator.Of(message) ?? string.Empty;
 
     internal static string Of(string key, params MessageValue[] values) => Translator.T(key, values);
+
+    /// <summary>
+    /// Every catalogue key a held message is built from, its own and those of the messages filled into
+    /// it, so a test can say which message was shown without depending on how the catalogue words it.
+    /// </summary>
+    internal static IReadOnlyList<string> KeysIn(Message? message)
+    {
+        var keys = new List<string>();
+        Collect(message, keys);
+        return keys;
+    }
+
+    private static void Collect(Message? message, List<string> keys)
+    {
+        if (message is null)
+            return;
+        keys.Add(message.Key);
+        foreach (var value in message.Values)
+        {
+            if (value.Value is Message nested)
+                Collect(nested, keys);
+        }
+    }
 }

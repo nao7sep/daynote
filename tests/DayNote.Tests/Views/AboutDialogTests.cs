@@ -11,6 +11,7 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using DayNote.Logging;
 using DayNote.Views;
+using DayNote.Tests.I18n;
 using Xunit;
 
 namespace DayNote.Tests.Views;
@@ -31,7 +32,7 @@ public sealed class AboutDialogTests
         var result = dialog.GetVisualDescendants().OfType<Border>()
             .Single(border => border.Name == "AboutLinkResult");
         Assert.True(result.IsVisible);
-        Assert.Contains("could not be opened", AutomationProperties.GetName(result), StringComparison.Ordinal);
+        Assert.Equal(English.Of("failure.openExternalLink"), AutomationProperties.GetName(result));
         Assert.DoesNotContain("EACCES", AutomationProperties.GetName(result), StringComparison.Ordinal);
         Assert.DoesNotContain("DAYNOTE-LINK-SENTINEL", AutomationProperties.GetName(result), StringComparison.Ordinal);
 

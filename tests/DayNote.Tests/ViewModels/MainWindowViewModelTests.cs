@@ -151,7 +151,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(File.Exists(item.FullPath));
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
-        Assert.Contains("could not be deleted", result.Text, StringComparison.Ordinal);
+        Assert.Contains("attachments.removeFailed", English.KeysIn(result.Message));
         Assert.DoesNotContain("DAYNOTE-REMOVE-SENTINEL", result.Text, StringComparison.Ordinal);
         Assert.Empty(vm.Results);
         await vm.ShutdownAsync();
@@ -341,13 +341,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.NewBinderPickerError = hostile;
         await vm.NewBinderCommand.ExecuteAsync(null);
         var newBinder = Assert.Single(vm.Results);
-        Assert.Contains("new-binder picker", newBinder.Text, StringComparison.Ordinal);
+        Assert.Contains("failure.newBinderPicker", English.KeysIn(newBinder.Message));
         Assert.DoesNotContain("EACCES", newBinder.Text, StringComparison.Ordinal);
 
         _dialogs.NewBinderPickerError = null;
         _dialogs.OpenBinderPickerError = hostile;
         await vm.OpenBinderCommand.ExecuteAsync(null);
-        Assert.Contains(vm.Results, result => result.Text.Contains("binder picker", StringComparison.Ordinal));
+        Assert.Contains(vm.Results, result => English.KeysIn(result.Message).Contains("failure.openBinderPicker"));
 
         _dialogs.OpenBinderPickerError = null;
         _dialogs.BinderToCreate = BinderPath;
@@ -357,7 +357,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.AddAttachmentCommand.ExecuteAsync(null);
 
         Assert.NotNull(vm.AttachmentResult);
-        Assert.Contains("attachment picker", vm.AttachmentResult!.Text, StringComparison.Ordinal);
+        Assert.Contains("failure.attachmentPicker", English.KeysIn(vm.AttachmentResult!.Message));
         Assert.DoesNotContain("DAYNOTE-PICKER-SENTINEL", vm.AttachmentResult.Text, StringComparison.Ordinal);
         await vm.ShutdownAsync();
     }
@@ -376,11 +376,10 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var result = Assert.Single(
             vm.Results,
-            item => item.Text.Contains("changed on disk", StringComparison.Ordinal));
+            item => English.KeysIn(item.Message).Contains("failure.reloadBinder"));
         Assert.Equal(OperationResultKind.Error, result.Kind);
-        Assert.DoesNotContain(
-            vm.Results,
-            item => item.Text.Contains("Reloaded after", StringComparison.Ordinal));
+        // The failure is all that is said: no other result claims the reload happened.
+        Assert.Single(vm.Results);
         await vm.ShutdownAsync();
     }
 
@@ -680,7 +679,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.False(vm.HasBinder);
         var result = Assert.Single(vm.Results);
-        Assert.Contains("newer version of DayNote", result.Text, StringComparison.Ordinal);
+        Assert.Contains("failure.openBinderNewer", English.KeysIn(result.Message));
         Assert.True(await vm.ShutdownAsync());
         Assert.Equal(before, File.ReadAllBytes(BinderPath));
     }
@@ -731,7 +730,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         {
             var result = Assert.Single(vm.Results);
             Assert.Equal(OperationResultKind.Error, result.Kind);
-            Assert.Contains("newer version of DayNote", result.Text, StringComparison.Ordinal);
+            Assert.Contains("failure.openBinderNewer", English.KeysIn(result.Message));
         }
 
         await vm.ShutdownAsync();
@@ -1620,7 +1619,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(2, note.Attachments.Count);
         var firstResult = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
         Assert.Equal(OperationResultKind.Info, firstResult.Kind);
-        Assert.Contains("Already attached", firstResult.Text);
+        Assert.Contains("attachments.duplicates", English.KeysIn(firstResult.Message));
         Assert.Empty(vm.Results);
 
         // A later file whose content the note already holds is not copied again.
@@ -1699,7 +1698,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.SaveNowCommand.ExecuteAsync(null);
         var firstFailure = Assert.Single(vm.Results, result => result.ResultKey is not null);
         Assert.Equal(OperationResultKind.Error, firstFailure.Kind);
-        Assert.StartsWith("Your changes are still in DayNote", firstFailure.Text);
+        Assert.StartsWith("failure.saveBinder", firstFailure.Message.Key);
 
         await vm.SaveNowCommand.ExecuteAsync(null);
         Assert.Single(vm.Results, result => result.ResultKey == firstFailure.ResultKey);
@@ -1732,7 +1731,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Null(exception);
         Assert.Empty(note.Attachments);
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
-        Assert.Contains("Could not prepare", result.Text);
+        Assert.Contains("attachments.folderFailed", English.KeysIn(result.Message));
         Assert.Empty(vm.Results);
 
         await vm.ShutdownAsync();
@@ -1772,7 +1771,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var failure = Assert.IsType<OperationResultViewModel>(item.Result);
         Assert.Equal(OperationResultKind.Error, failure.Kind);
         Assert.Equal(AutomationLiveSetting.Assertive, failure.LiveSetting);
-        Assert.Contains("Double-click to try again", failure.Text);
+        Assert.Contains("attachment.openFailed", English.KeysIn(failure.Message));
         Assert.Null(vm.AttachmentResult);
         Assert.Empty(vm.Results);
 
@@ -1810,7 +1809,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var item = Assert.Single(vm.Attachments);
         var result = Assert.IsType<OperationResultViewModel>(item.Result);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
-        Assert.Contains("unavailable on disk", result.Text);
+        Assert.Contains("attachment.unavailableMessage", English.KeysIn(result.Message));
         Assert.Equal(English.Of("attachment.unavailable"), item.DetailsText);
         Assert.Null(vm.AttachmentResult);
         Assert.Empty(vm.Results);
@@ -2141,14 +2140,14 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.CycleTextStyleCommand.Execute(null);
         Assert.Equal(style, vm.EditorFontFamily);
         Assert.Equal(string.Empty, vm.TextStyleStatusText);
-        Assert.Contains("text style could not be changed", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+        Assert.Contains("failure.textStyleSave", English.KeysIn(Assert.Single(vm.Results).Message));
 
         var row = vm.Binders[0];
         var title = row.Title;
         row.IsEditing = true;
         vm.ApplyBinderRename(row, "Renamed");
         Assert.Equal(title, row.Title);
-        Assert.Contains("new name could not be saved", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+        Assert.Contains("failure.binderRenameSave", English.KeysIn(Assert.Single(vm.Results).Message));
 
         var selected = vm.SelectedBinder;
         Assert.True(vm.MoveBinder(order[0], order[1]));
@@ -2156,11 +2155,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         // The reverted rows are the same rows, so the selection and keyboard target stay on them.
         Assert.Equal(order, vm.BinderOrder());
         Assert.Same(selected, vm.SelectedBinder);
-        Assert.Contains("order could not be saved", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+        Assert.Contains("failure.binderOrderSave", English.KeysIn(Assert.Single(vm.Results).Message));
 
         await vm.RemoveBinderCommand.ExecuteAsync(order[0]);
         Assert.Equal(order.Select(item => item.Path), vm.BinderOrder().Select(item => item.Path));
-        Assert.Contains("could not be removed from the list", Assert.Single(vm.Results).Text, StringComparison.Ordinal);
+        Assert.Contains("failure.binderForgetSave", English.KeysIn(Assert.Single(vm.Results).Message));
 
         // A binder that could not be listed is still open; the list only says it was not added.
         var third = Path.Combine(_home, "three.daynote");
@@ -2170,7 +2169,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.DoesNotContain(vm.BinderOrder(), item => PathKey.Equal(item.Path, third));
         var added = Assert.Single(vm.Results);
         Assert.Equal(OperationResultKind.Warning, added.Kind);
-        Assert.Contains("could not be added to the binder list", added.Text, StringComparison.Ordinal);
+        Assert.Contains("failure.binderAddSave", English.KeysIn(added.Message));
 
         await vm.ShutdownAsync();
         Directory.Delete(configPath);
@@ -2351,7 +2350,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.DeleteNoteCommand.ExecuteAsync(null);
         Assert.Empty(vm.Notes);
         Assert.True(Directory.Exists(assets));
-        Assert.Contains(vm.Results, result => result.Text.Contains("attachment files", StringComparison.Ordinal));
+        Assert.Contains(vm.Results, result => English.KeysIn(result.Message).Contains("note.attachmentsLeft"));
 
         // Once a save can land, a removal saves the binder before its file goes.
         Directory.Delete(BinderPath);
@@ -2386,7 +2385,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(vm.Notes);
         var warning = Assert.Single(vm.Results);
         Assert.Equal(OperationResultKind.Warning, warning.Kind);
-        Assert.Contains("attachment files", warning.Text, StringComparison.Ordinal);
+        Assert.Contains("note.attachmentsLeft", English.KeysIn(warning.Message));
         Assert.True(Directory.Exists(BinderStore.NoteAssetsDirectory(BinderPath, note.Id)));
 
         await vm.ShutdownAsync();
@@ -2461,7 +2460,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Empty(vm.Attachments);
         Assert.Empty(Directory.GetFiles(BinderStore.NoteAssetsDirectory(BinderPath, note.Id)));
         var result = Assert.IsType<OperationResultViewModel>(vm.AttachmentResult);
-        Assert.Contains("locked while the files were being added", result.Text, StringComparison.Ordinal);
+        Assert.Contains("attachments.lockedWhileAdding", English.KeysIn(result.Message));
         Assert.True(File.Exists(file));
 
         await vm.ShutdownAsync();
@@ -3148,8 +3147,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         window.UpdateLayout();
         var cards = ResultCards(window);
         var oneLine = cards.Single(card => card.DataContext == shortResult);
-        var wrapped = cards.Single(card => card.DataContext is OperationResultViewModel { Text: var m }
-            && m.StartsWith("Your changes are still in DayNote", StringComparison.Ordinal));
+        var wrapped = cards.Single(card => card.DataContext is OperationResultViewModel { Message.Key: var key }
+            && key.StartsWith("failure.saveBinder", StringComparison.Ordinal));
 
         foreach (var card in new[] { oneLine, wrapped })
         {
