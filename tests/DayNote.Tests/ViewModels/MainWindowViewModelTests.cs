@@ -166,6 +166,115 @@ public sealed class MainWindowViewModelTests : IDisposable
         return vm;
     }
 
+    [AvaloniaFact]
+    public async Task Binder_pickers_receive_only_the_active_binders_directory_and_cancel_preserves_it()
+    {
+        var vm = await OpenNewBinderAsync();
+        var active = vm.SelectedBinder;
+        _dialogs.BinderToOpen = null;
+        _dialogs.BinderToCreate = null;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        Assert.Equal(Path.GetDirectoryName(BinderPath), _dialogs.OpenDirectory);
+        Assert.Equal(Path.GetDirectoryName(BinderPath), _dialogs.CreateDirectory);
+        Assert.Same(active, vm.SelectedBinder);
+        Assert.True(vm.HasBinder);
+
+        // A remembered row is not a current location when the binder filter closes the active binder.
+        vm.BindersFilter = "does-not-match-any-binder";
+        await PumpUntilAsync(() => !vm.HasBinder);
+        vm.BindersFilter = string.Empty;
+        Assert.False(vm.HasBinder);
+        Assert.NotEmpty(vm.Binders);
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        Assert.Null(_dialogs.OpenDirectory);
+        Assert.Null(_dialogs.CreateDirectory);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task New_binder_confirms_the_existing_final_target_before_closing_active_work(bool replace)
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        vm.Editor.Title = "Keep active work";
+        var active = vm.SelectedBinder;
+        var note = vm.SelectedNote;
+        var picked = Path.Combine(_home, "other.txt");
+        var target = picked + ".daynote";
+        File.WriteAllText(target, "existing target content");
+        _dialogs.BinderToCreate = picked;
+        _dialogs.ConfirmResult = replace;
+
+        await vm.NewBinderCommand.ExecuteAsync(null);
+
+        Assert.Equal("binder.replaceMessage", _dialogs.LastConfirmMessage!.Key);
+        Assert.Contains(QuotedValue.Path(target), Localizer.Of(_dialogs.LastConfirmMessage));
+        Assert.True(_dialogs.LastConfirmDestructive);
+        Assert.Equal("binder.replace", _dialogs.LastConfirmLabel);
+        Assert.False(File.Exists(picked));
+        if (replace)
+        {
+            Assert.Empty(new BinderStore().Load(target).Binder.Notes);
+            Assert.Equal(target, vm.SelectedBinder!.Path);
+            Assert.Equal("Keep active work", new BinderStore().Load(BinderPath).Binder.Notes.Single().Title);
+        }
+        else
+        {
+            Assert.Equal("existing target content", File.ReadAllText(target));
+            Assert.Same(active, vm.SelectedBinder);
+            Assert.Same(note, vm.SelectedNote);
+            Assert.Equal("Keep active work", vm.Editor.Title);
+        }
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_failed_replacement_question_preserves_active_work_and_reports_safe_copy()
+    {
+        var vm = await OpenNewBinderAsync();
+        var active = vm.SelectedBinder;
+        var picked = Path.Combine(_home, "other");
+        var target = picked + ".daynote";
+        File.WriteAllText(target, "preserve target");
+        _dialogs.BinderToCreate = picked;
+        _dialogs.ConfirmError = new IOException("CONFIRM-SENTINEL /private/internal-path");
+
+        await vm.NewBinderCommand.ExecuteAsync(null);
+
+        Assert.Same(active, vm.SelectedBinder);
+        Assert.Equal("preserve target", File.ReadAllText(target));
+        var result = Assert.Single(vm.Results);
+        Assert.Contains("failure.openBinder", English.KeysIn(result.Message));
+        Assert.DoesNotContain("CONFIRM-SENTINEL", result.Text);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("new", false)]
+    [InlineData("new.txt", false)]
+    [InlineData("new.daynote", true)]
+    [InlineData("new.DAYNOTE", true)]
+    public async Task New_binder_only_adds_confirmation_for_an_existing_changed_target(string name, bool existing)
+    {
+        var vm = NewViewModel();
+        var picked = Path.Combine(_home, name);
+        Directory.CreateDirectory(_home);
+        if (existing)
+            File.WriteAllText(picked, "native-confirmed existing content");
+        _dialogs.BinderToCreate = picked;
+
+        await vm.NewBinderCommand.ExecuteAsync(null);
+
+        Assert.Null(_dialogs.LastConfirmMessage);
+        Assert.Equal(existing ? picked : picked + ".daynote", vm.SelectedBinder!.Path);
+        Assert.Empty(new BinderStore().Load(vm.SelectedBinder.Path).Binder.Notes);
+        await vm.ShutdownAsync();
+    }
+
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
@@ -4106,6 +4215,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         public string? BinderToOpen { get; set; }
         public IReadOnlyList<string> AttachmentPaths { get; set; } = Array.Empty<string>();
         public bool ConfirmResult { get; set; } = true;
+        public Exception? ConfirmError { get; set; }
         public ExternalChangeChoice ExternalChoice { get; set; } = ExternalChangeChoice.KeepMine;
         public bool SettingsApplied { get; set; }
         public Action<AppConfig>? SettingsEdit { get; set; }
@@ -4115,20 +4225,30 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Exception? AttachmentPickerError { get; set; }
         public string? LastOpenedPath { get; private set; }
 
-        public Task<string?> PickBinderToOpenAsync() => OpenBinderPickerError is null
-            ? Task.FromResult(BinderToOpen)
-            : Task.FromException<string?>(OpenBinderPickerError);
-        public Task<string?> PickBinderToCreateAsync() => NewBinderPickerError is null
-            ? Task.FromResult(BinderToCreate)
-            : Task.FromException<string?>(NewBinderPickerError);
+        public string? OpenDirectory { get; private set; }
+        public string? CreateDirectory { get; private set; }
+        public Task<string?> PickBinderToOpenAsync(string? directory)
+        {
+            OpenDirectory = directory;
+            return OpenBinderPickerError is null ? Task.FromResult(BinderToOpen) : Task.FromException<string?>(OpenBinderPickerError);
+        }
+        public Task<string?> PickBinderToCreateAsync(string? directory)
+        {
+            CreateDirectory = directory;
+            return NewBinderPickerError is null ? Task.FromResult(BinderToCreate) : Task.FromException<string?>(NewBinderPickerError);
+        }
         public Task<IReadOnlyList<string>> PickAttachmentsAsync() => AttachmentPickerError is null
             ? Task.FromResult(AttachmentPaths)
             : Task.FromException<IReadOnlyList<string>>(AttachmentPickerError);
         public Message? LastConfirmMessage { get; private set; }
+        public string? LastConfirmLabel { get; private set; }
+        public bool LastConfirmDestructive { get; private set; }
         public Task<bool> ConfirmAsync(Message title, Message message, string confirmLabelKey, bool destructive = false)
         {
             LastConfirmMessage = message;
-            return Task.FromResult(ConfirmResult);
+            LastConfirmLabel = confirmLabelKey;
+            LastConfirmDestructive = destructive;
+            return ConfirmError is null ? Task.FromResult(ConfirmResult) : Task.FromException<bool>(ConfirmError);
         }
         public List<(Message Title, Message Message)> Errors { get; } = [];
         /// <summary>When set, the error dialog cannot be shown and fails with it.</summary>

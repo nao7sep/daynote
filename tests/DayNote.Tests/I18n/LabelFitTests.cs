@@ -298,6 +298,16 @@ public class LabelFitTests : WindowTest
             .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await quit;
 
+        var replace = service.ConfirmAsync(Message.Of("binder.replaceTitle"),
+            Message.Of("binder.replaceMessage", ("path", QuotedValue.Path("/Documents/Journal.daynote"))),
+            "binder.replace", destructive: true);
+        Dispatcher.UIThread.RunJobs();
+        dialog = Assert.Single(owner.OwnedWindows);
+        AssertNothingClipped(dialog, dialog, tag, atLeast: 2);
+        dialog.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Tag, "cancel"))
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.False(await replace);
+
         var settled = new TaskCompletionSource();
         var wait = Show(new AttachmentWaitDialog(settled.Task, System.TimeSpan.FromHours(1)));
         try

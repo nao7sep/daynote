@@ -9,11 +9,11 @@ namespace DayNote.Services;
 /// </summary>
 public interface IDialogService
 {
-    /// <summary>Native open picker for an existing binder. Returns the chosen path or null.</summary>
-    Task<string?> PickBinderToOpenAsync();
+    /// <summary>Native open picker for an existing binder. Starts in the current binder directory when available; returns the chosen path or null.</summary>
+    Task<string?> PickBinderToOpenAsync(string? directory);
 
-    /// <summary>Native save picker for a new binder. Returns the chosen path or null.</summary>
-    Task<string?> PickBinderToCreateAsync();
+    /// <summary>Native save picker for a new binder. Starts in the current binder directory when available; returns the chosen path or null.</summary>
+    Task<string?> PickBinderToCreateAsync(string? directory);
 
     /// <summary>Native open picker for attachment files. Returns the chosen paths (possibly empty).</summary>
     Task<IReadOnlyList<string>> PickAttachmentsAsync();

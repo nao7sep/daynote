@@ -698,7 +698,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         string? path;
         try
         {
-            path = await _dialogs.PickBinderToCreateAsync();
+            path = await _dialogs.PickBinderToCreateAsync(_current is null ? null : Path.GetDirectoryName(_current.Path));
             ResolveShellResult(NewBinderPickerResultKey);
         }
         catch (Exception ex)
@@ -715,7 +715,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        await OpenBinderPathAsync(EnsureDaynoteExtension(path), isNew: true);
+        var target = EnsureDaynoteExtension(path);
+        // The native confirmation covers its returned path, not a different filename we append to it.
+        // Ask before closing the current binder so cancelling preserves the active work.
+        try
+        {
+            if (target != path && await Task.Run(() => File.Exists(target))
+                && !await _dialogs.ConfirmAsync(
+                    Message.Of("binder.replaceTitle"),
+                    Message.Of("binder.replaceMessage", ("path", QuotedValue.Path(target))),
+                    "binder.replace", destructive: true))
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to confirm binder replacement", new { path = target }, ex);
+            ShowResult(OperationResultKind.Error, FailurePresentation.OpenBinder(ex, TitleFor(target)),
+                resultKey: NewBinderPickerResultKey);
+            return;
+        }
+
+        await OpenBinderPathAsync(target, isNew: true);
     }
 
     [RelayCommand]
@@ -729,7 +751,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         string? path;
         try
         {
-            path = await _dialogs.PickBinderToOpenAsync();
+            path = await _dialogs.PickBinderToOpenAsync(_current is null ? null : Path.GetDirectoryName(_current.Path));
             ResolveShellResult(OpenBinderPickerResultKey);
         }
         catch (Exception ex)

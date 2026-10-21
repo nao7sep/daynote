@@ -207,8 +207,8 @@ internal sealed class PopulatedMainWindow : IDisposable
         public Exception? NewBinderPickerError { get; set; }
         public Avalonia.Controls.Window? Owner { get; set; }
 
-        public Task<string?> PickBinderToOpenAsync() => Task.FromResult<string?>(null);
-        public Task<string?> PickBinderToCreateAsync() => NewBinderPickerError is null
+        public Task<string?> PickBinderToOpenAsync(string? directory) => Task.FromResult<string?>(null);
+        public Task<string?> PickBinderToCreateAsync(string? directory) => NewBinderPickerError is null
             ? Task.FromResult(BinderToCreate)
             : Task.FromException<string?>(NewBinderPickerError);
         public Task<IReadOnlyList<string>> PickAttachmentsAsync() => Task.FromResult<IReadOnlyList<string>>([]);

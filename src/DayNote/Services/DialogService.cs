@@ -25,12 +25,16 @@ public sealed class DialogService : IDialogService
 
     public Window? Owner { get; set; }
 
-    public async Task<string?> PickBinderToOpenAsync()
+    public Task<string?> PickBinderToOpenAsync(string? directory) =>
+        PickBinderToOpenAsync(RequireOwner().StorageProvider, directory);
+
+    internal static async Task<string?> PickBinderToOpenAsync(IStorageProvider storage, string? directory)
     {
-        var owner = RequireOwner();
-        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var start = directory is null ? null : await storage.TryGetFolderFromPathAsync(new Uri(directory));
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = Localizer.T("picker.openBinder"),
+            SuggestedStartLocation = start,
             AllowMultiple = false,
             FileTypeFilter = new[] { BinderType() },
         });
@@ -38,12 +42,17 @@ public sealed class DialogService : IDialogService
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
-    public async Task<string?> PickBinderToCreateAsync()
+    public Task<string?> PickBinderToCreateAsync(string? directory) =>
+        PickBinderToCreateAsync(RequireOwner().StorageProvider, directory);
+
+    internal static async Task<string?> PickBinderToCreateAsync(IStorageProvider storage, string? directory)
     {
-        var owner = RequireOwner();
-        var file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        var start = directory is null ? null : await storage.TryGetFolderFromPathAsync(new Uri(directory));
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = Localizer.T("picker.newBinder"),
+            SuggestedStartLocation = start,
+            ShowOverwritePrompt = true,
             DefaultExtension = "daynote",
             // A lowercase default filename, the name the app gives a new binder, so it is in the
             // reader's language (the human-friendly capitalized name lives in the binder title).
