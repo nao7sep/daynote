@@ -202,8 +202,13 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     partial void OnBodyChanged(string value)
     {
+        if (_suppress)
+        {
+            return;
+        }
+
         UpdateCounts();
-        if (_suppress || _note is null)
+        if (_note is null)
         {
             return;
         }

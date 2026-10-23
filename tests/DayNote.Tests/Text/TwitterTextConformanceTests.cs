@@ -11,31 +11,20 @@ namespace DayNote.Tests.Text;
 
 /// <summary>
 /// Proves <see cref="TwitterText.WeightedLength"/> against Twitter's official twitter-text conformance
-/// vectors — the <c>WeightedTweetsCounterTest</c> suite, vendored verbatim under <c>Text/Conformance</c>.
-/// DayNote's implementation is a deliberate subset of the full engine: it weighs each code point by the
-/// v3 ranges and counts any scheme/<c>www.</c> token as a fixed-23 URL, but it does not validate URL
-/// domains. The few vectors that hinge on that domain validation are listed as known divergences and
-/// asserted to <em>still</em> diverge, so the exclusion list cannot silently rot if the code changes.
+/// vectors from the v3 <c>WeightedTweetsWithDiscountedEmojiCounterTest</c> suite,
+/// vendored verbatim under <c>Text/Conformance</c>.
 /// </summary>
 public sealed class TwitterTextConformanceTests
 {
-    private const string Section = "WeightedTweetsCounterTest";
+    private const string Section = "WeightedTweetsWithDiscountedEmojiCounterTest";
 
-    /// <summary>
-    /// Vectors whose expected length depends on URL domain validation the subset omits on purpose:
-    /// twitter-text rejects an over-long domain label and counts the URL as plain text, whereas DayNote's
-    /// simpler matcher still counts any scheme-prefixed token as a 23-weight URL. Keyed by the vector's
-    /// description in the official file.
-    /// </summary>
-    private static readonly IReadOnlySet<string> KnownDivergences = new HashSet<string>
+    public static TheoryData<string> ConformantVectors()
     {
-        "Handle long url with invalid domain labels and short url",
-        "Do not allow > 140 CJK characters by virtue of CJK chars greater than 63 punycode encoded chars in the host",
-    };
-
-    public static TheoryData<string> ConformantVectors() => Descriptions(d => !KnownDivergences.Contains(d));
-
-    public static TheoryData<string> DivergentVectors() => Descriptions(KnownDivergences.Contains);
+        var data = new TheoryData<string>();
+        foreach (var description in Vectors.Keys)
+            data.Add(description);
+        return data;
+    }
 
     [Theory]
     [MemberData(nameof(ConformantVectors))]
@@ -43,34 +32,6 @@ public sealed class TwitterTextConformanceTests
     {
         var vector = Vectors[description];
         Assert.Equal(vector.WeightedLength, TwitterText.WeightedLength(vector.Text));
-    }
-
-    [Theory]
-    [MemberData(nameof(DivergentVectors))]
-    public void Known_divergences_still_diverge(string description)
-    {
-        // If the implementation ever becomes conformant on one of these, this fails on purpose so the
-        // entry is removed from KnownDivergences rather than quietly masking a now-passing vector.
-        var vector = Vectors[description];
-        Assert.NotEqual(vector.WeightedLength, TwitterText.WeightedLength(vector.Text));
-    }
-
-    [Fact]
-    public void Every_known_divergence_names_a_vector_in_the_file()
-    {
-        // An entry whose vector the official file no longer has would otherwise be skipped in silence.
-        Assert.All(KnownDivergences, description => Assert.Contains(description, Vectors.Keys));
-    }
-
-    private static TheoryData<string> Descriptions(Func<string, bool> predicate)
-    {
-        var data = new TheoryData<string>();
-        foreach (var description in Vectors.Keys.Where(predicate))
-        {
-            data.Add(description);
-        }
-
-        return data;
     }
 
     private static readonly IReadOnlyDictionary<string, Vector> Vectors = Load();
