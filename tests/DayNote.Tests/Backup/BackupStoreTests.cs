@@ -189,7 +189,7 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
-    public void A_save_does_not_wait_while_another_connection_holds_the_write_lock()
+    public async Task A_save_completes_while_a_backup_dependency_is_held()
     {
         AtomicFile.WriteAllText(TargetPath, "opens the store");
         Assert.True(BackupStore.Drain(TimeSpan.FromSeconds(5)));
@@ -198,15 +198,36 @@ public sealed class BackupStoreTests : IDisposable
         other.Open();
         using var held = other.BeginTransaction(deferred: false);
 
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        AtomicFile.WriteAllText(TargetPath, "saved while the history is locked");
-        stopwatch.Stop();
-
-        Assert.Equal("saved while the history is locked", File.ReadAllText(TargetPath));
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(500), $"the save took {stopwatch.Elapsed}");
-        // The drain is bounded: the history's own wait for the lock outlasts it.
-        Assert.False(BackupStore.Drain(TimeSpan.FromMilliseconds(200)));
-        held.Rollback();
+        using var releaseWarning = new ManualResetEventSlim();
+        var warningEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        BackupStore.ConfigureWarn((_, _, _) =>
+        {
+            warningEntered.TrySetResult(true);
+            releaseWarning.Wait();
+        });
+        var save = Task.Run(() => AtomicFile.WriteAllText(TargetPath, "saved while the history is locked"), TestContext.Current.CancellationToken);
+        try
+        {
+            // Once SQLite's lock wait fails, the warning dependency keeps the physical backup owner
+            // held. The watchdog protects the test; it imposes no filesystem flush performance target.
+            await warningEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await save.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.Equal("saved while the history is locked", File.ReadAllText(TargetPath));
+            Assert.False(BackupStore.Drain(TimeSpan.Zero));
+        }
+        finally
+        {
+            releaseWarning.Set();
+            held.Rollback();
+            try
+            {
+                await save;
+            }
+            finally
+            {
+                Assert.True(BackupStore.Drain(TimeSpan.FromSeconds(5)));
+            }
+        }
     }
 
     [Fact]
@@ -406,14 +427,20 @@ public sealed class BackupStoreTests : IDisposable
     [Theory]
     [InlineData(0)] // tables but no version: unreadable
     [InlineData(-1)] // a version no DayNote writes
+    [InlineData(1)] // experimental format before sessions
+    [InlineData(2)] // experimental format before binary parts
     [InlineData(FormatVersions.Backups + 1)]
-    public void An_unversioned_or_newer_store_is_left_byte_identical_with_one_warn_and_the_save_still_lands(long userVersion)
+    public void An_unsupported_store_is_left_byte_identical_with_one_warn_and_the_save_still_lands(long userVersion)
     {
         using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
         {
             connection.Open();
             using var command = connection.CreateCommand();
-            command.CommandText = $"CREATE TABLE backups (id INTEGER PRIMARY KEY); PRAGMA user_version = {userVersion};";
+            command.CommandText = $"""
+                CREATE TABLE backups (id INTEGER PRIMARY KEY, content BLOB NOT NULL);
+                INSERT INTO backups (content) VALUES (X'00FF0D0A');
+                PRAGMA user_version = {userVersion};
+                """;
             command.ExecuteNonQuery();
         }
 
@@ -429,61 +456,6 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Contains("recording disabled", Assert.Single(warnings));
         Assert.Equal(before, File.ReadAllBytes(_paths.BackupStoreFile));
         Assert.False(File.Exists(_paths.BackupStoreFile + "-wal"));
-    }
-
-    [Fact]
-    public void A_format_1_store_is_converted_keeping_its_rows()
-    {
-        using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
-        {
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                CREATE TABLE backups (id INTEGER PRIMARY KEY, path TEXT NOT NULL, content BLOB NOT NULL,
-                  content_sha256 TEXT NOT NULL, byte_size INTEGER NOT NULL, written_at_utc TEXT NOT NULL);
-                CREATE INDEX idx_backups_path_id ON backups (path, id);
-                INSERT INTO backups (path, content, content_sha256, byte_size, written_at_utc)
-                  VALUES ($path, X'6F6C64', 'x', 3, '2026-07-06T04:05:12.345Z'),
-                         ($path, X'6F6C646572', 'y', 5, '2026-07-07T04:05:12.345Z');
-                PRAGMA user_version = 1;
-                """;
-            command.Parameters.AddWithValue("$path", Path.GetFullPath(TargetPath));
-            command.ExecuteNonQuery();
-        }
-
-        AtomicFile.WriteAllText(TargetPath, "new");
-        AtomicFile.WriteAllText(TargetPath, "newer");
-
-        Assert.Equal(new[] { "old", "older", "newer" }, Contents(TargetPath));
-        Assert.Equal(FormatVersions.Backups, UserVersion());
-    }
-
-    [Fact]
-    public void A_format_2_store_is_converted_keeping_its_rows()
-    {
-        using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))
-        {
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = """
-                CREATE TABLE backups (id INTEGER PRIMARY KEY, session_id TEXT, path TEXT NOT NULL,
-                  content BLOB NOT NULL, content_sha256 TEXT NOT NULL, byte_size INTEGER NOT NULL,
-                  written_at_utc TEXT NOT NULL);
-                CREATE INDEX idx_backups_path_id ON backups (path, id);
-                CREATE UNIQUE INDEX idx_backups_path_session ON backups (path, session_id);
-                INSERT INTO backups (session_id, path, content, content_sha256, byte_size, written_at_utc)
-                  VALUES ('earlier', $path, X'6F6C64', 'x', 3, '2026-07-06T04:05:12.345Z');
-                PRAGMA user_version = 2;
-                """;
-            command.Parameters.AddWithValue("$path", Path.GetFullPath(TargetPath));
-            command.ExecuteNonQuery();
-        }
-
-        AtomicFile.WriteAllText(TargetPath, "new");
-
-        Assert.Equal(new[] { "old", "new" }, Contents(TargetPath));
-        Assert.Equal(FormatVersions.Backups, UserVersion());
-        Assert.Empty(Parts(TargetPath));
     }
 
     private long UserVersion()

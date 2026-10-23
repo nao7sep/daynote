@@ -21,6 +21,6 @@ public static class FormatVersions
 
     /// <summary><c>backups.sqlite3</c> (<c>PRAGMA user_version</c>). Format 2 keeps one row per path per
     /// session; format 3 adds <c>backup_parts</c> for added files too large for one row, whose row content
-    /// an older build would misread as empty. Older stores are converted on open, keeping their rows.</summary>
+    /// an older build would misread as empty. Older experimental stores are left untouched and are not converted.</summary>
     public const int Backups = 3;
 }

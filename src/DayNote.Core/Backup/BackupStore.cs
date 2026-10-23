@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using DayNote.Core.Identity;
 using DayNote.Core.Storage;
@@ -23,10 +24,9 @@ namespace DayNote.Core.Backup;
 /// <remarks>
 /// <para>
 /// Saves hand over the exact bytes they just published, and an added file its path and the hash of what was
-/// copied, and return at once: one owner thread applies the
-/// writes in the order they were recorded, so a save never waits on SQLite, and neither does the UI thread
-/// a settings save runs on. A path recorded again before its earlier write is applied keeps only the newest
-/// bytes. Ordinary quit drains the pending writes within a short bound (<see cref="Drain"/>); when the
+/// copied, and return at once: one owner thread applies the writes in the order they were recorded,
+/// so the primary save never waits on SQLite. A path recorded again before its earlier write is applied
+/// keeps only the newest bytes. Ordinary quit drains the pending writes within a short bound (<see cref="Drain"/>); when the
 /// operating system ends the session they are skipped, and the background thread ends with the process.
 /// </para>
 /// <para>
@@ -46,8 +46,7 @@ public static class BackupStore
 {
     /// <summary>The one table. <c>content</c> is a BLOB of the exact bytes written, never decoded text.
     /// <c>written_at_utc</c> is the time of the latest save in the row, in the serialized ISO-8601-ms form
-    /// (<c>2026-07-06T04:05:12.345Z</c>), a data value, never a filename stamp. <c>session_id</c> is null on
-    /// rows recorded before sessions, which stay as earlier history.</summary>
+    /// (<c>2026-07-06T04:05:12.345Z</c>), a data value, never a filename stamp.</summary>
     private const string Schema = """
         CREATE TABLE IF NOT EXISTS backups (
           id             INTEGER PRIMARY KEY,
@@ -66,12 +65,6 @@ public static class BackupStore
           content   BLOB NOT NULL,
           PRIMARY KEY (backup_id, part)
         );
-        """;
-
-    // Format 1 kept a row per changed save; format 2 adds the session, keeping every earlier row; format 3
-    // adds backup_parts, created by the schema above.
-    private const string AddSessions = """
-        ALTER TABLE backups ADD COLUMN session_id TEXT;
         """;
 
     // Guards the pending writes, the owner's state and the session.
@@ -158,12 +151,12 @@ public static class BackupStore
     /// </summary>
     public static bool Drain(TimeSpan bound)
     {
-        var deadline = DateTime.UtcNow + bound;
+        var started = Stopwatch.GetTimestamp();
         lock (Gate)
         {
             while (Order.Count > 0 || _writing)
             {
-                var remaining = deadline - DateTime.UtcNow;
+                var remaining = bound - Stopwatch.GetElapsedTime(started);
                 if (remaining <= TimeSpan.Zero)
                 {
                     return false;
@@ -379,12 +372,18 @@ public static class BackupStore
             // through the managed-text atomic write, so it never records itself.
             paths.EnsureCreated();
 
-            connection = new SqliteConnection($"Data Source={file}");
+            // The provider retries busy commands and transactions using its own timeout; keep it at
+            // the same one-second bound as SQLite so its default cannot extend the optional wait.
+            connection = new SqliteConnection($"Data Source={file}") { DefaultTimeout = 1 };
             connection.Open();
 
-            // First, before WAL or the schema can change the file: a store written by a newer DayNote, or one
-            // DayNote did not write, is left exactly as it is, and recording stays disabled for the session.
+            // Check compatibility before WAL or the schema can change the file. Unsupported history stays
+            // untouched, and recording is disabled for the session.
             var found = SqliteFormatVersion.Claim(connection, FormatVersions.Backups, "backups.sqlite3");
+            if (found != 0 && found != FormatVersions.Backups)
+            {
+                throw new InvalidDataException($"backups.sqlite3 records unsupported format version {found}.");
+            }
 
             using (var pragma = connection.CreateCommand())
             {
@@ -394,16 +393,6 @@ public static class BackupStore
                 // the write with one warn rather than holding the owner.
                 pragma.CommandText = "PRAGMA busy_timeout = 1000;";
                 pragma.ExecuteNonQuery();
-            }
-
-            if (found is > 0 and < FormatVersions.Backups)
-            {
-                using var transaction = connection.BeginTransaction(deferred: false);
-                using var convert = connection.CreateCommand();
-                convert.Transaction = transaction;
-                convert.CommandText = (found == 1 ? AddSessions : "") + Schema + $"PRAGMA user_version = {FormatVersions.Backups};";
-                convert.ExecuteNonQuery();
-                transaction.Commit();
             }
 
             using (var schema = connection.CreateCommand())
