@@ -38,19 +38,20 @@ try {
     # No publish here: this launcher must start instantly. If there is no usable
     # build yet, stop and point at rebuild rather than launching something stale
     # or empty.
-    if (-not (Test-Path $exePath)) {
+    if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
         throw "No build found — run rebuild first."
     }
 
     $builtAt = (Get-Item $exePath).LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
     Claim-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-    Stop-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $exePath
+    Request-RuntimeClose -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $exePath -Token $runtimeToken
     Write-Step "Launching the existing build (built: $builtAt)"
     Write-Host "If you changed source since then, run rebuild instead."
 
     # GUI app: launch non-blocking via Start-Process.
+    Assert-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir
     Start-Process -FilePath $exePath | Out-Null
-    Wait-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile "" -ExecutableName "DayNote" -BuiltExecutable $exePath -TimeoutSeconds 30
+    Wait-RuntimeReady -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $exePath -Token $runtimeToken -Mode Built -TimeoutSeconds 30
 }
 catch {
     Write-Host ""
@@ -58,6 +59,9 @@ catch {
     $scriptExitCode = 1
 }
 finally {
+    if (Get-Command Release-LauncherRuntime -ErrorAction SilentlyContinue) {
+        Release-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
+    }
     Read-Host "Press Enter to close" | Out-Null
 }
 

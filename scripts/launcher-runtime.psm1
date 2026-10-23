@@ -34,97 +34,134 @@ function Release-LauncherRuntime {
     }
 }
 
-function Get-OwnedRuntimeProcess {
+function Assert-LauncherRuntimeOwner {
+    param([string]$Token, [string]$RepoDir)
+    if (-not (Test-LauncherRuntimeOwner -Token $Token -RepoDir $RepoDir)) {
+        throw 'A newer launcher has taken over. This launcher will not close or start DayNote; use the newer launcher.'
+    }
+}
+
+function Get-RuntimeProcess {
     param(
         [Parameter(Mandatory = $true)][string]$RepoDir,
-        [string]$ProjectFile,
-        [Parameter(Mandatory = $true)][string]$ExecutableName,
-        [Parameter(Mandatory = $true)][string]$BuiltExecutable
+        [Parameter(Mandatory = $true)][string]$BuiltExecutable,
+        [ValidateSet('Any', 'Built', 'Development')][string]$Mode = 'Any'
     )
-
-    $repoPrefix = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\') + '\'
-    $builtPath = [System.IO.Path]::GetFullPath($BuiltExecutable)
-    Get-CimInstance Win32_Process | Where-Object {
-        $path = if ($_.ExecutablePath) { [System.IO.Path]::GetFullPath($_.ExecutablePath) } else { '' }
-        $command = if ($_.CommandLine) { $_.CommandLine } else { '' }
-        if ($path -eq $builtPath) { return $true }
-        foreach ($launcherName in @('run-dev.ps1', 'run-built.ps1', 'rebuild.ps1')) {
-            $launcherPath = Join-Path (Join-Path $RepoDir 'scripts') $launcherName
-            if ($command.IndexOf($launcherPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                return $true
+    $paths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if ($Mode -ne 'Development') {
+        $null = $paths.Add([System.IO.Path]::GetFullPath($BuiltExecutable))
+    }
+    if ($Mode -ne 'Built') {
+        $developmentBin = Join-Path $RepoDir 'src/DayNote/bin'
+        if (Test-Path -LiteralPath $developmentBin -PathType Container) {
+            foreach ($file in Get-ChildItem -LiteralPath $developmentBin -Filter 'DayNote.exe' -File -Recurse) {
+                $null = $paths.Add([System.IO.Path]::GetFullPath($file.FullName))
             }
         }
-
-        return (($path.StartsWith($repoPrefix, [System.StringComparison]::OrdinalIgnoreCase) -and
-                [System.IO.Path]::GetFileName($path) -ieq "$ExecutableName.exe") -or
-                ($ProjectFile -and $command.IndexOf($ProjectFile, [System.StringComparison]::OrdinalIgnoreCase) -ge 0))
     }
-}
-
-function Stop-OwnedRuntime {
-    param(
-        [Parameter(Mandatory = $true)][string]$Label,
-        [Parameter(Mandatory = $true)][string]$RepoDir,
-        [string]$ProjectFile,
-        [Parameter(Mandatory = $true)][string]$ExecutableName,
-        [Parameter(Mandatory = $true)][string]$BuiltExecutable
-    )
-
-    $owned = @(Get-OwnedRuntimeProcess -RepoDir $RepoDir -ProjectFile $ProjectFile -ExecutableName $ExecutableName -BuiltExecutable $BuiltExecutable |
-        Where-Object { $_.ProcessId -ne $PID })
-    if ($owned.Count -eq 0) { return }
-    $originalProcessIds = @($owned.ProcessId)
-
-    Write-Host "Stopping the existing $Label runtime (pid $($owned.ProcessId -join ', '))."
-    foreach ($item in $owned) {
+    foreach ($process in Get-Process) {
+        $selected = $false
         try {
-            $process = Get-Process -Id $item.ProcessId -ErrorAction Stop
-            $null = $process.CloseMainWindow()
-        } catch {}
-    }
-
-    $deadline = [DateTime]::UtcNow.AddSeconds(5)
-    do {
-        Start-Sleep -Milliseconds 100
-        $remainingProcessIds = @($originalProcessIds | Where-Object {
-            Get-Process -Id $_ -ErrorAction SilentlyContinue
-        })
-    } while ($remainingProcessIds.Count -gt 0 -and [DateTime]::UtcNow -lt $deadline)
-
-    $owned = @(Get-OwnedRuntimeProcess -RepoDir $RepoDir -ProjectFile $ProjectFile -ExecutableName $ExecutableName -BuiltExecutable $BuiltExecutable |
-        Where-Object { $originalProcessIds -contains $_.ProcessId })
-    foreach ($item in $owned) {
-        Stop-Process -Id $item.ProcessId -Force -ErrorAction SilentlyContinue
+            try {
+                $path = $process.Path
+            } catch [System.ComponentModel.Win32Exception] {
+                # An inaccessible process has no proven app identity and is never selected.
+                continue
+            } catch [System.InvalidOperationException] {
+                # A process can exit while its executable identity is being read.
+                continue
+            }
+            if ($path -and $paths.Contains([System.IO.Path]::GetFullPath($path))) {
+                $selected = $true
+                $process
+            }
+        } finally {
+            if (-not $selected) { $process.Dispose() }
+        }
     }
 }
 
-function Wait-OwnedRuntime {
+function Request-RuntimeClose {
     param(
         [Parameter(Mandatory = $true)][string]$Label,
         [Parameter(Mandatory = $true)][string]$RepoDir,
-        [string]$ProjectFile,
-        [Parameter(Mandatory = $true)][string]$ExecutableName,
         [Parameter(Mandatory = $true)][string]$BuiltExecutable,
+        [Parameter(Mandatory = $true)][string]$Token
+    )
+    $selected = @(Get-RuntimeProcess -RepoDir $RepoDir -BuiltExecutable $BuiltExecutable)
+    try {
+        Assert-LauncherRuntimeOwner -Token $Token -RepoDir $RepoDir
+        if ($selected.Count -eq 0) { return }
+        Write-Host "Requesting ordinary closure of $Label (pid $($selected.Id -join ', '))."
+        $elapsed = [System.Diagnostics.Stopwatch]::StartNew()
+        foreach ($process in $selected) {
+            if ($process.HasExited) { continue }
+            try {
+                $requested = $process.CloseMainWindow()
+            } catch {
+                if ($process.HasExited) { continue }
+                throw "Could not ask $Label to close. Close it normally and run this launcher again. $($_.Exception.Message)"
+            }
+            if (-not $requested -and -not $process.HasExited) {
+                throw "$Label could not accept a close request. Close it normally and run this launcher again."
+            }
+        }
+        do {
+            $remaining = @($selected | Where-Object { -not $_.HasExited })
+            if ($remaining.Count -eq 0) { return }
+            Start-Sleep -Milliseconds 100
+        } while ($elapsed.Elapsed.TotalSeconds -lt 5)
+        throw "$Label is still open, possibly waiting for an answer or unfinished work. Finish closing it normally and run this launcher again. Nothing new was launched."
+    } finally {
+        foreach ($process in $selected) { $process.Dispose() }
+    }
+}
+
+function Wait-RuntimeReady {
+    param(
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][string]$RepoDir,
+        [Parameter(Mandatory = $true)][string]$BuiltExecutable,
+        [Parameter(Mandatory = $true)][string]$Token,
+        [Parameter(Mandatory = $true)][ValidateSet('Built', 'Development')][string]$Mode,
+        [object]$StartedProcess,
         [int]$TimeoutSeconds = 30
     )
-
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $elapsed = [System.Diagnostics.Stopwatch]::StartNew()
     do {
-        $repoPrefix = [System.IO.Path]::GetFullPath($RepoDir).TrimEnd('\') + '\'
-        $builtPath = [System.IO.Path]::GetFullPath($BuiltExecutable)
-        $owned = @(Get-OwnedRuntimeProcess -RepoDir $RepoDir -ProjectFile $ProjectFile -ExecutableName $ExecutableName -BuiltExecutable $BuiltExecutable |
-            Where-Object {
-                if ($_.ProcessId -eq $PID) { return $false }
-                $path = if ($_.ExecutablePath) { [System.IO.Path]::GetFullPath($_.ExecutablePath) } else { '' }
-                if ($path -eq $builtPath) { return $true }
-                return $path.StartsWith($repoPrefix, [System.StringComparison]::OrdinalIgnoreCase) -and
-                    [System.IO.Path]::GetFileName($path) -ieq "$ExecutableName.exe"
-            })
-        if ($owned.Count -gt 0) { return }
+        Assert-LauncherRuntimeOwner -Token $Token -RepoDir $RepoDir
+        if ($null -ne $StartedProcess -and $StartedProcess.HasExited) {
+            throw "$Label exited before it was ready (exit code $($StartedProcess.ExitCode)). Check the launch output and try again."
+        }
+        $selected = @(Get-RuntimeProcess -RepoDir $RepoDir -BuiltExecutable $BuiltExecutable -Mode $Mode)
+        try {
+            if (@($selected | Where-Object { -not $_.HasExited }).Count -gt 0) { return }
+        } finally {
+            foreach ($process in $selected) { $process.Dispose() }
+        }
         Start-Sleep -Milliseconds 100
-    } while ([DateTime]::UtcNow -lt $deadline)
-
-    throw "$Label did not start within ${TimeoutSeconds}s."
+    } while ($elapsed.Elapsed.TotalSeconds -lt $TimeoutSeconds)
+    throw "$Label did not start in $Mode mode within ${TimeoutSeconds}s."
 }
 
-Export-ModuleMember -Function Claim-LauncherRuntime, Test-LauncherRuntimeOwner, Release-LauncherRuntime, Stop-OwnedRuntime, Wait-OwnedRuntime
+function Publish-RuntimeCandidate {
+    param([string]$CandidateDir, [string]$PublishDir)
+    $previous = "$PublishDir.previous.$([guid]::NewGuid().ToString('N'))"
+    $hadPrevious = Test-Path -LiteralPath $PublishDir
+    if ($hadPrevious) {
+        Move-Item -LiteralPath $PublishDir -Destination $previous
+    }
+    try {
+        Move-Item -LiteralPath $CandidateDir -Destination $PublishDir
+    } catch {
+        if ($hadPrevious) {
+            Move-Item -LiteralPath $previous -Destination $PublishDir
+        }
+        throw
+    }
+    if ($hadPrevious) {
+        Remove-Item -LiteralPath $previous -Recurse -Force
+    }
+}
+
+Export-ModuleMember -Function Claim-LauncherRuntime, Test-LauncherRuntimeOwner, Assert-LauncherRuntimeOwner, Release-LauncherRuntime, Get-RuntimeProcess, Request-RuntimeClose, Wait-RuntimeReady, Publish-RuntimeCandidate

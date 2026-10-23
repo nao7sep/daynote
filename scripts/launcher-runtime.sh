@@ -14,85 +14,67 @@ is_launcher_runtime_owner() {
   [[ -f "$owner_file" && "$(tr -d '\r\n' < "$owner_file")" == "$token" ]]
 }
 
-release_launcher_runtime() {
-  local token="$1" repo_dir="$2"
-  local owner_file="$repo_dir/.git/launcher-runtime-owner"
-  if is_launcher_runtime_owner "$token" "$repo_dir"; then
-    rm -f "$owner_file"
+require_launcher_runtime_owner() {
+  if ! is_launcher_runtime_owner "$1" "$2"; then
+    echo "A newer DayNote launcher replaced this request. Run the desired launcher again." >&2
+    return 1
   fi
 }
 
-owned_runtime_pids() {
-  local repo_dir="$1" project_file="$2" executable_name="$3" built_executable="$4"
-  local pid command
-  ps -axo pid=,command= | while read -r pid command; do
-    [[ "$pid" == "$$" || "$pid" == "$PPID" ]] && continue
-    if [[ "$command" == *"$repo_dir/scripts/run-dev.command"* ||
-          "$command" == *"$repo_dir/scripts/run-built.command"* ||
-          "$command" == *"$repo_dir/scripts/rebuild.command"* ]]; then
-      printf '%s\n' "$pid"
-      continue
-    fi
-    if [[ "$command" == "$built_executable" || "$command" == "$built_executable "* ]] ||
-       [[ "$command" == "$repo_dir/"*"/bin/"*"/$executable_name" || "$command" == "$repo_dir/"*"/bin/"*"/$executable_name "* ]] ||
-       [[ -n "$project_file" && "$command" == *"dotnet"* && "$command" == *"$project_file"* ]]; then
-      printf '%s\n' "$pid"
-    fi
-  done
+release_launcher_runtime() {
+  local token="$1" repo_dir="$2"
+  if is_launcher_runtime_owner "$token" "$repo_dir"; then
+    rm "$repo_dir/.git/launcher-runtime-owner"
+  fi
 }
 
-stop_owned_runtime() {
-  local label="$1" repo_dir="$2" project_file="$3" executable_name="$4" built_executable="$5"
-  local pids pid deadline remaining current_owned
-  pids="$(owned_runtime_pids "$repo_dir" "$project_file" "$executable_name" "$built_executable")"
-  [[ -z "$pids" ]] && return 0
+runtime_paths() {
+  local repo_dir="$1" built_executable="$2" mode="$3"
+  if [[ "$mode" != dev ]]; then
+    printf '%s\0' "$built_executable"
+  fi
+  if [[ "$mode" != built && -d "$repo_dir/src/DayNote/bin" ]]; then
+    find "$repo_dir/src/DayNote/bin" -type f -name DayNote -print0
+  fi
+}
 
-  echo "Stopping the existing $label runtime (pid $(echo "$pids" | tr '\n' ' '))."
-  while read -r pid; do
-    [[ -n "$pid" ]] && kill -TERM "$pid" 2>/dev/null || true
-  done <<< "$pids"
+runtime_application_operation() {
+  local operation="$1" repo_dir="$2" built_executable="$3" mode="$4" path paths_file
+  local paths=()
+  if ! command -v osascript >/dev/null 2>&1; then
+    echo 'Missing required command: osascript' >&2
+    return 1
+  fi
+  paths_file="$(mktemp "${TMPDIR:-/tmp}/daynote-launch-paths.XXXXXX")" || return
+  if ! runtime_paths "$repo_dir" "$built_executable" "$mode" > "$paths_file"; then
+    rm "$paths_file"
+    return 1
+  fi
+  while IFS= read -r -d '' path; do paths+=("$path"); done < "$paths_file"
+  rm "$paths_file"
+  osascript -l JavaScript "$repo_dir/scripts/launcher-apps.js" "$operation" ${paths[@]+"${paths[@]}"}
+}
 
-  deadline=$((SECONDS + 5))
+request_runtime_close() {
+  local repo_dir="$1" built_executable="$2"
+  require_launcher_runtime_owner "$RUNTIME_TOKEN" "$repo_dir" || return
+  echo 'Requesting ordinary quit for an existing DayNote app.'
+  runtime_application_operation close "$repo_dir" "$built_executable" all >/dev/null
+}
+
+wait_for_runtime() {
+  local repo_dir="$1" built_executable="$2" mode="$3" timeout_seconds="$4"
+  local deadline=$((SECONDS + timeout_seconds)) state
   while (( SECONDS < deadline )); do
-    remaining=""
-    while read -r pid; do
-      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        remaining+="$pid"$'\n'
-      fi
-    done <<< "$pids"
-    [[ -z "$remaining" ]] && return 0
+    require_launcher_runtime_owner "$RUNTIME_TOKEN" "$repo_dir" || return
+    state="$(runtime_application_operation ready "$repo_dir" "$built_executable" "$mode")" || return
+    [[ "$state" == ready ]] && return 0
+    if [[ "$mode" == dev && -n "${DEV_PID:-}" ]] && ! kill -0 "$DEV_PID" 2>/dev/null; then
+      echo 'The recorded DayNote development child exited before the app became ready.' >&2
+      return 1
+    fi
     sleep 0.1
   done
-
-  current_owned="$(owned_runtime_pids "$repo_dir" "$project_file" "$executable_name" "$built_executable")"
-  while read -r pid; do
-    if [[ -n "$pid" ]] && grep -qx "$pid" <<< "$current_owned"; then
-      kill -KILL "$pid" 2>/dev/null || true
-    fi
-  done <<< "$pids"
-}
-
-ready_runtime_pids() {
-  local repo_dir="$1" executable_name="$2" built_executable="$3"
-  local pid command
-  ps -axo pid=,command= | while read -r pid command; do
-    [[ "$pid" == "$$" || "$pid" == "$PPID" ]] && continue
-    if [[ "$command" == "$built_executable" || "$command" == "$built_executable "* ]] ||
-       [[ "$command" == "$repo_dir/"*"/bin/"*"/$executable_name" || "$command" == "$repo_dir/"*"/bin/"*"/$executable_name "* ]]; then
-      printf '%s\n' "$pid"
-    fi
-  done
-}
-
-wait_for_owned_runtime() {
-  local label="$1" repo_dir="$2" project_file="$3" executable_name="$4" built_executable="$5" timeout_seconds="$6"
-  local deadline pids
-  deadline=$((SECONDS + timeout_seconds))
-  while (( SECONDS < deadline )); do
-    pids="$(ready_runtime_pids "$repo_dir" "$executable_name" "$built_executable")"
-    [[ -n "$pids" ]] && return 0
-    sleep 0.1
-  done
-  echo "$label did not start within ${timeout_seconds}s." >&2
+  echo "DayNote did not start within ${timeout_seconds}s." >&2
   return 1
 }

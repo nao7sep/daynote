@@ -32,16 +32,39 @@ pause_on_failure() {
   fi
 }
 
-trap 'pause_on_failure $?' EXIT
+CANDIDATE="$REPO_DIR/publish-candidate-$RUNTIME_TOKEN"
+PREVIOUS="$REPO_DIR/publish-previous-$RUNTIME_TOKEN"
+cleanup() {
+  local status="$?"
+  trap - EXIT
+  if [[ -d "$CANDIDATE" ]]; then rm -r "$CANDIDATE"; fi
+  release_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
+  pause_on_failure "$status"
+  exit "$status"
+}
+trap cleanup EXIT
 
 cd "$REPO_DIR"
 
-# Clear stale output, then publish. `dotnet publish` runs the bundling target,
-# leaving publish/ holding only the signed .app.
-rm -rf "$REPO_DIR/publish"
-dotnet publish "$PROJECT_FILE" -c Release -r "$RID" --self-contained true -o "$REPO_DIR/publish"
-
+for required in dotnet open osascript; do
+  command -v "$required" >/dev/null 2>&1 || { echo "Missing required command: $required" >&2; exit 1; }
+done
 claim_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
-stop_owned_runtime "DayNote" "$REPO_DIR" "$PROJECT_FILE" "DayNote" "$APP_EXECUTABLE"
+printf '\n==> Publishing a clean candidate\n'
+mkdir "$CANDIDATE"
+dotnet publish "$PROJECT_FILE" -c Release -r "$RID" --self-contained true -o "$CANDIDATE"
+[[ -x "$CANDIDATE/DayNote.app/Contents/MacOS/DayNote" ]] || { echo 'The candidate has no runnable DayNote app.' >&2; exit 1; }
+
+# A cancelled quit leaves both the running app and its published files intact.
+request_runtime_close "$REPO_DIR" "$APP_EXECUTABLE"
+require_launcher_runtime_owner "$RUNTIME_TOKEN" "$REPO_DIR"
+if [[ -d "$REPO_DIR/publish" ]]; then mv "$REPO_DIR/publish" "$PREVIOUS"; fi
+if ! mv "$CANDIDATE" "$REPO_DIR/publish"; then
+  if [[ -d "$PREVIOUS" ]]; then mv "$PREVIOUS" "$REPO_DIR/publish"; fi
+  echo 'Could not publish the candidate; the previous build was retained.' >&2
+  exit 1
+fi
+if [[ -d "$PREVIOUS" ]]; then rm -r "$PREVIOUS"; fi
+require_launcher_runtime_owner "$RUNTIME_TOKEN" "$REPO_DIR"
 open -n "$APP_BUNDLE"
-wait_for_owned_runtime "DayNote" "$REPO_DIR" "$PROJECT_FILE" "DayNote" "$APP_EXECUTABLE" 30
+wait_for_runtime "$REPO_DIR" "$APP_EXECUTABLE" built 30

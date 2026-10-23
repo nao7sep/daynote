@@ -30,10 +30,14 @@ trap 'pause_on_failure $?' EXIT
 
 cd "$REPO_DIR"
 
+for required in open osascript; do
+  command -v "$required" >/dev/null 2>&1 || { echo "Missing required command: $required" >&2; exit 1; }
+done
+
 # No publish, no codesign here: this launcher must start instantly. If there is
 # no usable bundle yet, stop and point at rebuild rather than launching something
 # stale or empty.
-if [[ ! -d "$APP_BUNDLE/Contents/MacOS" ]]; then
+if [[ ! -x "$APP_EXECUTABLE" ]]; then
   echo "No build found — run rebuild first."
   exit 1
 fi
@@ -42,11 +46,12 @@ fi
 # the .app dir's own mtime — stat'ing the bundle root would report a stale date.
 built_at="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S %Z' "$APP_BUNDLE/Contents/MacOS" 2>/dev/null || echo 'unknown')"
 claim_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
-stop_owned_runtime "DayNote" "$REPO_DIR" "$REPO_DIR/src/DayNote/DayNote.csproj" "DayNote" "$APP_EXECUTABLE"
+request_runtime_close "$REPO_DIR" "$APP_EXECUTABLE"
 log_step "Launching the existing build (built: $built_at)"
 echo "If you changed source since then, run rebuild instead."
 
 # `open` routes through Launch Services, which registers the bundle identity with
 # TCC and triggers permission prompts on first access.
+require_launcher_runtime_owner "$RUNTIME_TOKEN" "$REPO_DIR"
 open -n "$APP_BUNDLE"
-wait_for_owned_runtime "DayNote" "$REPO_DIR" "$REPO_DIR/src/DayNote/DayNote.csproj" "DayNote" "$APP_EXECUTABLE" 30
+wait_for_runtime "$REPO_DIR" "$APP_EXECUTABLE" built 30

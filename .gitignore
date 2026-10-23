@@ -2,6 +2,8 @@
 [Bb]in/
 [Oo]bj/
 publish/
+/publish-candidate-*/
+/publish-previous-*/
 publish-win/
 dist/
 

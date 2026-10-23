@@ -50,6 +50,7 @@ $repoDir = Split-Path -Parent $scriptDir
 $projectFile = Join-Path $repoDir "src/DayNote/DayNote.csproj"
 $builtExecutable = Join-Path $repoDir "bin/Release/net10.0/win-x64/publish/DayNote.exe"
 $runtimeToken = [guid]::NewGuid().ToString("N")
+$devProcess = $null
 
 try {
     Set-Utf8Console
@@ -58,16 +59,19 @@ try {
 
     Set-Location $repoDir
 
-    Write-Step "Replacing any existing DayNote runtime"
     Claim-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-    Stop-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $builtExecutable
-
     Write-Step "Restoring packages required for launch"
     Invoke-Native -FilePath "dotnet" -ArgumentList @("restore", $projectFile)
+    Write-Step "Requesting closure of the existing DayNote runtime"
+    Request-RuntimeClose -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $builtExecutable -Token $runtimeToken
+    # The running development app can lock the existing build output on Windows.
+    Write-Step "Building DayNote (Debug)"
+    Invoke-Native -FilePath "dotnet" -ArgumentList @("build", $projectFile, "--no-restore")
 
     Write-Step "Starting DayNote (Debug, from source)"
-    $devProcess = Start-Process -FilePath "dotnet" -ArgumentList @("run", "--project", $projectFile) -NoNewWindow -PassThru
-    Wait-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile "" -ExecutableName "DayNote" -BuiltExecutable $builtExecutable -TimeoutSeconds 120
+    Assert-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir
+    $devProcess = Start-Process -FilePath "dotnet" -ArgumentList @("run", "--no-build", "--no-restore", "--project", "`"$projectFile`"") -NoNewWindow -PassThru
+    Wait-RuntimeReady -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $builtExecutable -Token $runtimeToken -Mode Development -StartedProcess $devProcess -TimeoutSeconds 120
     Write-Step "DayNote is ready"
     $devProcess.WaitForExit()
     if ($devProcess.ExitCode -notin @(0, 130, -1073741510)) {
@@ -80,11 +84,11 @@ catch {
     $scriptExitCode = 1
 }
 finally {
-    if (Test-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir) {
-        Stop-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $builtExecutable
+    if ($null -ne $devProcess) { $devProcess.Dispose() }
+    if (Get-Command Release-LauncherRuntime -ErrorAction SilentlyContinue) {
         Release-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-        Read-Host "Press Enter to close" | Out-Null
     }
+    Read-Host "Press Enter to close" | Out-Null
 }
 
 exit $scriptExitCode

@@ -50,6 +50,7 @@ $projectFile = Join-Path $repoDir "src/DayNote/DayNote.csproj"
 $publishDir = Join-Path $repoDir "bin/Release/net10.0/win-x64/publish"
 $exePath = Join-Path $publishDir "DayNote.exe"
 $runtimeToken = [guid]::NewGuid().ToString("N")
+$candidateDir = "$publishDir.candidate.$runtimeToken"
 
 try {
     Set-Utf8Console
@@ -58,33 +59,30 @@ try {
 
     Set-Location $repoDir
 
-    # Windows locks the published executable while it runs, so replacement must
-    # happen before removing the publish directory.
-    Write-Step "Replacing any existing DayNote runtime"
     Claim-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-    Stop-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile $projectFile -ExecutableName "DayNote" -BuiltExecutable $exePath
-
-    Write-Step "Removing stale publish output"
-    # Clear the publish dir first so a build that fails to emit a file cannot be
-    # masked by a leftover artifact from a previous run.
-    if (Test-Path $publishDir) {
-        Remove-Item -Recurse -Force $publishDir
-    }
-
-    Write-Step "Publishing self-contained win-x64 build"
+    Write-Step "Publishing self-contained win-x64 candidate"
     Invoke-Native -FilePath "dotnet" -ArgumentList @(
         "publish", $projectFile,
         "-c", "Release",
         "-r", "win-x64",
         "--self-contained", "true",
-        "-o", $publishDir
+        "-o", $candidateDir
     )
+    if (-not (Test-Path -LiteralPath (Join-Path $candidateDir 'DayNote.exe') -PathType Leaf)) {
+        throw 'The build did not produce DayNote.exe. The previous published build is unchanged.'
+    }
+
+    Write-Step "Requesting closure of the existing DayNote runtime"
+    Request-RuntimeClose -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $exePath -Token $runtimeToken
+    Assert-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir
+    Write-Step "Publishing the validated build"
+    Publish-RuntimeCandidate -CandidateDir $candidateDir -PublishDir $publishDir
 
     Write-Step "Launching DayNote"
-    # GUI app: launch non-blocking via Start-Process (the Windows counterpart to
-    # macOS `open`), so the console does not wait on the app's lifetime.
+    Assert-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir
     Start-Process -FilePath $exePath | Out-Null
-    Wait-OwnedRuntime -Label "DayNote" -RepoDir $repoDir -ProjectFile "" -ExecutableName "DayNote" -BuiltExecutable $exePath -TimeoutSeconds 30
+    Wait-RuntimeReady -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $exePath -Token $runtimeToken -Mode Built -TimeoutSeconds 30
+
 }
 catch {
     Write-Host ""
@@ -92,6 +90,12 @@ catch {
     $scriptExitCode = 1
 }
 finally {
+    if (Test-Path -LiteralPath $candidateDir) {
+        Remove-Item -LiteralPath $candidateDir -Recurse -Force
+    }
+    if (Get-Command Release-LauncherRuntime -ErrorAction SilentlyContinue) {
+        Release-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
+    }
     Read-Host "Press Enter to close" | Out-Null
 }
 

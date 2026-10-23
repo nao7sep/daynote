@@ -41,7 +41,6 @@ cleanup() {
   local status="$?"
   trap - EXIT
   if is_launcher_runtime_owner "$RUNTIME_TOKEN" "$REPO_DIR"; then
-    stop_owned_runtime "DayNote" "$REPO_DIR" "$PROJECT_FILE" "DayNote" "$APP_EXECUTABLE" >/dev/null 2>&1 || true
     release_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
   fi
   pause_on_failure "$status"
@@ -56,14 +55,15 @@ cd "$REPO_DIR"
 
 log_step "Replacing any existing DayNote runtime"
 claim_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
-stop_owned_runtime "DayNote" "$REPO_DIR" "$PROJECT_FILE" "DayNote" "$APP_EXECUTABLE"
+request_runtime_close "$REPO_DIR" "$APP_EXECUTABLE"
 
 log_step "Restoring packages required for launch"
 dotnet restore "$PROJECT_FILE"
 
 log_step "Starting DayNote (Debug, from source)"
+require_launcher_runtime_owner "$RUNTIME_TOKEN" "$REPO_DIR"
 dotnet run --project "$PROJECT_FILE" &
 DEV_PID=$!
-wait_for_owned_runtime "DayNote" "$REPO_DIR" "" "DayNote" "$APP_EXECUTABLE" 120
+wait_for_runtime "$REPO_DIR" "$APP_EXECUTABLE" dev 120
 log_step "DayNote is ready"
 wait "$DEV_PID"
