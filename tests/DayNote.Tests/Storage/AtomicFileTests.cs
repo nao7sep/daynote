@@ -159,6 +159,27 @@ public sealed class AtomicFileTests : IDisposable
         Assert.Equal("replacement", File.ReadAllText(_path));
     }
 
+    [WindowsOnlyFact]
+    public void A_read_only_Windows_destination_preserves_original_bytes_until_permission_is_restored()
+    {
+        File.WriteAllText(_path, "original");
+        var attributes = File.GetAttributes(_path);
+        File.SetAttributes(_path, attributes | FileAttributes.ReadOnly);
+        try
+        {
+            Assert.Throws<IOException>(() =>
+                AtomicFile.WriteAllText(_path, "replacement", recordBackup: false));
+            Assert.Equal("original", File.ReadAllText(_path));
+            Assert.True(File.GetAttributes(_path).HasFlag(FileAttributes.ReadOnly));
+            Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+        }
+        finally { File.SetAttributes(_path, attributes); }
+
+        AtomicFile.WriteAllText(_path, "replacement", recordBackup: false);
+        Assert.Equal("replacement", File.ReadAllText(_path));
+        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
+    }
+
     [MacOnlyFact]
     [SupportedOSPlatform("macos")]
     public void A_nonwritable_parent_preserves_the_original_and_allows_retry_after_permissions_return()
