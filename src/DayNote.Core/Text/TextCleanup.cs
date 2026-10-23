@@ -5,8 +5,8 @@ using System.Text.RegularExpressions;
 namespace DayNote.Core.Text;
 
 /// <summary>
-/// DayNote's local realization of the fleet text-cleanup-conventions — the canonical C# snippets,
-/// copied verbatim (there is no shared package). Three patterns: <see cref="SingleLine"/> for scalar
+/// DayNote's local realization of the fleet text-cleanup-conventions, using the defaults needed by
+/// its callers (there is no shared package). Three patterns: <see cref="SingleLine"/> for scalar
 /// fields (titles, names), <see cref="Multiline"/> for bodies, and <see cref="Truncate"/> for a
 /// single-line, grapheme-safe, minimum-length preview. Run these at commit/display time, never on a
 /// keystroke (per the text-input-ime-conventions); Unicode (NFC) normalization is a separate concern
@@ -14,9 +14,6 @@ namespace DayNote.Core.Text;
 /// </summary>
 public static partial class TextCleanup
 {
-    [GeneratedRegex(@"\s+")]
-    private static partial Regex WhitespaceRun();
-
     [GeneratedRegex(@"\s*[\r\n]+\s*")]
     private static partial Regex LineBreakRun();
 
@@ -27,73 +24,30 @@ public static partial class TextCleanup
     private static partial Regex TrailingWhitespace();
 
     /// <summary>
-    /// Cleans a scalar value: always trims the ends. By default a whitespace run containing a line
-    /// break collapses to one space (so a value pasted across lines becomes one line) while horizontal
-    /// spacing is preserved; <paramref name="minify"/> instead collapses every whitespace run — including
-    /// a lone full-width U+3000 — to one space.
+    /// Cleans a scalar value: trims the ends and collapses a whitespace run containing a line break
+    /// to one space, while preserving horizontal spacing.
     /// </summary>
-    public static string SingleLine(string text, bool flattenLineBreaks = true, bool minify = false)
-    {
-        if (minify)
-        {
-            return WhitespaceRun().Replace(text, " ").Trim();
-        }
-
-        if (flattenLineBreaks)
-        {
-            return LineBreakRun().Replace(text, " ").Trim();
-        }
-
-        return text.Trim();
-    }
+    public static string SingleLine(string text) => LineBreakRun().Replace(text, " ").Trim();
 
     /// <summary>
-    /// Cleans a multi-line body: normalizes line endings to LF and, by default, trims each line's
-    /// trailing whitespace (<paramref name="trimLineEnds"/>) and drops blank lines before the first and
-    /// after the last visible line (<paramref name="dropEdgeBlankLines"/>). Indentation and interior
-    /// blank lines are preserved unless <paramref name="collapseBlankLines"/> reduces interior blank runs to one.
+    /// Cleans a multi-line body: normalizes line endings to LF, trims each line's trailing whitespace,
+    /// and drops edge blank lines. Indentation and interior blank lines are preserved.
     /// </summary>
-    public static string Multiline(
-        string text,
-        bool trimLineEnds = true,
-        bool dropEdgeBlankLines = true,
-        bool collapseBlankLines = false)
+    public static string Multiline(string text)
     {
-        var lines = LineSplit().Split(text).ToList();
-        if (trimLineEnds)
-        {
-            lines = lines.Select(l => TrailingWhitespace().Replace(l, "")).ToList();
-        }
-
+        var lines = LineSplit().Split(text).Select(l => TrailingWhitespace().Replace(l, "")).ToList();
         int start = 0, end = lines.Count;
-        if (dropEdgeBlankLines)
+        while (start < end && string.IsNullOrWhiteSpace(lines[start]))
         {
-            while (start < end && string.IsNullOrWhiteSpace(lines[start]))
-            {
-                start++;
-            }
-
-            while (end > start && string.IsNullOrWhiteSpace(lines[end - 1]))
-            {
-                end--;
-            }
+            start++;
         }
 
-        var outLines = new List<string>();
-        var prevBlank = false;
-        for (var i = start; i < end; i++)
+        while (end > start && string.IsNullOrWhiteSpace(lines[end - 1]))
         {
-            var blank = string.IsNullOrWhiteSpace(lines[i]);
-            if (collapseBlankLines && blank && prevBlank)
-            {
-                continue;
-            }
-
-            outLines.Add(lines[i]);
-            prevBlank = blank;
+            end--;
         }
 
-        return string.Join("\n", outLines);
+        return string.Join("\n", lines.GetRange(start, end - start));
     }
 
     /// <summary>

@@ -869,6 +869,10 @@ public sealed class BinderTomlTests
     }
 
     [Theory]
+    [InlineData("created = \"2026-06-11\"\n", "")]
+    [InlineData("modified = \"2026-06-11T00:00:00\"\n", "")]
+    [InlineData("", "created = \"00:00:00Z\"\n")]
+    [InlineData("", "status = \"verified\"\nverified_at = \"2026-06-11T00:00Z\"\n")]
     [InlineData("created = \"not-a-date\"\n", "")]
     [InlineData("modified = \"also bad\"\n", "")]
     [InlineData("", "created = \"garbage\"\n")]

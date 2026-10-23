@@ -22,9 +22,10 @@ public static class BodyCleanup
             return string.Empty;
         }
 
-        // Multiline normalizes line endings to LF first, so a lone CR becomes a separator rather than
-        // a stray control character; the control strip then removes anything left that TOML forbids.
-        return StripDisallowedControls(TextCleanup.Multiline(body));
+        // Preserve CR separators before stripping TOML-disallowed controls. Strip controls before
+        // whitespace cleanup so newly exposed trailing whitespace and edge blanks are cleaned too.
+        var normalizedLines = body.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        return TextCleanup.Multiline(StripDisallowedControls(normalizedLines));
     }
 
     private static string StripDisallowedControls(string text)

@@ -9,6 +9,44 @@ namespace DayNote.Tests.Time;
 public sealed class DayNoteTimeTests
 {
     [Theory]
+    [InlineData("2026-06-11T00:00:00Z", 0L)]
+    [InlineData("2026-06-11T00:00:00.1Z", 1_000_000L)]
+    [InlineData("2026-06-11T00:00:00.12Z", 1_200_000L)]
+    [InlineData("2026-06-11T00:00:00.123Z", 1_230_000L)]
+    [InlineData("2026-06-11T00:00:00.1234Z", 1_234_000L)]
+    [InlineData("2026-06-11T00:00:00.12345Z", 1_234_500L)]
+    [InlineData("2026-06-11T00:00:00.123456Z", 1_234_560L)]
+    [InlineData("2026-06-11T00:00:00.1234567Z", 1_234_567L)]
+    [InlineData("2026-06-11T00:00:00+00:00", 0L)]
+    [InlineData("2026-06-11T09:00:00.1234567+09:00", 1_234_567L)]
+    [InlineData("2026-06-10T20:00:00.123-04:00", 1_230_000L)]
+    public void TryParseIso_accepts_complete_timestamps_and_normalizes_to_utc(string text, long fractionalTicks)
+    {
+        Assert.True(DayNoteTime.TryParseIso(text, out var value));
+        Assert.Equal(new DateTimeOffset(2026, 6, 11, 0, 0, 0, TimeSpan.Zero).AddTicks(fractionalTicks), value);
+        Assert.Equal(TimeSpan.Zero, value.Offset);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("2026-06-11")]
+    [InlineData("00:00:00Z")]
+    [InlineData("2026-06-11T00:00:00")]
+    [InlineData("2026-06-11T00:00Z")]
+    [InlineData("2026-06-11T00:00:00.Z")]
+    [InlineData("2026-06-11T00:00:00.12345678Z")]
+    [InlineData("2026-06-11T00:00:00+09")]
+    [InlineData("2026-06-11 00:00:00Z")]
+    [InlineData("June 11, 2026 00:00:00 UTC")]
+    [InlineData(" 2026-06-11T00:00:00Z ")]
+    [InlineData("2026-02-30T00:00:00Z")]
+    [InlineData("2026-06-11T00:00:60Z")]
+    public void TryParseIso_rejects_incomplete_non_iso_and_invalid_timestamps(string text)
+    {
+        Assert.False(DayNoteTime.TryParseIso(text, out _));
+    }
+
+    [Theory]
     [InlineData("Asia/Tokyo")]
     [InlineData("America/New_York")]
     [InlineData("Europe/London")]

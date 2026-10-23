@@ -58,4 +58,17 @@ public sealed class BodyCleanupTests
         // Per the text-cleanup-conventions multiline default; leading indentation stays untouched.
         Assert.Equal("a\n\tb\nc", BodyCleanup.Normalize("a   \n\tb\t \nc"));
     }
+
+    [Theory]
+    [InlineData("\u0000\n\tcontent  \u007F\n\u0007", "\tcontent")]
+    [InlineData("first  \u0000\r\n\u0007\r\tlast\t \u007F", "first\n\n\tlast")]
+    [InlineData("\u0000  \r\u007F\t", "")]
+    [InlineData("a\r\u0000\nb", "a\n\nb")]
+    public void Controls_are_removed_before_whitespace_cleanup_and_normalization_is_idempotent(string input, string expected)
+    {
+        var normalized = BodyCleanup.Normalize(input);
+
+        Assert.Equal(expected, normalized);
+        Assert.Equal(normalized, BodyCleanup.Normalize(normalized));
+    }
 }

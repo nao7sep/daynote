@@ -17,10 +17,22 @@ public static class DayNoteTime
 
     private static readonly string[] AcceptedIsoFormats =
     {
-        "yyyy-MM-ddTHH:mm:ss.fffZ",
-        "yyyy-MM-ddTHH:mm:ssZ",
-        "yyyy-MM-ddTHH:mm:ss.fffzzz",
-        "yyyy-MM-ddTHH:mm:sszzz",
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.f'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.ff'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.ffff'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.fffff'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'",
+        "yyyy-MM-dd'T'HH:mm:sszzz",
+        "yyyy-MM-dd'T'HH:mm:ss.fzzz",
+        "yyyy-MM-dd'T'HH:mm:ss.ffzzz",
+        "yyyy-MM-dd'T'HH:mm:ss.fffzzz",
+        "yyyy-MM-dd'T'HH:mm:ss.ffffzzz",
+        "yyyy-MM-dd'T'HH:mm:ss.fffffzzz",
+        "yyyy-MM-dd'T'HH:mm:ss.ffffffzzz",
+        "yyyy-MM-dd'T'HH:mm:ss.fffffffzzz",
     };
 
     /// <summary>Formats a timestamp as a quoted-string-ready ISO-8601 UTC value, e.g. <c>2026-06-03T14:23:05.482Z</c>.</summary>
@@ -28,25 +40,12 @@ public static class DayNoteTime
         value.ToUniversalTime().ToString(IsoFormat, CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Parses an ISO-8601 timestamp leniently, so hand-edited files round-trip. Falls back to a
-    /// general parse when the value does not match the canonical formats.
+    /// Attempts to parse a complete ISO-8601 date and time with seconds, up to seven fractional
+    /// digits, and an explicit Z or numeric offset. The result is always UTC.
     /// </summary>
-    public static DateTimeOffset ParseIso(string text) =>
-        TryParseIso(text, out var value)
-            ? value
-            : throw new FormatException($"Not a recognized ISO-8601 timestamp: '{text}'");
-
-    /// <summary>
-    /// Attempts to parse an ISO-8601 timestamp leniently. Returns false instead of throwing, so
-    /// callers loading hand-edited files can fall back rather than failing the whole load.
-    /// </summary>
-    public static bool TryParseIso(string text, out DateTimeOffset value)
-    {
-        const DateTimeStyles styles = DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal;
-
-        return DateTimeOffset.TryParseExact(text, AcceptedIsoFormats, CultureInfo.InvariantCulture, styles, out value)
-            || DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, styles, out value);
-    }
+    public static bool TryParseIso(string text, out DateTimeOffset value) =>
+        DateTimeOffset.TryParseExact(text, AcceptedIsoFormats, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out value);
 
     /// <summary>
     /// Filename-safe UTC stamp in the <c>yyyymmdd-hhmmss-utc</c> convention. Second precision is enough: it

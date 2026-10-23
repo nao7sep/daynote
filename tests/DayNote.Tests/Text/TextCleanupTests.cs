@@ -76,18 +76,6 @@ public sealed class TextCleanupTests
     }
 
     [Fact]
-    public void SingleLine_minify_collapses_every_whitespace_run_including_full_width_space()
-    {
-        Assert.Equal("a b c", TextCleanup.SingleLine("a　　b  c", minify: true));
-    }
-
-    [Fact]
-    public void SingleLine_with_flatten_off_only_trims()
-    {
-        Assert.Equal("a\nb", TextCleanup.SingleLine("  a\nb  ", flattenLineBreaks: false));
-    }
-
-    [Fact]
     public void Multiline_trims_line_ends_and_normalizes_newlines()
     {
         Assert.Equal("a\nb\nc", TextCleanup.Multiline("a   \r\nb\t\nc"));
@@ -98,11 +86,5 @@ public sealed class TextCleanupTests
     {
         Assert.Equal("x\n\ny", TextCleanup.Multiline("\n\nx\n\ny\n\n"));
         Assert.Equal("a\n\n\nb", TextCleanup.Multiline("a\n\n\nb")); // interior run preserved
-    }
-
-    [Fact]
-    public void Multiline_collapses_interior_blank_runs_only_when_asked()
-    {
-        Assert.Equal("a\n\nb", TextCleanup.Multiline("a\n\n\nb", collapseBlankLines: true));
     }
 }
