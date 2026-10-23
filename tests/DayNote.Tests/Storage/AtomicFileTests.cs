@@ -69,6 +69,49 @@ public sealed class AtomicFileTests : IDisposable
     }
 
     [Fact]
+    public void Identical_retry_finishes_a_published_but_unsynchronized_write()
+    {
+        var publication = new AtomicFile.TextPublication();
+        Assert.Throws<IOException>(() => AtomicFile.WriteAllText(_path, "published", true, publication,
+            _ => throw new IOException("held directory synchronization")));
+        Assert.Equal("published", File.ReadAllText(_path));
+        Assert.NotNull(publication.Hash);
+        var synchronized = false;
+        AtomicFile.WriteAllText(_path, "published", true, publication, _ => synchronized = true);
+        Assert.True(synchronized);
+        Assert.Null(publication.Hash);
+        BackupStore.Close();
+        using var connection = new SqliteConnection($"Data Source={new AppPaths().BackupStoreFile};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM backups WHERE path = $path";
+        command.Parameters.AddWithValue("$path", Path.GetFullPath(_path));
+        Assert.Equal(1L, command.ExecuteScalar());
+    }
+
+    [Fact]
+    public void Binder_retry_recognizes_its_own_partial_publication_but_not_an_outside_edit()
+    {
+        var fail = false;
+        var store = new BinderStore(_ => { if (fail) throw new IOException("sync failure"); });
+        var binder = new DayNote.Core.Models.Binder { Id = "binder", Created = DateTimeOffset.UtcNow, Modified = DateTimeOffset.UtcNow };
+        var first = store.Save(_path, binder);
+        binder.Modified = binder.Modified.AddSeconds(1);
+        var text = BinderStore.Serialize(binder);
+        fail = true;
+        Assert.Throws<IOException>(() => store.SaveText(_path, text, first.ContentHash));
+        fail = false;
+        var completed = store.SaveText(_path, text, first.ContentHash);
+        Assert.Equal(text, completed.Text);
+        binder.Modified = binder.Modified.AddSeconds(1);
+        fail = true;
+        Assert.Throws<IOException>(() => store.SaveText(_path, BinderStore.Serialize(binder), completed.ContentHash));
+        File.AppendAllText(_path, "\n# outside edit\n");
+        fail = false;
+        Assert.Throws<BinderChangedOnDiskException>(() => store.SaveText(_path, text, completed.ContentHash));
+    }
+
+    [Fact]
     public void Writes_the_exact_content()
     {
         AtomicFile.WriteAllText(_path, "line one\nline two\n");

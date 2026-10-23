@@ -17,7 +17,8 @@ public static class UniqueFileName
     /// </summary>
     public static string Pick(IEnumerable<string> existingNames, string fileName)
     {
-        var taken = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
+        var taken = existingNames is HashSet<string> names && names.Comparer.Equals(StringComparer.OrdinalIgnoreCase)
+            ? names : new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
         var candidate = fileName;
         var name = Path.GetFileNameWithoutExtension(fileName);
         var extension = Path.GetExtension(fileName);

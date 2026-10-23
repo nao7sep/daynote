@@ -6,6 +6,7 @@
   "about.reportIssue": "問題を報告",
   "about.title": "DayNote について",
   "attachment.openFailed": "この添付ファイルを開けませんでした。ダブルクリックしてもう一度お試しください。",
+  "attachment.sizeUnavailable": "サイズを取得できません",
   "attachment.unavailable": "見つかりません",
   "attachment.unavailableMessage": "この添付ファイルがディスク上に見つかりません。",
   "attachments.added": {
@@ -18,6 +19,7 @@
   "attachments.failed": "追加できませんでした：{names}。ファイルとバインダーのフォルダが利用できることを確認して、もう一度お試しください。",
   "attachments.folderFailed": "添付ファイル用のフォルダを準備できませんでした。バインダーの保存場所に書き込めることを確認して、もう一度お試しください。",
   "attachments.join": "{first}{rest}",
+  "attachments.linkedFolder": "ファイルシステムのリンクになっている添付ファイル用フォルダーは変更できません。先にファイルを通常の添付ファイル用フォルダーへ移動してください。",
   "attachments.lockedWhileAdding": "ファイルの追加中にノートがロックされたため、ファイルは添付されませんでした。",
   "attachments.noNote": "添付ファイルを追加するには、ノートを選択するか作成してください。",
   "attachments.pane": "添付ファイル",
@@ -36,12 +38,13 @@
   "binder.changedMessage": "保存していない編集がある間に、「{name}」が DayNote の外で変更されました。ディスクから再読み込みして編集内容を破棄しますか？それとも、このまま編集を残しますか（次の保存でファイルが上書きされます）？",
   "binder.changedTitle": "バインダーがディスク上で変更されました",
   "binder.keepMine": "編集を残す",
-  "binder.missing": "見つかりません",
+  "binder.missing": "利用できません",
   "binder.noNotes": "ノートがありません",
   "binder.noteCount": {
     "other": "{count} 件のノート"
   },
   "binder.openFailedTitle": "バインダーを開けませんでした",
+  "binder.opening": "バインダーを開いています…",
   "binder.reloadFromDisk": "ディスクから再読み込み",
   "binder.remove": "一覧から削除",
   "binder.replace": "置き換える",
@@ -192,6 +195,7 @@
   "settings.defaultBadge": "既定",
   "settings.fontFamily": "フォント",
   "settings.fontFamilyPlaceholder": "フォント（例：Menlo）",
+  "settings.fontRequired": "「{style}」のフォントファミリーを選んでください。",
   "settings.fontSize": "サイズ",
   "settings.italic": "斜体",
   "settings.language": "言語",

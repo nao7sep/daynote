@@ -6,6 +6,7 @@
   "about.reportIssue": "Segnala un problema",
   "about.title": "Informazioni su DayNote",
   "attachment.openFailed": "Impossibile aprire questo allegato. Fai doppio clic per riprovare.",
+  "attachment.sizeUnavailable": "Dimensione non disponibile",
   "attachment.unavailable": "Non disponibile",
   "attachment.unavailableMessage": "Questo allegato non è disponibile sul disco.",
   "attachments.added": {
@@ -20,6 +21,7 @@
   "attachments.failed": "Impossibile aggiungere: {names}. Verifica che i file e la cartella del raccoglitore siano disponibili, quindi riprova.",
   "attachments.folderFailed": "Impossibile preparare la cartella degli allegati. Verifica che la posizione del raccoglitore sia scrivibile, quindi riprova.",
   "attachments.join": "{first} {rest}",
+  "attachments.linkedFolder": "Le cartelle degli allegati che sono collegamenti del file system non possono essere modificate. Sposta prima i file in una normale cartella degli allegati.",
   "attachments.lockedWhileAdding": "La nota è stata bloccata mentre i file venivano aggiunti, quindi non sono stati allegati.",
   "attachments.noNote": "Seleziona o crea una nota per aggiungere allegati.",
   "attachments.pane": "Allegati",
@@ -40,7 +42,7 @@
   "binder.changedMessage": "«{name}» è stato modificato fuori da DayNote mentre hai modifiche non salvate. Vuoi ricaricarlo dal disco e perdere le tue modifiche, o mantenere la tua versione (il prossimo salvataggio sovrascriverà il file)?",
   "binder.changedTitle": "Raccoglitore modificato sul disco",
   "binder.keepMine": "Mantieni la mia versione",
-  "binder.missing": "Mancante",
+  "binder.missing": "Non disponibile",
   "binder.noNotes": "Nessuna nota",
   "binder.noteCount": {
     "one": "{count} nota",
@@ -48,6 +50,7 @@
     "other": "{count} note"
   },
   "binder.openFailedTitle": "Impossibile aprire il raccoglitore",
+  "binder.opening": "Apertura del raccoglitore…",
   "binder.reloadFromDisk": "Ricarica dal disco",
   "binder.remove": "Rimuovi dall’elenco",
   "binder.replace": "Sostituisci",
@@ -206,6 +209,7 @@
   "settings.defaultBadge": "Predefinito",
   "settings.fontFamily": "Famiglia di font",
   "settings.fontFamilyPlaceholder": "Famiglia di font (ad es. Menlo)",
+  "settings.fontRequired": "Scegli una famiglia di caratteri per «{style}».",
   "settings.fontSize": "Dimensione",
   "settings.italic": "Corsivo",
   "settings.language": "Lingua",

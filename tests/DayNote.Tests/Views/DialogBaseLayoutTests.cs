@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System;
 using System.IO;
 using System.Linq;
@@ -37,7 +38,7 @@ public sealed class DialogBaseLayoutTests : IDisposable
         return owner;
     }
 
-    private SettingsDialog Settings() => new SettingsDialog(new AppConfig(), _ => true);
+    private SettingsDialog Settings() => new SettingsDialog(new AppConfig(), _ => Task.FromResult(true));
 
     private SettingsDialog OpenSettings(Window owner)
     {
@@ -217,7 +218,7 @@ public sealed class DialogBaseLayoutTests : IDisposable
 
         foreach (var dialog in new Window[]
         {
-            new SettingsDialog(new AppConfig(), _ => true),
+            new SettingsDialog(new AppConfig(), _ => Task.FromResult(true)),
             new ShortcutsDialog(ShortcutCatalog.Build(owner)),
             new MessageDialog(DayNote.I18n.Message.Of("note.deleteTitle"), DayNote.I18n.Message.Of("note.deleteUntitled"),
                 [new DialogButton("common.cancel", "cancel", DialogButtonKind.Secondary)]),

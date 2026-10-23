@@ -92,6 +92,81 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal("dark", saved.RootElement.GetProperty("theme").GetString());
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    [InlineData("bad\0path")]
+    public void An_unusable_binder_path_rejects_the_whole_list_and_survives_an_unrelated_save(string path)
+    {
+        var binders = JsonSerializer.SerializeToElement(new[]
+        {
+            new KnownBinder { Path = Path.Combine(_directory, "valid.daynote"), Title = "Valid" },
+            new KnownBinder { Path = path, Title = "Invalid" },
+        }, DayNoteJson.Options);
+        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"binders\":{binders.GetRawText()}}}");
+        var store = Store;
+
+        var config = store.Load();
+        Assert.Empty(config.Binders);
+        Assert.Equal("binders", Assert.Single(_warnings));
+        config.Theme = ThemePreference.Dark;
+        store.Save(config);
+
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        Assert.True(JsonElement.DeepEquals(binders, saved.RootElement.GetProperty("binders")));
+        Assert.Equal(ThemePreference.Dark, Store.Load().Theme);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Duplicate_normalized_binder_paths_are_rejected_in_either_order_and_preserved(bool reverse)
+    {
+        var entries = new List<KnownBinder>
+        {
+            new() { Path = Path.Combine(_directory, "same.daynote"), Title = "First" },
+            new() { Path = Path.Combine(_directory, ".", "same.daynote"), Title = "Alias" },
+            new() { Path = Path.Combine(_directory, "other.daynote"), Title = "Other" },
+        };
+        if (reverse)
+            entries.Reverse();
+        var binders = JsonSerializer.SerializeToElement(entries, DayNoteJson.Options);
+        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"binders\":{binders.GetRawText()}}}");
+        var store = Store;
+
+        var config = store.Load();
+        Assert.Empty(config.Binders);
+        Assert.Equal("binders", Assert.Single(_warnings));
+        config.Theme = ThemePreference.Dark;
+        store.Save(config);
+
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        Assert.True(JsonElement.DeepEquals(binders, saved.RootElement.GetProperty("binders")));
+        Assert.Empty(Store.Load().Binders);
+    }
+
+    [Fact]
+    public void Offline_binders_keep_their_literal_paths_and_distinct_case()
+    {
+        var entries = new List<KnownBinder>
+        {
+            new() { Path = Path.Combine(_directory, "offline", "..", "Binder.daynote"), Title = "Upper" },
+            new() { Path = Path.Combine(_directory, "binder.daynote"), Title = "Lower" },
+        };
+        var binders = JsonSerializer.SerializeToElement(entries, DayNoteJson.Options);
+        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"binders\":{binders.GetRawText()}}}");
+        var store = Store;
+
+        var config = store.Load();
+        Assert.Equal(entries.Select(entry => entry.Path), config.Binders.Select(entry => entry.Path));
+        Assert.Empty(_warnings);
+        config.Theme = ThemePreference.Dark;
+        store.Save(config);
+
+        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+        Assert.True(JsonElement.DeepEquals(binders, saved.RootElement.GetProperty("binders")));
+    }
+
     [Fact]
     public void Changing_an_invalid_authored_set_replaces_its_stored_value()
     {
@@ -203,7 +278,7 @@ public sealed class ConfigStoreTests : IDisposable
     {
         File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"{key}\":{value}}}");
         var config = Store.Load();
-        Assert.Empty(ConfigSets.UserSets(config));
+        Assert.Empty(ConfigSets.UserSets(JsonSerializer.SerializeToElement(config, DayNoteJson.Options)));
         Assert.Equal(key, Assert.Single(_warnings));
         Assert.True(File.Exists(ConfigPath));
     }

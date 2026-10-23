@@ -131,6 +131,90 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task New_note_order_matches_reopening_for_equal_and_backward_times()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var first = vm.SelectedNote!.Note.Id;
+        vm.NewNoteCommand.Execute(null);
+        var second = vm.SelectedNote!.Note.Id;
+        _clock.Advance(TimeSpan.FromHours(-1));
+        vm.NewNoteCommand.Execute(null);
+        var last = vm.SelectedNote!.Note.Id;
+        Assert.Equal(new[] { first, second, last }, vm.Notes.Select(row => row.Note.Id));
+        Assert.Equal(last, vm.SelectedNote.Note.Id);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        _dialogs.BinderToCreate = Path.Combine(_home, "other.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path == BinderPath));
+        Assert.Equal(new[] { first, second, last }, vm.Notes.Select(row => row.Note.Id));
+    }
+
+    [AvaloniaFact]
+    public async Task Superseded_held_read_does_not_block_a_later_open_or_clear_its_pending_state()
+    {
+        var store = new GatedBinderStore();
+        var vm = await OpenNewBinderAsync(store);
+        _dialogs.BinderToCreate = Path.Combine(_home, "later.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var held = store.HoldNextLoad();
+        var earlier = vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path == BinderPath));
+        await held.Entered.Task;
+        Assert.True(vm.IsOpeningBinder);
+        Assert.Equal(Localizer.T("binder.opening"), vm.EditorEmptyStateText);
+        var newer = vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path.EndsWith("later.daynote", StringComparison.Ordinal)));
+        await newer.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.False(earlier.IsCompleted);
+        Assert.False(vm.IsOpeningBinder);
+        held.Release();
+        await earlier;
+        Assert.EndsWith("later.daynote", vm.Binders.Single(row => row.IsCurrent).Path, StringComparison.Ordinal);
+        Assert.False(vm.IsOpeningBinder);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Linked_managed_folders_preserve_note_references_and_outside_files(bool linkAssets)
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Symbolic-link creation needs separate Windows host qualification.");
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        var outside = Path.Combine(_home, "outside");
+        Directory.CreateDirectory(outside);
+        var assets = BinderStore.AssetsDirectory(BinderPath);
+        var noteDirectory = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
+        var target = linkAssets ? Path.Combine(outside, note.Id) : outside;
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "retained.txt"), "outside data");
+        if (linkAssets)
+            Directory.CreateSymbolicLink(assets, outside);
+        else
+        {
+            Directory.CreateDirectory(assets);
+            Directory.CreateSymbolicLink(noteDirectory, outside);
+        }
+        note.Attachments.Add("retained.txt");
+        // Reloading creates the ordinary attachment rows from the authored reference.
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        _dialogs.BinderToCreate = Path.Combine(_home, "other.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path == BinderPath));
+        var row = Assert.Single(vm.Attachments);
+        await vm.RemoveAttachmentCommand.ExecuteAsync(row);
+        Assert.Equal("retained.txt", Assert.Single(vm.SelectedNote!.Note.Attachments));
+        await vm.DeleteNoteCommand.ExecuteAsync(vm.SelectedNote);
+        Assert.Single(vm.Notes);
+        var source = Path.Combine(_home, "new.txt");
+        File.WriteAllText(source, "new bytes");
+        await AddDroppedFiles(vm, [source]);
+        Assert.Equal("retained.txt", Assert.Single(vm.SelectedNote!.Note.Attachments));
+        Assert.Equal("outside data", File.ReadAllText(Path.Combine(target, "retained.txt")));
+        Assert.False(File.Exists(Path.Combine(target, "new.txt")));
+    }
+
+    [AvaloniaFact]
     public async Task An_attachment_file_that_could_not_be_deleted_is_reported_with_authored_copy()
     {
         var hostile = new IOException("EACCES IPC /private/tmp/DAYNOTE-REMOVE-SENTINEL");
@@ -307,6 +391,87 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Equal(attachment.FileName, Assert.Single(vm.SelectedNote!.Note.Attachments));
         Assert.True(File.Exists(attachment.FullPath));
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Ordinary_quit_waits_for_an_already_saved_attachment_removal_cleanup()
+    {
+        var deleting = new GatedBinderStore.Hold();
+        var vm = NewViewModel(deleteFile: path =>
+        {
+            deleting.Wait();
+            File.Delete(path);
+        });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var source = Path.Combine(_home, "remove-before-quit.txt");
+        File.WriteAllText(source, "attachment");
+        await AddDroppedFiles(vm, [source]);
+        var attachment = Assert.Single(vm.Attachments);
+        var removing = vm.RemoveAttachmentCommand.ExecuteAsync(attachment);
+        _commandOperations.Add(removing);
+        await deleting.Entered.Task;
+        Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
+        Assert.True(File.Exists(attachment.FullPath));
+
+        var quitting = vm.QuitAsync();
+        _commandOperations.Add(quitting);
+        await PumpUntilAsync(() => !vm.HasBinder);
+        _clock.Advance(MainWindowViewModel.QuitStateWriteBound / 2);
+        Assert.False(quitting.IsCompleted);
+        Assert.False(removing.IsCompleted);
+        deleting.Release();
+
+        await removing;
+        Assert.True(await quitting);
+        Assert.False(File.Exists(attachment.FullPath));
+    }
+
+    [AvaloniaFact]
+    public async Task Attachment_removal_confirmed_after_selecting_another_note_keeps_that_notes_pane()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        var first = vm.SelectedNote!.Note;
+        var firstSource = Path.Combine(_home, "first-note.txt");
+        File.WriteAllText(firstSource, "first attachment");
+        await AddDroppedFiles(vm, [firstSource]);
+        var removed = Assert.Single(vm.Attachments);
+        vm.NewNoteCommand.Execute(null);
+        var second = vm.SelectedNote!.Note;
+        var secondSource = Path.Combine(_home, "second-note.txt");
+        File.WriteAllText(secondSource, "second attachment");
+        await AddDroppedFiles(vm, [secondSource]);
+        var retained = Assert.Single(vm.Attachments);
+        vm.SelectedNote = vm.Notes.Single(row => ReferenceEquals(row.Note, first));
+        var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _dialogs.ConfirmAnswer = () => answer.Task;
+        var removing = vm.RemoveAttachmentCommand.ExecuteAsync(Assert.Single(vm.Attachments));
+        _commandOperations.Add(removing);
+        try
+        {
+            Assert.False(removing.IsCompleted);
+            vm.SelectedNote = vm.Notes.Single(row => ReferenceEquals(row.Note, second));
+            var selectedRow = Assert.Single(vm.Attachments);
+            await AddDroppedFiles(vm, [], unavailable: 1);
+            var selectedResult = vm.AttachmentResult;
+            answer.SetResult(true);
+            await removing;
+
+            Assert.Empty(first.Attachments);
+            Assert.Equal(retained.FileName, Assert.Single(second.Attachments));
+            Assert.Same(second, vm.SelectedNote!.Note);
+            Assert.Same(selectedRow, Assert.Single(vm.Attachments));
+            Assert.Same(selectedResult, vm.AttachmentResult);
+            Assert.True(File.Exists(retained.FullPath));
+            Assert.False(File.Exists(removed.FullPath));
+            var saved = new BinderStore().Load(BinderPath).Binder;
+            Assert.Empty(saved.Notes.Single(note => note.Id == first.Id).Attachments);
+            Assert.Equal(retained.FileName, Assert.Single(saved.Notes.Single(note => note.Id == second.Id).Attachments));
+        }
+        finally { answer.TrySetResult(false); }
         await vm.ShutdownAsync();
     }
 
@@ -531,18 +696,207 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Overlapping_config_submissions_preserve_unrelated_sets_and_same_set_order()
+    {
+        var vm = await OpenNewBinderAsync();
+        var row = Assert.Single(vm.Binders);
+        var writes = (SemaphoreSlim)typeof(MainWindowViewModel)
+            .GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
+        await writes.WaitAsync();
+        Task first;
+        Task settings;
+        Task last;
+        try
+        {
+            row.IsEditing = true;
+            first = vm.ApplyBinderRename(row, "First title");
+            _commandOperations.Add(first);
+            _dialogs.SettingsApplied = true;
+            _dialogs.SettingsEdit = config => config.Theme = ThemePreference.Dark;
+            settings = vm.OpenSettingsCommand.ExecuteAsync(null);
+            row.IsEditing = true;
+            last = vm.ApplyBinderRename(row, "Last title");
+            _commandOperations.Add(last);
+            Assert.False(first.IsCompleted);
+            Assert.False(settings.IsCompleted);
+            Assert.False(last.IsCompleted);
+        }
+        finally
+        {
+            writes.Release();
+        }
+
+        await Task.WhenAll(first, settings, last);
+        var saved = new ConfigStore(ConfigPath, _ => { }).Load();
+        Assert.Equal(ThemePreference.Dark, saved.Theme);
+        Assert.Equal("Last title", Assert.Single(saved.Binders).Title);
+        Assert.Equal("Last title", row.Title);
+        Assert.Equal(ThemePreference.Dark, vm.Theme);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Overlapping_binder_renames_preserve_both_rows()
+    {
+        var vm = await OpenNewBinderAsync();
+        _dialogs.BinderToCreate = Path.Combine(_home, "second.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var rows = vm.Binders.ToArray();
+        var writes = (SemaphoreSlim)typeof(MainWindowViewModel)
+            .GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
+        await writes.WaitAsync();
+        Task first;
+        Task second;
+        try
+        {
+            rows[0].IsEditing = true;
+            first = vm.ApplyBinderRename(rows[0], "First renamed");
+            _commandOperations.Add(first);
+            rows[1].IsEditing = true;
+            second = vm.ApplyBinderRename(rows[1], "Second renamed");
+            _commandOperations.Add(second);
+            Assert.False(first.IsCompleted);
+            Assert.False(second.IsCompleted);
+        }
+        finally { writes.Release(); }
+
+        await Task.WhenAll(first, second);
+        var saved = new ConfigStore(ConfigPath, _ => { }).Load();
+        Assert.Equal("First renamed", saved.Binders.Single(b => b.Path == rows[0].Path).Title);
+        Assert.Equal("Second renamed", saved.Binders.Single(b => b.Path == rows[1].Path).Title);
+        Assert.Equal("First renamed", rows[0].Title);
+        Assert.Equal("Second renamed", rows[1].Title);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_queued_rename_does_not_reintroduce_a_forgotten_binder()
+    {
+        var vm = await OpenNewBinderAsync();
+        var forgotten = Assert.Single(vm.Binders);
+        _dialogs.BinderToCreate = Path.Combine(_home, "second.daynote");
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        var retained = vm.Binders.Single(row => row.Path != forgotten.Path);
+        var writes = (SemaphoreSlim)typeof(MainWindowViewModel)
+            .GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
+        await writes.WaitAsync();
+        Task forgetting;
+        Task renaming;
+        try
+        {
+            forgetting = vm.RemoveBinderCommand.ExecuteAsync(forgotten);
+            forgotten.IsEditing = true;
+            renaming = vm.ApplyBinderRename(forgotten, "Too late");
+            _commandOperations.Add(renaming);
+            Assert.False(forgetting.IsCompleted);
+            Assert.False(renaming.IsCompleted);
+        }
+        finally { writes.Release(); }
+
+        await Task.WhenAll(forgetting, renaming);
+        var saved = new ConfigStore(ConfigPath, _ => { }).Load();
+        Assert.Equal(retained.Path, Assert.Single(saved.Binders).Path);
+        Assert.Equal(retained.Path, Assert.Single(vm.Binders).Path);
+        Assert.NotEqual("Too late", forgotten.Title);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Queued_text_style_cycles_each_advance_the_saved_default()
+    {
+        var vm = NewViewModel();
+        var writes = (SemaphoreSlim)typeof(MainWindowViewModel)
+            .GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
+        await writes.WaitAsync();
+        Task first;
+        Task second;
+        try
+        {
+            first = vm.CycleTextStyleCommand.ExecuteAsync(null);
+            second = vm.CycleTextStyleCommand.ExecuteAsync(null);
+            Assert.False(first.IsCompleted);
+            Assert.False(second.IsCompleted);
+        }
+        finally { writes.Release(); }
+
+        await Task.WhenAll(first, second);
+        var saved = new ConfigStore(ConfigPath, _ => { }).Load();
+        Assert.Equal(new[] { true, false }, saved.TextStyles.Select(style => style.IsDefault));
+        Assert.Equal("Text style: Menlo", vm.TextStyleStatusText);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_delayed_startup_probe_cannot_replace_a_binder_opened_by_the_user()
+    {
+        var initial = await OpenNewBinderAsync();
+        await initial.ShutdownAsync();
+        var other = Path.Combine(_home, "other.daynote");
+        new BinderStore().Save(other, new Binder { Id = IdGenerator.New() });
+        var checking = new GatedBinderStore.Hold();
+        var vm = NewViewModel(fileExists: path =>
+        {
+            if (PathKey.Equal(path, BinderPath))
+                checking.Wait();
+            return File.Exists(path);
+        });
+        var initializing = vm.InitializeAsync();
+        _commandOperations.Add(initializing);
+        await checking.Entered.Task;
+        _dialogs.BinderToOpen = other;
+        await vm.OpenBinderCommand.ExecuteAsync(null);
+        Assert.Equal(other, vm.SelectedBinder!.Path);
+
+        checking.Release();
+        await initializing;
+
+        Assert.Equal(other, vm.SelectedBinder!.Path);
+        Assert.False(vm.IsOpeningBinder);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task State_submissions_wait_in_order_and_keep_their_captured_values()
+    {
+        var vm = NewViewModel();
+        await vm.InitializeAsync();
+        var previous = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        typeof(MainWindowViewModel).GetField("_stateWrites", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(vm, previous.Task);
+        try
+        {
+            vm.SaveRecordsListWidth(410);
+            vm.SaveRecordsListWidth(520);
+            vm.CaptureWindowPlacement(40, 50, 700, 500, false);
+            Assert.False(vm.PendingStateWrites.IsCompleted);
+            Assert.False(File.Exists(StatePath));
+        }
+        finally
+        {
+            previous.SetResult();
+        }
+
+        await vm.PendingStateWrites;
+        var saved = new JsonStore<AppState>(StatePath, FormatVersions.State).Load()!;
+        Assert.Equal(520, saved.RecordsListWidth);
+        Assert.Null(saved.WindowPositionX);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
     public async Task Binder_titles_are_config_and_deleting_config_does_not_reopen_a_stale_selection()
     {
         var vm = await OpenNewBinderAsync();
         var row = Assert.Single(vm.Binders);
         row.IsEditing = true;
-        vm.ApplyBinderRename(row, "My binder");
+        await vm.ApplyBinderRename(row, "My binder");
         var configFile = Path.Combine(_home, "config.json");
         using (var saved = JsonDocument.Parse(File.ReadAllText(configFile)))
         {
             Assert.Equal(new[] { "formatVersion", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
             Assert.Equal("My binder", saved.RootElement.GetProperty("binders")[0].GetProperty("title").GetString());
         }
+        await vm.PendingStateWrites;
         using (var state = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "state.json"))))
         {
             Assert.False(state.RootElement.TryGetProperty("binders", out _));
@@ -1259,6 +1613,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var (vm, _, log) = await OpenWithUnsavedEditAsync("saved although the state is not");
         // A folder where state.json belongs: the write cannot replace it.
         var statePath = new AppPaths().StateFile;
+        await vm.PendingStateWrites;
         File.Delete(statePath);
         Directory.CreateDirectory(statePath);
         log.Entries.Clear();
@@ -1275,6 +1630,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var vm = await OpenNewBinderAsync();
         var statePath = new AppPaths().StateFile;
+        await vm.PendingStateWrites;
         var before = File.ReadAllText(statePath);
 
         // The Records window closes after the quit begins; its placement waits for the quit's write.
@@ -1324,6 +1680,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         {
             vm.NewNoteCommand.Execute(null);
             vm.Editor.Title = title;
+            _clock.Advance(TimeSpan.FromMinutes(1));
         }
 
         // Newest first: 週報, 念頭, フォロワー, 念頭に置く. The selected note does not match.
@@ -1916,6 +2273,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.SelectedNote = selectedNote;
 
         var item = Assert.Single(vm.Attachments);
+        item.Activate();
+        await item.ThumbnailTask;
         var result = Assert.IsType<OperationResultViewModel>(item.Result);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
         Assert.Contains("attachment.unavailableMessage", English.KeysIn(result.Message));
@@ -1929,6 +2288,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         File.WriteAllText(item.FullPath, "restored attachment content");
         await vm.OpenAttachmentCommand.ExecuteAsync(item);
 
+        await item.ThumbnailTask;
         Assert.True(item.Exists);
         Assert.Null(item.Result);
         Assert.NotEqual("Unavailable", item.DetailsText);
@@ -2040,7 +2400,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var vm = NewViewModel();
         var configPath = Path.Combine(_home, "config.json");
 
-        vm.CycleTextStyleCommand.Execute(null);
+        await vm.CycleTextStyleCommand.ExecuteAsync(null);
 
         Assert.Equal("Text style: Inter", vm.TextStyleStatusText);
         Assert.Empty(vm.Results);
@@ -2049,7 +2409,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         using var sets = JsonDocument.Parse(File.ReadAllText(configPath));
         Assert.Equal(new[] { "formatVersion", "textStyles" }, sets.RootElement.EnumerateObject().Select(property => property.Name));
 
-        vm.CycleTextStyleCommand.Execute(null);
+        await vm.CycleTextStyleCommand.ExecuteAsync(null);
 
         Assert.Equal("Text style: Menlo", vm.TextStyleStatusText);
         Assert.Empty(vm.Results);
@@ -2091,6 +2451,9 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(new[] { "alpha", "alpine" }, vm.Binders.Select(binder => binder.Name));
         Assert.Same(moved, list.SelectedItem);
         Assert.True(list.IsKeyboardFocusWithin);
+        var configGate = (SemaphoreSlim)typeof(MainWindowViewModel).GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
+        await configGate.WaitAsync(TestContext.Current.CancellationToken);
+        configGate.Release();
         var saved = JsonSerializer.Deserialize<AppConfig>(
             File.ReadAllText(Path.Combine(_home, "config.json")), DayNoteJson.Options)!;
         Assert.Equal(
@@ -2128,11 +2491,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal("Real", realRow.Title);
         Assert.Equal("Alias", aliasRow.Title);
         aliasRow.IsEditing = true;
-        vm.ApplyBinderRename(aliasRow, "Renamed alias");
+        await vm.ApplyBinderRename(aliasRow, "Renamed alias");
         Assert.Equal("Real", realRow.Title);
         Assert.Equal("Renamed alias", aliasRow.Title);
         vm.MoveBinder(aliasRow, realRow);
-        vm.CommitBinderOrder();
+        await vm.CommitBinderOrder();
         var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
         Assert.Equal(new[] { alias, real }, saved.Binders.Select(entry => entry.Path));
         Assert.Equal("Real", saved.Binders.Single(entry => entry.Path == real).Title);
@@ -2246,7 +2609,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var order = vm.BinderOrder();
         var style = vm.EditorFontFamily;
 
-        vm.CycleTextStyleCommand.Execute(null);
+        await vm.CycleTextStyleCommand.ExecuteAsync(null);
         Assert.Equal(style, vm.EditorFontFamily);
         Assert.Equal(string.Empty, vm.TextStyleStatusText);
         Assert.Contains("failure.textStyleSave", English.KeysIn(Assert.Single(vm.Results).Message));
@@ -2254,13 +2617,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         var row = vm.Binders[0];
         var title = row.Title;
         row.IsEditing = true;
-        vm.ApplyBinderRename(row, "Renamed");
+        await vm.ApplyBinderRename(row, "Renamed");
         Assert.Equal(title, row.Title);
         Assert.Contains("failure.binderRenameSave", English.KeysIn(Assert.Single(vm.Results).Message));
 
         var selected = vm.SelectedBinder;
         Assert.True(vm.MoveBinder(order[0], order[1]));
-        vm.CommitBinderOrder();
+        await vm.CommitBinderOrder();
         // The reverted rows are the same rows, so the selection and keyboard target stay on them.
         Assert.Equal(order, vm.BinderOrder());
         Assert.Same(selected, vm.SelectedBinder);
@@ -2302,7 +2665,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(vm.MoveBinder(start[0], start[2]));
         Assert.Equal(new[] { start[1], start[2], start[0] }, vm.BinderOrder());
         Assert.True(vm.RestoreBinderOrder(start));
-        vm.CommitBinderOrder();
+        await vm.CommitBinderOrder();
 
         Assert.Equal(start, vm.BinderOrder());
         Assert.Equal(start, vm.Binders);
@@ -2345,13 +2708,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         Directory.CreateDirectory(configFile);
         var row = vm.Binders.Single(binder => PathKey.Equal(binder.Path, BinderPath));
         row.IsEditing = true;
-        vm.ApplyBinderRename(row, "Renamed");
+        await vm.ApplyBinderRename(row, "Renamed");
         var warning = vm.Results[1];
         Assert.Equal(OperationResultKind.Error, warning.Kind);
 
         // The same unresolved problem again is neither a second card nor a second announcement.
         row.IsEditing = true;
-        vm.ApplyBinderRename(row, "Renamed");
+        await vm.ApplyBinderRename(row, "Renamed");
         Assert.Same(warning, vm.Results[1]);
         Assert.Equal(2, vm.Results.Count);
         Directory.Delete(configFile);
@@ -3713,6 +4076,7 @@ public sealed class MainWindowViewModelTests : IDisposable
                     return (bitmap, new PixelSize(1, 1));
                 });
                 vm.Attachments.Add(row);
+                row.Activate();
                 unfinished = row.ThumbnailTask;
                 await decoding.Entered.Task;
                 vm.NewNoteCommand.Execute(null);
@@ -3836,6 +4200,109 @@ public sealed class MainWindowViewModelTests : IDisposable
         var adding = AddDroppedFiles(vm, [file]);
         await held.Entered.Task;
         return (vm, held, note, file, adding);
+    }
+
+    [AvaloniaFact]
+    public async Task An_attachment_publication_collision_retries_without_replacing_the_outside_file()
+    {
+        var calls = 0;
+        var vm = NewViewModel(copyFile: (source, destination) =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+                File.WriteAllText(destination, "outside bytes");
+            AtomicFile.CopyNew(source, destination);
+        });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        var source = Path.Combine(_home, "collision.txt");
+        File.WriteAllText(source, "attachment bytes");
+
+        await AddDroppedFiles(vm, [source]);
+
+        Assert.Equal(2, calls);
+        Assert.Equal("collision (1).txt", Assert.Single(note.Attachments));
+        var directory = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
+        Assert.Equal("outside bytes", File.ReadAllText(Path.Combine(directory, "collision.txt")));
+        Assert.Equal("attachment bytes", File.ReadAllText(Path.Combine(directory, "collision (1).txt")));
+        Assert.Equal("collision (1).txt", Assert.Single(vm.Attachments).FileName);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal("collision (1).txt", Assert.Single(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments));
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Overlapping_attachment_batches_wait_then_deduplicate_or_disambiguate(bool identicalContent)
+    {
+        var held = new HeldCopy();
+        var copyCalls = 0;
+        var vm = NewViewModel(copyFile: (source, destination) =>
+        {
+            if (Interlocked.Increment(ref copyCalls) == 1)
+                held.Copy(source, destination);
+            else
+                AtomicFile.CopyNew(source, destination);
+        });
+        _dialogs.BinderToCreate = BinderPath;
+        await vm.NewBinderCommand.ExecuteAsync(null);
+        vm.NewNoteCommand.Execute(null);
+        var note = vm.SelectedNote!.Note;
+        var firstDirectory = Directory.CreateDirectory(Path.Combine(_home, "first-source")).FullName;
+        var secondDirectory = Directory.CreateDirectory(Path.Combine(_home, "second-source")).FullName;
+        var firstFile = Path.Combine(firstDirectory, "same.txt");
+        var secondFile = Path.Combine(secondDirectory, "same.txt");
+        File.WriteAllText(firstFile, "first content");
+        File.WriteAllText(secondFile, identicalContent ? "first content" : "second content");
+        var first = AddDroppedFiles(vm, [firstFile]);
+        await held.Entered.Task;
+        var second = AddDroppedFiles(vm, [secondFile]);
+
+        var admission = (SemaphoreSlim)typeof(MainWindowViewModel)
+            .GetField("_importAdmission", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
+        Assert.Equal(0, admission.CurrentCount);
+        Assert.False(second.IsCompleted);
+        Assert.Equal(1, Volatile.Read(ref copyCalls));
+        Assert.Empty(note.Attachments);
+        held.Release();
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(identicalContent ? 1 : 2, Volatile.Read(ref copyCalls));
+        Assert.Equal(identicalContent ? new[] { "same.txt" } : new[] { "same.txt", "same (1).txt" }, note.Attachments);
+        var assets = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
+        Assert.Equal("first content", File.ReadAllText(Path.Combine(assets, "same.txt")));
+        if (!identicalContent)
+            Assert.Equal("second content", File.ReadAllText(Path.Combine(assets, "same (1).txt")));
+        Assert.Equal(note.Attachments.Count, AssetFiles(note).Length);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        Assert.Equal(note.Attachments, new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task Stopping_queued_attachment_batches_never_starts_their_copies()
+    {
+        var (vm, held, note, _, first) = await StartHeldAddAsync();
+        var secondFile = Path.Combine(_home, "queued.txt");
+        File.WriteAllText(secondFile, "queued content");
+        var second = AddDroppedFiles(vm, [secondFile]);
+        Assert.False(second.IsCompleted);
+        Assert.Equal(1, held.CopyCalls);
+        _dialogs.AttachmentWaitAnswer = _ => Task.FromResult(true);
+        var quitting = vm.QuitAsync();
+        _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
+        Assert.True(await quitting);
+        await second;
+        Assert.False(first.IsCompleted);
+
+        held.Release();
+        await first;
+        Assert.Equal(1, held.CopyCalls);
+        Assert.Empty(note.Attachments);
+        Assert.Empty(AssetFiles(note));
+        Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
     }
 
     private string[] AssetFiles(Note note)
@@ -4055,6 +4522,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var original = File.ReadAllText(BinderPath);
 
         var deleting = vm.DeleteNoteCommand.ExecuteAsync(null);
+        await PumpUntilAsync(() => vm.Notes.Count == 0);
         await PumpUntilAsync(() => !vm.IsSaveStateSaving);
         Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes);
         Assert.False(deleting.IsCompleted);
@@ -4216,6 +4684,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         public IReadOnlyList<string> AttachmentPaths { get; set; } = Array.Empty<string>();
         public bool ConfirmResult { get; set; } = true;
         public Exception? ConfirmError { get; set; }
+        public Func<Task<bool>>? ConfirmAnswer { get; set; }
         public ExternalChangeChoice ExternalChoice { get; set; } = ExternalChangeChoice.KeepMine;
         public bool SettingsApplied { get; set; }
         public Action<AppConfig>? SettingsEdit { get; set; }
@@ -4248,7 +4717,8 @@ public sealed class MainWindowViewModelTests : IDisposable
             LastConfirmMessage = message;
             LastConfirmLabel = confirmLabelKey;
             LastConfirmDestructive = destructive;
-            return ConfirmError is null ? Task.FromResult(ConfirmResult) : Task.FromException<bool>(ConfirmError);
+            return (ConfirmAnswer?.Invoke() ?? (ConfirmError is null
+                ? Task.FromResult(ConfirmResult) : Task.FromException<bool>(ConfirmError))).WaitAsync(_lifetime.Token);
         }
         public List<(Message Title, Message Message)> Errors { get; } = [];
         /// <summary>When set, the error dialog cannot be shown and fails with it.</summary>
@@ -4260,10 +4730,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         }
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
-        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
+        public async Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, Task<bool>> trySave)
         {
             SettingsEdit?.Invoke(config);
-            return Task.FromResult(SettingsApplied && trySave(config));
+            return SettingsApplied && await trySave(config);
         }
         public int ExternalChangeQuestions { get; private set; }
         /// <summary>When set, answers the question instead of <see cref="ExternalChoice"/>, possibly later.</summary>
@@ -4389,6 +4859,8 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         private static readonly List<HeldCopy> Unreleased = [];
         private readonly ManualResetEventSlim _released = new();
+        private int _copyCalls;
+        public int CopyCalls => Volatile.Read(ref _copyCalls);
 
         public HeldCopy()
         {
@@ -4413,6 +4885,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         public void Copy(string source, string destination)
         {
+            Interlocked.Increment(ref _copyCalls);
             Entered.TrySetResult();
             _released.Wait();
             AtomicFile.CopyNew(source, destination);

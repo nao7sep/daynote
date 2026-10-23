@@ -6,6 +6,7 @@
   "about.reportIssue": "Signaler un problème",
   "about.title": "À propos de DayNote",
   "attachment.openFailed": "Impossible d’ouvrir cette pièce jointe. Double-cliquez pour réessayer.",
+  "attachment.sizeUnavailable": "Taille indisponible",
   "attachment.unavailable": "Indisponible",
   "attachment.unavailableMessage": "Cette pièce jointe est introuvable sur le disque.",
   "attachments.added": {
@@ -20,6 +21,7 @@
   "attachments.failed": "Impossible d’ajouter\u00a0: {names}. Vérifiez que les fichiers et le dossier du classeur sont disponibles, puis réessayez.",
   "attachments.folderFailed": "Impossible de préparer le dossier des pièces jointes. Vérifiez que l’emplacement du classeur est accessible en écriture, puis réessayez.",
   "attachments.join": "{first} {rest}",
+  "attachments.linkedFolder": "Les dossiers de pièces jointes qui sont des liens du système de fichiers ne peuvent pas être modifiés. Déplacez d’abord les fichiers dans un dossier de pièces jointes ordinaire.",
   "attachments.lockedWhileAdding": "La note a été verrouillée pendant l’ajout des fichiers\u00a0; ils n’ont donc pas été joints.",
   "attachments.noNote": "Sélectionnez ou créez une note pour ajouter des pièces jointes.",
   "attachments.pane": "Pièces jointes",
@@ -40,7 +42,7 @@
   "binder.changedMessage": "«\u00a0{name}\u00a0» a été modifié en dehors de DayNote alors que vous avez des modifications non enregistrées. Recharger depuis le disque et perdre vos modifications, ou conserver votre version (le prochain enregistrement écrasera le fichier)\u00a0?",
   "binder.changedTitle": "Classeur modifié sur le disque",
   "binder.keepMine": "Conserver ma version",
-  "binder.missing": "Introuvable",
+  "binder.missing": "Indisponible",
   "binder.noNotes": "Aucune note",
   "binder.noteCount": {
     "one": "{count} note",
@@ -48,6 +50,7 @@
     "other": "{count} notes"
   },
   "binder.openFailedTitle": "Impossible d’ouvrir le classeur",
+  "binder.opening": "Ouverture du classeur…",
   "binder.reloadFromDisk": "Recharger depuis le disque",
   "binder.remove": "Retirer de la liste",
   "binder.replace": "Remplacer",
@@ -206,6 +209,7 @@
   "settings.defaultBadge": "Par défaut",
   "settings.fontFamily": "Famille de police",
   "settings.fontFamilyPlaceholder": "Famille de police (p.\u00a0ex. Menlo)",
+  "settings.fontRequired": "Choisissez une famille de polices pour «\u00a0{style}\u00a0».",
   "settings.fontSize": "Taille",
   "settings.italic": "Italique",
   "settings.language": "Langue",

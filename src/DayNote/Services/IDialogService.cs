@@ -35,7 +35,7 @@ public interface IDialogService
     Task ShowShortcutsAsync();
 
     /// <summary>The custom settings dialog; keeps a failed save inline and returns true only after persistence succeeds.</summary>
-    Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave);
+    Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, Task<bool>> trySave);
 
     /// <summary>
     /// Asks how to handle an external modification detected against unsaved edits. Both answers give up a

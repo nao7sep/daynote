@@ -81,39 +81,34 @@ public sealed class DialogService : IDialogService
 
     public async Task<bool> ConfirmAsync(Message title, Message message, string confirmLabelKey, bool destructive = false)
     {
-        var dialog = new MessageDialog(title, message, new[]
+        var dialog = await TryShowAsync(_ => new MessageDialog(title, message, new[]
         {
             new DialogButton("common.cancel", "cancel"),
             new DialogButton(confirmLabelKey, "confirm", destructive ? DialogButtonKind.Destructive : DialogButtonKind.Primary),
-        });
-        await dialog.ShowBoundedAsync(RequireOwner());
-        return dialog.ResultTag == "confirm";
+        }));
+        return dialog?.ResultTag == "confirm";
     }
 
     public async Task ShowErrorAsync(Message title, Message message)
     {
-        var dialog = new MessageDialog(title, message, new[] { new DialogButton("common.ok", "ok", DialogButtonKind.Primary) });
-        await dialog.ShowBoundedAsync(RequireOwner());
+        await TryShowAsync(_ => new MessageDialog(title, message, new[] { new DialogButton("common.ok", "ok", DialogButtonKind.Primary) }));
     }
 
     public async Task ShowAboutAsync()
     {
-        var dialog = new AboutDialog(_log);
-        await dialog.ShowBoundedAsync(RequireOwner());
+        await TryShowAsync(_ => new AboutDialog(_log));
     }
 
     public async Task ShowShortcutsAsync()
     {
-        var owner = RequireOwner();
-        var dialog = new ShortcutsDialog(ShortcutCatalog.Build(owner));
-        await dialog.ShowBoundedAsync(owner);
+        await TryShowAsync(owner => new ShortcutsDialog(ShortcutCatalog.Build(owner)));
     }
 
-    public async Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
+    public async Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, Task<bool>> trySave)
     {
-        var dialog = new SettingsDialog(config, trySave);
-        await dialog.ShowBoundedAsync(RequireOwner());
-        return dialog.Applied;
+        var dialog = await TryShowAsync(_ => new SettingsDialog(config, trySave,
+            logSaveFailure: ex => _log.Error("Failed to save settings", error: ex)));
+        return dialog?.Applied == true;
     }
 
     public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
@@ -130,7 +125,7 @@ public sealed class DialogService : IDialogService
                 new DialogButton("binder.reloadFromDisk", "reload", DialogButtonKind.Destructive),
             },
             dismissable: false);
-        await dialog.ShowBoundedAsync(RequireOwner());
+        await Prepare(dialog).ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag switch
         {
             "keep" => ExternalChangeChoice.KeepMine,
@@ -147,7 +142,7 @@ public sealed class DialogService : IDialogService
         }
 
         var dialog = new AttachmentWaitDialog(settled, stopOfferedAfter);
-        await dialog.ShowBoundedAsync(RequireOwner());
+        await Prepare(dialog).ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag == AttachmentWaitDialog.StopTag;
     }
 
@@ -167,7 +162,7 @@ public sealed class DialogService : IDialogService
             },
             // One width in every language, wide enough for all three translated actions.
             width: 480);
-        await dialog.ShowBoundedAsync(RequireOwner());
+        await Prepare(dialog).ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag switch
         {
             "retry" => UnsavedQuitChoice.Retry,
@@ -184,4 +179,38 @@ public sealed class DialogService : IDialogService
 
     private Window RequireOwner() =>
         Owner ?? throw new InvalidOperationException("Dialog owner window has not been set.");
+
+    private T Prepare<T>(T dialog) where T : DialogBase
+    {
+        dialog.LogFailure = (message, error) => _log.Error(message, error: error);
+        return dialog;
+    }
+
+    // Only ordinary display failures end as a dismissed dialog here. Questions whose failure changes
+    // an in-progress operation remain rejectable so that operation's owner can retain its work.
+    private async Task<T?> TryShowAsync<T>(Func<Window, T> create) where T : DialogBase
+    {
+        T? dialog = null;
+        try
+        {
+            var owner = RequireOwner();
+            dialog = Prepare(create(owner));
+            await dialog.ShowBoundedAsync(owner);
+            return dialog;
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to show dialog", error: ex);
+            try
+            {
+                // Constructors may subscribe to platform events before a window is shown.
+                dialog?.Close();
+            }
+            catch (Exception closeError)
+            {
+                _log.Warn("Failed to close dialog after display failure", error: closeError);
+            }
+            return null;
+        }
+    }
 }

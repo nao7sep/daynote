@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -84,6 +85,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private string? _attachmentNoteId;
 
     private AppConfig _config = new();
+    private readonly SemaphoreSlim _configWrites = new(1, 1);
+    private Task _stateWrites = Task.CompletedTask;
+    internal Task PendingStateWrites => _stateWrites;
 
     // The zone times are shown in, resolved from the configuration whenever it is applied. Rows and the
     // editor are handed it on every refresh rather than keeping their own copy.
@@ -139,6 +143,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // and a quit, wait for them, so what the user added ends up in the note; an ending OS session never
     // waits (developer decision).
     private readonly List<AttachmentImport> _imports = new();
+    private readonly SemaphoreSlim _importAdmission = new(1, 1);
     // Stopping an import relinquishes its published copies, but their physical deletion still belongs
     // to this window. A later quit must retain deletions started by an earlier stop or binder switch.
     private Task _attachmentCleanup = Task.CompletedTask;
@@ -153,7 +158,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         BinderStore? binderStore = null,
         Action<string, string>? copyFile = null,
         Func<string, bool>? fileExists = null,
-        Func<string, bool>? directoryExists = null)
+        Func<string, bool>? directoryExists = null,
+        ConfigStore? configStore = null)
     {
         _paths = paths;
         _dialogs = dialogs;
@@ -165,7 +171,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _copyFile = copyFile ?? AtomicFile.CopyNew;
         _fileExists = fileExists ?? File.Exists;
         _directoryExists = directoryExists ?? Directory.Exists;
-        _configStore = new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
+        _configStore = configStore ?? new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         // Not recorded in the backup history: placement and selection are state, never the user's work.
         _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
 
@@ -349,14 +355,22 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     [ObservableProperty]
     private bool _hasBinder;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NotesEmptyStateText))]
+    [NotifyPropertyChangedFor(nameof(AttachmentsEmptyStateText))]
+    [NotifyPropertyChangedFor(nameof(EditorEmptyStateText))]
+    private bool _isOpeningBinder;
+
+    public string EditorEmptyStateText => Localizer.T(IsOpeningBinder ? "binder.opening" : "editor.empty");
+
     public string BindersEmptyStateText =>
         Words(MainWindowEmptyStates.Binders(_allBinders.Count, Binders.Count, BindersFilter));
 
     public string NotesEmptyStateText =>
-        Words(MainWindowEmptyStates.Notes(HasBinder, _allNotes.Count, Notes.Count, NotesFilter));
+        IsOpeningBinder ? Localizer.T("binder.opening") : Words(MainWindowEmptyStates.Notes(HasBinder, _allNotes.Count, Notes.Count, NotesFilter));
 
     public string AttachmentsEmptyStateText =>
-        Words(MainWindowEmptyStates.Attachments(SelectedNote is not null, Attachments.Count));
+        IsOpeningBinder ? Localizer.T("binder.opening") : Words(MainWindowEmptyStates.Attachments(SelectedNote is not null, Attachments.Count));
 
     private static string Words(string? key) => key is null ? string.Empty : Localizer.T(key);
 
@@ -402,8 +416,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _state.WindowMaximized = maximized;
     }
 
-    // The records window keeps its layout in this app's state; each save writes state.json at once,
-    // as an accepted close or a finished drag happens rarely.
+    // The records window submits its layout when a close or finished drag accepts it.
     public double RecordsListWidth => _state.RecordsListWidth;
 
     public void SaveRecordsListWidth(double width)
@@ -428,6 +441,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     public TimeZoneInfo DisplayZone => _displayZone;
+    public event Action? DisplayZoneChanged;
 
     /// <summary>The app's logger, which the windows this one opens log through.</summary>
     internal IAppLogger Log => _log;
@@ -467,12 +481,23 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
             }
 
+            var generation = ++_openGeneration;
             var reopen = _state.CurrentBinderPath;
+            var selectedNote = _state.CurrentNoteId;
             if (!string.IsNullOrEmpty(reopen)
-                && _config.Binders.Any(binder => SameBinderPath(binder.Path, reopen))
-                && await Task.Run(() => File.Exists(reopen)))
+                && _config.Binders.Any(binder => SameBinderPath(binder.Path, reopen)))
             {
-                await OpenBinderPathAsync(reopen, isNew: false, selectNoteId: _state.CurrentNoteId);
+                IsOpeningBinder = true;
+                try
+                {
+                    if (await Task.Run(() => _fileExists(reopen)))
+                        await OpenBinderPathAsync(reopen, isNew: false, selectNoteId: selectedNote, requestGeneration: generation);
+                }
+                finally
+                {
+                    if (generation == _openGeneration)
+                        IsOpeningBinder = false;
+                }
             }
         }
         catch (Exception ex)
@@ -501,6 +526,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// </summary>
     public void BeginShutdown()
     {
+        IsOpeningBinder = false;
         if (_shuttingDown)
         {
             return;
@@ -614,6 +640,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // are optional: one still running at the bound ends with the process. An ending OS session skips this.
     private async Task DrainBackupsForQuitAsync()
     {
+        try { await _attachmentCleanup.WaitAsync(QuitStateWriteBound, _clock); }
+        catch (TimeoutException)
+        {
+            _log.Warn("Attachment cleanup did not finish within the quit bound");
+        }
+
         if (!await Task.Run(() => BackupStore.Drain(QuitBackupDrainBound)))
         {
             _log.Warn("Backup history did not finish within the quit's bound", new { boundMs = QuitBackupDrainBound.TotalMilliseconds });
@@ -664,10 +696,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var state = CaptureState().Copy();
         try
         {
-            await Task.Run(() => _stateStore.Save(state)).WaitAsync(QuitStateWriteBound, _clock);
+            await QueueStateWrite().WaitAsync(QuitStateWriteBound, _clock);
         }
         catch (TimeoutException)
         {
@@ -776,21 +807,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         // The user's request owns ordering before even its existence check yields.
         var generation = ++_openGeneration;
-        var exists = await Task.Run(() => File.Exists(item.Path));
-        if (_shuttingDown || generation != _openGeneration)
-            return;
-        if (!exists)
-        {
-            // The row owns this: it is the narrowest surviving owner, it already shows the path,
-            // and several missing binders each say it once instead of replacing one shared card.
-            item.IsMissing = true;
-            _log.Warn("Known binder is missing from disk", new { path = item.Path });
-            return;
-        }
-
-        // The file is there, so the row stops saying it is gone: a marker of what is true has to
-        // stop being shown the moment it stops being true.
-        item.IsMissing = false;
+        // Attempt the read even when the last availability probe failed: absence, permissions
+        // and an unavailable volume have different actionable failures at the read boundary.
         await OpenBinderPathAsync(item.Path, isNew: false, requestGeneration: generation);
     }
 
@@ -809,7 +827,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var path = _current.Path;
         if (await CloseCurrentAsync(clearSelection: true))
         {
-            ForgetBinder(path);
+            await ForgetBinder(path);
         }
     }
 
@@ -834,7 +852,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             }
         }
 
-        ForgetBinder(item.Path);
+        await ForgetBinder(item.Path);
     }
 
     [RelayCommand]
@@ -860,8 +878,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // The empty note is its own baseline: until something is typed, its Modified stays its Created.
         _saved[note.Id] = SavedNote.Of(note);
         _lastContent[note.Id] = SavedNote.Of(note);
-        // A brand-new note is the newest, so it goes to the top of the newest-first list.
-        _allNotes.Insert(0, new NoteListItemViewModel(note, _displayZone));
+        // Use the same creation-time order and stored-order tie rule as reopening the binder.
+        var position = _allNotes.FindIndex(row => row.Note.Created < note.Created);
+        _allNotes.Insert(position < 0 ? _allNotes.Count : position, new NoteListItemViewModel(note, _displayZone));
         NotesFilter = string.Empty;
         RebuildNotes();
         SelectedNote = Notes.FirstOrDefault(n => n.Note.Id == note.Id);
@@ -912,6 +931,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
+        if (!await CanChangeAttachmentDirectoryAsync(_current!.Path, note))
+            return;
+
         var deletingSelected = ReferenceEquals(target, SelectedNote);
         var index = Notes.IndexOf(target);
         var binder = _current;
@@ -941,18 +963,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var saved = await SaveCurrentAsync();
         var removalSaved = saved && ReferenceEquals(_current, binder);
 
-        // A copy still running when its add was given up would land in the folder as it is deleted.
-        // Once removal is saved, switching binders does not abandon this folder's cleanup. A binder
-        // subsequently reopened with the note restored still owns its attachments, so keep those.
-        await Task.WhenAll(adding.Select(import => import.Copying));
-        if (_current is { } current && SameBinderPath(current.Path, binder.Path)
-            && current.Binder.Notes.Any(candidate => candidate.Id == note.Id))
+        await OwnAttachmentCleanup(FinishRemovalAsync());
+
+        async Task FinishRemovalAsync()
         {
-            return;
-        }
-        if (removalSaved || ReferenceEquals(_current, binder))
-        {
-            await DeleteNoteAssetsAsync(binder.Path, note, removalSaved);
+            // Retain the entire cleanup, including the wait for a copy already physically in flight.
+            await Task.WhenAll(adding.Select(import => import.Copying));
+            if (_current is { } current && SameBinderPath(current.Path, binder.Path)
+                && current.Binder.Notes.Any(candidate => candidate.Id == note.Id))
+                return;
+            if (removalSaved || ReferenceEquals(_current, binder))
+                await DeleteNoteAssetsAsync(binder.Path, note, removalSaved);
         }
     }
 
@@ -989,7 +1010,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
             }
 
-            await Task.Run(() => _deleteDirectory(directory));
+            await Task.Run(() =>
+            {
+                BinderStore.CheckNoteAssetsDirectory(directory);
+                _deleteDirectory(directory);
+            });
         }
         catch (Exception ex)
         {
@@ -1135,119 +1160,131 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         var directory = BinderStore.NoteAssetsDirectory(_current.Path, note.Id);
-        // A snapshot of the note's current attachment names, taken on the UI thread: the background
-        // step below only reads the filesystem and this list, and never touches the (UI-owned) note
-        // object, so nothing races a concurrent edit while the batch is hashed and copied.
-        var existingAttachmentNames = note.Attachments.ToList();
         var noteId = note.Id;
-
         _log.Info("Adding attachments", new { noteId, requested = files.Count });
-
         var import = new AttachmentImport(note, directory, files);
-        var work = Task.Run(() => ImportAttachments(import, existingAttachmentNames));
-        import.Copying = work.ContinueWith(static _ => { }, TaskScheduler.Default);
+        var copying = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        import.Copying = copying.Task;
         _imports.Add(import);
-
-        AttachmentImportOutcome outcome;
+        var admitted = false;
         try
         {
-            outcome = await work;
-        }
-        catch (Exception ex)
-        {
-            // A binder can live on a read-only, disconnected, or otherwise unavailable volume.
-            // Attachment setup is an edge failure, not a reason for a file drop to escape into the
-            // UI event loop and terminate the app.
-            _log.Error("Failed to prepare attachment directory", new { noteId, path = directory }, ex);
-            if (!import.GivenUp && ReferenceEquals(SelectedNote?.Note, note))
+            await _importAdmission.WaitAsync(import.Stopping);
+            admitted = true;
+            if (import.GivenUp || !IsLiveNote(note))
+                return;
+            var existingAttachmentNames = note.Attachments.ToArray();
+            var work = Task.Run(() => ImportAttachments(import, existingAttachmentNames));
+            AttachmentImportOutcome outcome;
+            try
             {
-                AttachmentResult = new OperationResultViewModel(
-                    OperationResultKind.Error,
-                    Message.Of("attachments.folderFailed"));
+                outcome = await work;
+                copying.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                // A binder can live on a read-only, disconnected, or otherwise unavailable volume.
+                // Attachment setup is an edge failure, not a reason for a file drop to escape into the
+                // UI event loop and terminate the app.
+                _log.Error("Failed to prepare attachment directory", new { noteId, path = directory }, ex);
+                if (!import.GivenUp && ReferenceEquals(SelectedNote?.Note, note))
+                {
+                    AttachmentResult = new OperationResultViewModel(
+                        OperationResultKind.Error,
+                        Message.Of(ex is LinkedAttachmentDirectoryException ? "attachments.linkedFolder" : "attachments.folderFailed"));
+                }
+
+                return;
             }
 
-            return;
+
+            // Given up while its files were copied: the binder closed or was reloaded, the note was deleted, or
+            // the user stopped waiting. Its copies are gone or going (GiveUpImports), and nothing is attached.
+            if (import.GivenUp)
+            {
+                _log.Info("Discarding attachment-add result: the add was given up", new { noteId });
+                return;
+            }
+
+            // Every path that ends a note or a binder gives up its adds first, so this is not expected; were it
+            // to happen, the copies have no note to belong to.
+            if (!IsLiveNote(note))
+            {
+                _log.Warn("Discarding attachment-add result: note is no longer live", new { noteId });
+                _ = DeleteCopiesAsync(directory, outcome.AddedNames);
+                return;
+            }
+
+            // Only the note's own pane shows its result and its rows; another note selected meanwhile keeps its
+            // own (the result is in the log).
+            var shown = ReferenceEquals(SelectedNote?.Note, note);
+
+            // Locked while its files were copied: the note's content is locked now, so the copies are not
+            // attached, and they go, since nothing refers to them.
+            if (note.Locked && outcome.AddedNames.Count > 0)
+            {
+                _log.Info("Discarding attachment-add result: note was locked", new { noteId, copied = outcome.AddedNames.Count });
+                await DeleteCopiesAsync(directory, outcome.AddedNames);
+
+                if (ReferenceEquals(SelectedNote?.Note, note))
+                {
+                    AttachmentResult = new OperationResultViewModel(
+                        OperationResultKind.Warning,
+                        Message.Of("attachments.lockedWhileAdding"));
+                }
+
+                return;
+            }
+
+            foreach (var name in outcome.AddedNames)
+            {
+                note.Attachments.Add(name);
+            }
+
+            var added = outcome.AddedNames.Count;
+            var duplicateNames = outcome.DuplicateNames;
+            var failures = outcome.FailedNames;
+
+            _log.Info("Attachments added", new
+            {
+                noteId,
+                added,
+                // The shown result names only the first few; the record keeps every name.
+                duplicates = duplicateNames,
+                unavailable,
+                failed = failures.Count,
+            });
+            if (unavailable > 0)
+            {
+                _log.Warn("Attachment admission contained unreadable items", new { noteId, unavailable });
+            }
+
+            if (shown)
+            {
+                ShowAttachmentOutcome(added, duplicateNames, unavailable, failures);
+            }
+
+            if (added > 0)
+            {
+                if (shown)
+                {
+                    LoadAttachments(note);
+                }
+
+                MarkDirty(note.Id);
+            }
+        }
+        catch (OperationCanceledException) when (import.Stopping.IsCancellationRequested)
+        {
+            // Stop discards a queued batch without starting another physical operation.
         }
         finally
         {
+            copying.TrySetResult();
             _imports.Remove(import);
             import.Settle();
-        }
-
-        // Given up while its files were copied: the binder closed or was reloaded, the note was deleted, or
-        // the user stopped waiting. Its copies are gone or going (GiveUpImports), and nothing is attached.
-        if (import.GivenUp)
-        {
-            _log.Info("Discarding attachment-add result: the add was given up", new { noteId });
-            return;
-        }
-
-        // Every path that ends a note or a binder gives up its adds first, so this is not expected; were it
-        // to happen, the copies have no note to belong to.
-        if (!IsLiveNote(note))
-        {
-            _log.Warn("Discarding attachment-add result: note is no longer live", new { noteId });
-            _ = DeleteCopiesAsync(directory, outcome.AddedNames);
-            return;
-        }
-
-        // Only the note's own pane shows its result and its rows; another note selected meanwhile keeps its
-        // own (the result is in the log).
-        var shown = ReferenceEquals(SelectedNote?.Note, note);
-
-        // Locked while its files were copied: the note's content is locked now, so the copies are not
-        // attached, and they go, since nothing refers to them.
-        if (note.Locked && outcome.AddedNames.Count > 0)
-        {
-            _log.Info("Discarding attachment-add result: note was locked", new { noteId, copied = outcome.AddedNames.Count });
-            await DeleteCopiesAsync(directory, outcome.AddedNames);
-
-            if (ReferenceEquals(SelectedNote?.Note, note))
-            {
-                AttachmentResult = new OperationResultViewModel(
-                    OperationResultKind.Warning,
-                    Message.Of("attachments.lockedWhileAdding"));
-            }
-
-            return;
-        }
-
-        foreach (var name in outcome.AddedNames)
-        {
-            note.Attachments.Add(name);
-        }
-
-        var added = outcome.AddedNames.Count;
-        var duplicateNames = outcome.DuplicateNames;
-        var failures = outcome.FailedNames;
-
-        _log.Info("Attachments added", new
-        {
-            noteId,
-            added,
-            // The shown result names only the first few; the record keeps every name.
-            duplicates = duplicateNames,
-            unavailable,
-            failed = failures.Count,
-        });
-        if (unavailable > 0)
-        {
-            _log.Warn("Attachment admission contained unreadable items", new { noteId, unavailable });
-        }
-
-        if (shown)
-        {
-            ShowAttachmentOutcome(added, duplicateNames, unavailable, failures);
-        }
-
-        if (added > 0)
-        {
-            if (shown)
-            {
-                LoadAttachments(note);
-            }
-
-            MarkDirty(note.Id);
+            if (admitted)
+                _importAdmission.Release();
         }
     }
 
@@ -1412,6 +1449,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var addedNames = new List<string>();
         var duplicateNames = new List<string>();
         var failures = new List<string>();
+        var takenNames = Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName)
+            .OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var source in import.Sources)
         {
             if (import.Stopping.IsCancellationRequested)
@@ -1422,16 +1461,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             try
             {
                 var hash = ContentHash.Sha256HexFile(source);
+                if (import.Stopping.IsCancellationRequested)
+                    break;
                 if (hashes.ContainsKey(hash))
                 {
                     duplicateNames.Add(Path.GetFileName(source));
                     continue;
                 }
 
-                var existingEntries = Directory.EnumerateFileSystemEntries(directory).Select(Path.GetFileName)!;
-                var name = UniqueFileName.Pick(existingEntries!, Path.GetFileName(source));
-                var copy = Path.Combine(directory, name);
-                _copyFile(source, copy);
+                string name;
+                string copy;
+                while (true)
+                {
+                    import.Stopping.ThrowIfCancellationRequested();
+                    BinderStore.CheckNoteAssetsDirectory(directory);
+                    name = UniqueFileName.Pick(takenNames, Path.GetFileName(source));
+                    copy = Path.Combine(directory, name);
+                    try { _copyFile(source, copy); break; }
+                    catch (AttachmentNameConflictException)
+                    {
+                        // Only the atomic no-replace collision is retried; other copy failures escape.
+                        takenNames.Add(name);
+                    }
+                }
+                takenNames.Add(name);
                 if (!import.Keep(name))
                 {
                     DeleteCopy(copy, noteId);
@@ -1446,6 +1499,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 BackupStore.RecordAdded(Path.GetFullPath(copy), hash);
                 addedNames.Add(name);
                 hashes[hash] = name;
+            }
+            catch (OperationCanceledException) when (import.Stopping.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -1510,7 +1567,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     /// <summary>
     /// Gives up adds that can no longer be attached, deleting the copies they had published off the UI
-    /// thread. Returns that deletion, which only an ending session waits for, within its bound.
+    /// thread. Returns the retained cleanup tail; ordinary quit and session end observe it within their bounds.
     /// </summary>
     private Task GiveUpImports(IReadOnlyList<AttachmentImport> imports)
     {
@@ -1560,6 +1617,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         try
         {
+            BinderStore.CheckNoteAssetsDirectory(Path.GetDirectoryName(path)!);
             _deleteFile(path);
         }
         catch (Exception ex)
@@ -1589,6 +1647,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private static object JoinNames(IReadOnlyList<string> names) => names.Count == 1
         ? QuotedValue.Name(names[0])
         : Message.Of("files.join", ("first", QuotedValue.Name(names[0])), ("rest", JoinNames(names.Skip(1).ToArray())));
+
+    private async Task<bool> CanChangeAttachmentDirectoryAsync(string binderPath, Note note)
+    {
+        try
+        {
+            await Task.Run(() => BinderStore.CheckNoteAssetsDirectory(BinderStore.NoteAssetsDirectory(binderPath, note.Id)));
+            return IsLiveNote(note);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn("Could not admit attachment folder change", new { binderPath, noteId = note.Id }, ex);
+            ShowResult(OperationResultKind.Warning,
+                Message.Of(ex is LinkedAttachmentDirectoryException ? "attachments.linkedFolder" : "attachments.folderFailed"),
+                AttachmentCleanupResultKey);
+            return false;
+        }
+    }
+
+    private Task OwnAttachmentCleanup(Task cleanup)
+    {
+        _attachmentCleanup = _attachmentCleanup.IsCompleted ? cleanup : Task.WhenAll(_attachmentCleanup, cleanup);
+        return cleanup;
+    }
 
     [RelayCommand]
     private async Task RemoveAttachment(AttachmentItemViewModel item)
@@ -1624,55 +1705,56 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
+        if (!await CanChangeAttachmentDirectoryAsync(_current!.Path, note) || note.Locked || !note.Attachments.Contains(item.FileName))
+            return;
+
         _log.Info("Removing attachment", new { noteId = note.Id, file = item.FileName });
         var binder = _current;
         var fileName = item.FileName;
         var fullPath = Path.Combine(BinderStore.NoteAssetsDirectory(binder.Path, note.Id), fileName);
         var resultKey = $"remove-attachment:{note.Id}:{fileName}";
         note.Attachments.Remove(fileName);
-        if (AttachmentResult?.ResultKey == resultKey)
+        if (ReferenceEquals(SelectedNote?.Note, note))
         {
-            AttachmentResult = null;
+            if (AttachmentResult?.ResultKey == resultKey)
+                AttachmentResult = null;
+            LoadAttachments(note);
         }
-        LoadAttachments(note);
         MarkDirty(note.Id);
 
         // The file goes only once the binder on disk no longer refers to it, so a save that fails never
         // leaves a reopened binder pointing at a deleted file. A binder reloaded or closed meanwhile may
         // still refer to it, so it stays.
         var saved = await SaveCurrentAsync();
-        if (!ReferenceEquals(_current, binder))
+        await OwnAttachmentCleanup(DeleteRemovedFileAsync());
+
+        async Task DeleteRemovedFileAsync()
         {
-            return;
-        }
-
-        try
-        {
-            // The binder's folder can be on a slow or vanished volume, so the file is checked and deleted
-            // off the UI thread.
-            if (!await Task.Run(() => _fileExists(fullPath)))
+            try
             {
-                return;
+                if (!await Task.Run(() => _fileExists(fullPath)))
+                    return;
+                // Navigation does not relinquish saved cleanup; a restored reference does.
+                if (_current is { } current && SameBinderPath(current.Path, binder.Path)
+                    && current.Binder.Notes.Any(candidate => candidate.Id == note.Id && candidate.Attachments.Contains(fileName)))
+                    return;
+                if (!saved)
+                {
+                    _log.Warn("Kept a removed attachment's file: its removal was not saved", new { noteId = note.Id, path = fullPath });
+                    ShowFileLeft();
+                    return;
+                }
+                await Task.Run(() =>
+                {
+                    BinderStore.CheckNoteAssetsDirectory(Path.GetDirectoryName(fullPath)!);
+                    _deleteFile(fullPath);
+                });
             }
-
-            if (!ReferenceEquals(_current, binder))
+            catch (Exception ex)
             {
-                return;
-            }
-
-            if (!saved)
-            {
-                _log.Warn("Kept a removed attachment's file: its removal was not saved", new { noteId = note.Id, path = fullPath });
+                _log.Error("Failed to delete attachment", new { noteId = note.Id, path = fullPath }, ex);
                 ShowFileLeft();
-                return;
             }
-
-            await Task.Run(() => _deleteFile(fullPath));
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to delete attachment", new { noteId = note.Id, path = fullPath }, ex);
-            ShowFileLeft();
         }
 
         void ShowFileLeft()
@@ -1684,13 +1766,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     Message.Of("attachments.removeFailed"),
                     resultKey: resultKey);
             }
+            else
+                ShowResult(OperationResultKind.Warning, Message.Of("attachments.removeFailed"), resultKey);
         }
     }
 
     [RelayCommand]
     private async Task OpenAttachment(AttachmentItemViewModel item)
     {
-        if (!File.Exists(item.FullPath))
+        if (!await Task.Run(() => _fileExists(item.FullPath)))
         {
             _log.Warn("Could not open unavailable attachment", new { path = item.FullPath });
             item.ShowUnavailable();
@@ -1719,11 +1803,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         var draft = _config.CopySettings();
-        if (!await _dialogs.ShowSettingsAsync(draft, candidate =>
+        var originalTheme = _config.Theme;
+        if (!await _dialogs.ShowSettingsAsync(draft, async candidate =>
             {
                 var next = _config.Copy();
                 next.TakeSettings(candidate);
-                if (!TrySaveConfig(next))
+                if (!await TrySaveConfig(next))
                 {
                     return false;
                 }
@@ -1735,8 +1820,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var themeChanged = _config.Theme != draft.Theme;
-        _config.TakeSettings(draft);
+        var themeChanged = _config.Theme != originalTheme;
         ApplyConfig();
         if (themeChanged)
         {
@@ -1770,31 +1854,40 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private async Task SaveNow() => await SaveCurrentAsync();
 
     [RelayCommand]
-    private void CycleTextStyle()
+    private async Task CycleTextStyle()
     {
         if (_config.TextStyles.Count == 0)
         {
             return;
         }
 
-        var next = _config.Copy();
-        var index = next.TextStyles.IndexOf(next.ResolveDefaultStyle()!);
-        var nextIndex = (index + 1) % next.TextStyles.Count;
-        for (var i = 0; i < next.TextStyles.Count; i++)
+        static void AdvanceStyle(AppConfig next)
         {
-            next.TextStyles[i].IsDefault = i == nextIndex;
+            if (next.TextStyles.Count == 0)
+                return;
+            var index = next.TextStyles.IndexOf(next.ResolveDefaultStyle()!);
+            var nextIndex = (index + 1) % next.TextStyles.Count;
+            for (var i = 0; i < next.TextStyles.Count; i++)
+                next.TextStyles[i].IsDefault = i == nextIndex;
         }
 
-        // Saved before it is adopted, so a style that did not reach the settings file is not shown as set.
-        // While the settings could not be loaded, nothing is saved and the style holds for this session.
-        if (IsReady && !TrySaveConfig(next, "failure.textStyleSave"))
+        // Each queued cycle advances the last successfully saved style. While settings are unavailable,
+        // the same change stays in memory for this session without touching the unreadable file.
+        if (IsReady)
         {
-            return;
+            if (!await TrySaveConfig(AdvanceStyle, "failure.textStyleSave"))
+                return;
+        }
+        else
+        {
+            var next = _config.Copy();
+            AdvanceStyle(next);
+            _config = next;
         }
 
-        _config = next;
         ApplyTextStyle();
-        var label = TextStyleLabels.For(_config.TextStyles, Localizer.T("settings.noFontFamily"), Localizer.Current.Culture)[nextIndex];
+        var selectedIndex = _config.TextStyles.IndexOf(_config.ResolveDefaultStyle()!);
+        var label = TextStyleLabels.For(_config.TextStyles, Localizer.T("settings.noFontFamily"), Localizer.Current.Culture)[selectedIndex];
         _log.Info("Cycled text style", new { style = label });
 
         _textStyleStatus = Message.Of("textStyle.applied", ("style", label));
@@ -1818,6 +1911,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         if (generation != _openGeneration)
             return;
 
+        IsOpeningBinder = true;
+        try { await OpenBinderRequestAsync(path, isNew, selectNoteId, generation); }
+        finally
+        {
+            if (generation == _openGeneration)
+                IsOpeningBinder = false;
+        }
+    }
+
+    private async Task OpenBinderRequestAsync(string path, bool isNew, string? selectNoteId, long generation)
+    {
         // Re-selecting the binder that is already open (e.g. tapping its row again) is a no-op.
         if (!isNew && _current is not null && PathKey.Equal(_current.Path, path))
         {
@@ -1853,55 +1957,44 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
         }
 
-        if (!await CloseCurrentAsync(clearSelection: false, requestGeneration: generation))
-        {
-            if (_shuttingDown || generation != _openGeneration)
-                return;
-            // The current binder's edits couldn't be flushed; keep it open rather than switch away, and
-            // move the highlight back from the row that was clicked to the binder still open.
-            ApplyBinderFilter();
-            return;
-        }
-
-        if (_shuttingDown || generation != _openGeneration)
-            return;
-
         LoadedBinder loaded;
         try
         {
-            // The binder's own read (JSON parse) or write (new-binder create) is genuine file I/O, so it
-            // runs off the UI thread; only building the empty Binder for a new file — trivial, in-memory —
-            // stays here. The work shares the save lock with SaveCurrentAsync/ReloadFromDiskAsync so it
-            // can never touch this file while one of those still has its write or read of it in flight.
-            await _binderFileLock.WaitAsync();
-            try
+            // Read into a detached value first. A failed open must leave the current binder intact.
+            loaded = isNew ? null! : await Task.Run(() => _binderStore.Load(path));
+            if (_shuttingDown || generation != _openGeneration)
+                return;
+            if (!await CloseCurrentAsync(clearSelection: false, requestGeneration: generation))
             {
                 if (_shuttingDown || generation != _openGeneration)
                     return;
+                // The current binder's edits couldn't be flushed; keep it open rather than switch away, and
+                // move the highlight back from the row that was clicked to the binder still open.
+                ApplyBinderFilter();
+                return;
+            }
 
-                if (isNew)
+            if (_shuttingDown || generation != _openGeneration)
+                return;
+
+            // Detached reads cannot mutate the current binder and must not hold up a newer open.
+            // Creation still shares the publication owner with saving and reloading.
+            if (isNew)
+            {
+                await _binderFileLock.WaitAsync();
+                try
                 {
+                    if (_shuttingDown || generation != _openGeneration)
+                        return;
                     var now = _clock.GetUtcNow();
-                    var binder = new Binder
-                    {
-                        Id = IdGenerator.New(),
-                        Created = now,
-                        Modified = now,
-                    };
+                    var binder = new Binder { Id = IdGenerator.New(), Created = now, Modified = now };
                     loaded = await Task.Run(() =>
                     {
                         var saved = _binderStore.Save(path, binder);
                         return new LoadedBinder(binder, saved.Path, saved.ContentHash) { IdentityPath = PathKey.Resolve(saved.Path) };
                     });
                 }
-                else
-                {
-                    loaded = await Task.Run(() => _binderStore.Load(path));
-                }
-            }
-            finally
-            {
-                _binderFileLock.Release();
+                finally { _binderFileLock.Release(); }
             }
         }
         catch (Exception ex)
@@ -1909,6 +2002,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             _log.Error("Failed to open binder", new { path }, ex);
             if (generation == _openGeneration)
             {
+                foreach (var row in _allBinders.Where(row => PathKey.Equal(row.Path, path)))
+                    row.IsMissing = true;
+                ApplyBinderFilter();
                 // Only report the failure if the user is still waiting on this open; a later open
                 // already superseded it, so this error is no longer about anything they're looking at.
                 await _dialogs.ShowErrorAsync(Message.Of("binder.openFailedTitle"), FailurePresentation.OpenBinder(ex, TitleFor(path)));
@@ -1917,7 +2013,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        if (generation != _openGeneration)
+        if (_shuttingDown || generation != _openGeneration)
         {
             // A later open has already started (or finished) while this one's file was being read;
             // that binder is what the user is looking at now, so this stale result is dropped.
@@ -1925,9 +2021,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
+        foreach (var row in _allBinders.Where(row => PathKey.Equal(row.Path, path)))
+            row.IsMissing = false;
         AdoptLoaded(loaded, selectNoteId);
 
-        AddBinder(loaded.Path);
+        await AddBinder(loaded.Path);
+        if (_shuttingDown || generation != _openGeneration || !ReferenceEquals(_current?.Binder, loaded.Binder))
+            return;
         _state.CurrentBinderPath = loaded.Path;
         PersistState();
 
@@ -2106,19 +2206,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     continue;
                 }
 
-                ApplyContentModified(note, editTime: null);
-                written[id] = SavedNote.Of(note);
+                RestoreContentModified(note, _lastContent[note.Id].Content);
+                written[id] = new SavedNote(_lastContent[note.Id].Content, note.Modified);
             }
 
             binder.Modified = BinderContentModified(binder);
             var noteIds = binder.Notes.Select(note => note.Id).ToArray();
 
-            // Serializing the binder to text is pure, in-memory work over the (UI-owned, mutable)
-            // Binder object, so it stays on the UI thread; only the text — an immutable snapshot — and
-            // the I/O that writes it (the read of the version it replaces and the atomic write) move to a
-            // background thread, so a keystroke landing mid-save can never race a background reader of
-            // the binder.
-            var text = BinderStore.Serialize(binder);
+            var snapshot = Snapshot(binder);
             var generationAtSnapshot = _dirtyGeneration;
             var modifiedAtSnapshot = binder.Modified;
             var expectedHash = _baselineHash;
@@ -2127,7 +2222,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 var publication = await Task.Run(() =>
                 {
-                    var result = _binderStore.SaveText(path, text, expectedHash);
+                    var result = _binderStore.SaveText(path, BinderStore.Serialize(snapshot), expectedHash);
                     return (Saved: result, Key: PathKey.Resolve(result.Path));
                 });
                 var saved = publication.Saved;
@@ -2438,7 +2533,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// in the .daynote file), so this just updates that config entry and persists. A blank or unchanged
     /// title is ignored. Called by the view on blur / Enter.
     /// </summary>
-    public void ApplyBinderRename(BinderListItemViewModel item, string rawTitle)
+    public async Task ApplyBinderRename(BinderListItemViewModel item, string rawTitle)
     {
         if (!item.IsEditing)
         {
@@ -2452,22 +2547,24 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var next = _config.Copy();
-        var entry = next.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, item.Path));
-        if (entry is null)
-        {
-            return; // not a known binder (shouldn't happen for a visible row)
-        }
-
-        entry.Title = newTitle;
-        if (!TrySaveConfig(next, "failure.binderRenameSave"))
+        var path = item.Path;
+        var renamed = false;
+        if (!await TrySaveConfig(next =>
+            {
+                var entry = next.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path));
+                if (entry is null)
+                    return; // A queued forget may already have removed this row.
+                entry.Title = newTitle;
+                renamed = true;
+            }, "failure.binderRenameSave") || !renamed)
         {
             return;
         }
 
-        _config = next;
         item.Title = newTitle;
-        _log.Info("Renamed binder", new { path = item.Path });
+        foreach (var row in _allBinders.Where(row => PathKey.Equal(row.Path, path)))
+            row.Title = newTitle;
+        _log.Info("Renamed binder", new { path });
     }
 
     /// <summary>
@@ -2608,29 +2705,24 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     /// <summary>Persists the master binder order to app config once; a no-op when it is unchanged.</summary>
-    public void CommitBinderOrder()
+    public async Task CommitBinderOrder()
     {
         var order = _allBinders.Select(item => item.Path).ToList();
-        if (_config.Binders.Select(entry => entry.Path).SequenceEqual(order))
-        {
-            return;
-        }
-
-        var next = _config.Copy();
-        var reordered = _allBinders
-            .Select(item => next.Binders.Find(entry => PathKey.Equal(entry.Path, item.Path)))
-            .OfType<KnownBinder>()
-            .ToList();
-        reordered.AddRange(next.Binders.Except(reordered));
-        next.Binders = reordered;
-        if (!TrySaveConfig(next, "failure.binderOrderSave"))
+        if (!await TrySaveConfig(next =>
+            {
+                var reordered = order
+                    .Select(path => next.Binders.Find(entry => PathKey.Equal(entry.Path, path)))
+                    .OfType<KnownBinder>()
+                    .ToList();
+                reordered.AddRange(next.Binders.Except(reordered));
+                next.Binders = reordered;
+            }, "failure.binderOrderSave"))
         {
             // The rows go back to the order the settings file still holds.
             RebuildBinders();
             return;
         }
 
-        _config = next;
         _log.Info("Reordered binders", new { count = order.Count });
     }
 
@@ -2667,15 +2759,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             }
         }
 
-        // Drop rows no longer wanted, then bring the rest into the desired order, inserting newcomers.
+        var wanted = desired.ToHashSet();
+        // Surviving rows retain their objects and selection.
         for (var i = target.Count - 1; i >= 0; i--)
         {
-            if (!desired.Contains(target[i]))
+            if (!wanted.Contains(target[i]))
             {
                 target.RemoveAt(i);
             }
         }
 
+        var present = target.ToHashSet();
         for (var i = 0; i < desired.Count; i++)
         {
             var item = desired[i];
@@ -2684,14 +2778,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 continue;
             }
 
-            var existing = target.IndexOf(item);
-            if (existing >= 0)
+            if (present.Contains(item))
             {
-                target.Move(existing, i);
+                target.Move(target.IndexOf(item), i);
             }
             else
             {
                 target.Insert(i, item);
+                present.Add(item);
             }
         }
     }
@@ -2699,43 +2793,41 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // Records a binder as known. An already-known binder keeps its place (the list is a stable managed
     // set, not a reshuffling MRU); a new one is added at the top, titled with its file name initially.
     // No cap — the user prunes explicitly via the row ✕, so a known binder never silently disappears.
-    private void AddBinder(string path)
+    private async Task AddBinder(string path)
     {
         var full = Path.GetFullPath(path);
-        if (_config.Binders.Any(b => SameBinderPath(b.Path, full)))
-        {
-            // Already known: don't churn the list (which is this ListBox's ItemsSource); just refresh
-            // which row is marked current.
-            ApplyBinderFilter();
-            return;
-        }
-
-        var next = _config.Copy();
-        next.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
+        var added = false;
+        // Resolve membership after preceding writes settle, so another add cannot be duplicated.
         // The binder stays open either way; only its place in the list depends on the save.
-        if (!TrySaveConfig(next, "failure.binderAddSave", OperationResultKind.Warning))
+        if (!await TrySaveConfig(next =>
+            {
+                if (!next.Binders.Any(b => SameBinderPath(b.Path, full)))
+                {
+                    next.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
+                    added = true;
+                }
+            }, "failure.binderAddSave", OperationResultKind.Warning))
         {
             ApplyBinderFilter();
             return;
         }
 
-        _config = next;
-        RebuildBinders();
+        if (added)
+            RebuildBinders();
+        else
+            ApplyBinderFilter();
     }
 
     // Removes a binder from the known list and persists. Caller closes it first if it is the open one.
-    private void ForgetBinder(string path)
+    private async Task ForgetBinder(string path)
     {
-        var next = _config.Copy();
-        if (next.Binders.RemoveAll(b => PathKey.Equal(b.Path, path)) > 0)
-        {
-            if (!TrySaveConfig(next, "failure.binderForgetSave"))
+        if (!await TrySaveConfig(next =>
             {
-                RebuildBinders();
-                return;
-            }
-
-            _config = next;
+                next.Binders.RemoveAll(b => PathKey.Equal(b.Path, path));
+            }, "failure.binderForgetSave"))
+        {
+            RebuildBinders();
+            return;
         }
 
         RebuildBinders();
@@ -2871,6 +2963,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     partial void OnNotesFilterChanged(string value)
     {
         RebuildNotes();
+        OnPropertyChanged(nameof(EditorEmptyStateText));
         OnPropertyChanged(nameof(NotesEmptyStateText));
     }
 
@@ -2979,9 +3072,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// command's own consequence, <paramref name="failureKey"/>, is shown and false is returned, so the
     /// command keeps the configuration it had.
     /// </summary>
-    private bool TrySaveConfig(AppConfig config, string failureKey, OperationResultKind kind = OperationResultKind.Error)
+    private async Task<bool> TrySaveConfig(Action<AppConfig> mutate, string failureKey, OperationResultKind kind = OperationResultKind.Error)
     {
-        if (TrySaveConfig(config))
+        if (await SaveConfig(current =>
+            {
+                mutate(current);
+                return current;
+            }, skipUnchanged: true))
         {
             return true;
         }
@@ -2990,24 +3087,43 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         return false;
     }
 
-    /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
-    /// <remarks>
-    /// Written on the UI thread, as the state is (<see cref="PersistState"/>): both are small files in
-    /// DayNote's own local folder, written on a user's action, and the callers act on the outcome at once,
-    /// Settings included. Moving them off the thread would make those callers asynchronous for no slow case
-    /// seen in practice; a binder's folder, which can be on any volume, never goes through here.
-    /// </remarks>
-    private bool TrySaveConfig(AppConfig config)
+    private Task<bool> TrySaveConfig(AppConfig config)
     {
+        // Settings submits whole changed sets. Capture those sets before waiting, preserving any
+        // unrelated sets that earlier writes adopt while this submission is queued.
+        var changedKeys = ConfigSets.ChangedKeys(config, _config);
+        var submitted = JsonSerializer.SerializeToElement(config, DayNoteJson.Options);
+        return SaveConfig(latest =>
+        {
+            var current = JsonSerializer.SerializeToElement(latest, DayNoteJson.Options);
+            var values = current.EnumerateObject().ToDictionary(property => property.Name, property => property.Value);
+            foreach (var key in changedKeys)
+                values[key] = submitted.GetProperty(key);
+            return JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(values), DayNoteJson.Options)!;
+        });
+    }
+
+    /// <summary>Runs a mutation against the latest saved config and adopts it only after its write succeeds.</summary>
+    private async Task<bool> SaveConfig(Func<AppConfig, AppConfig> mutate, bool skipUnchanged = false)
+    {
+        await _configWrites.WaitAsync();
         try
         {
-            _configStore.Save(config);
+            var next = mutate(_config.Copy());
+            if (skipUnchanged && ConfigSets.ChangedKeys(next, _config).Count == 0)
+                return true;
+            await Task.Run(() => _configStore.Save(next));
+            _config = next;
             return true;
         }
         catch (Exception ex)
         {
             _log.Error("Failed to save configuration", error: ex);
             return false;
+        }
+        finally
+        {
+            _configWrites.Release();
         }
     }
 
@@ -3049,6 +3165,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         ApplyTextStyle();
         _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
         Editor.SetTimeZone(_displayZone);
+        DisplayZoneChanged?.Invoke();
         _autosaveTimer.Interval = TimeSpan.FromSeconds(Math.Max(0.25, _config.AutosaveDelaySeconds));
     }
 
@@ -3097,14 +3214,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        try
+        QueueStateWrite();
+    }
+
+    private Task QueueStateWrite()
+    {
+        var state = CaptureState().Copy();
+        var previous = _stateWrites;
+        return _stateWrites = Task.Run(async () =>
         {
-            _stateStore.Save(CaptureState());
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to save state", error: ex);
-        }
+            await previous;
+            try
+            {
+                _stateStore.Save(state);
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Failed to save state", error: ex);
+            }
+        });
     }
 
     private AppState CaptureState()
@@ -3177,6 +3305,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             _lastContent[note.Id] = new SavedNote(content, time);
         }
 
+        RestoreContentModified(note, content);
+    }
+
+    private void RestoreContentModified(Note note, NoteContent content)
+    {
         if (_saved.TryGetValue(note.Id, out var saved) && saved.Content == content)
         {
             note.Modified = saved.Modified;
@@ -3197,7 +3330,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         DateTimeOffset? latest = binder.Notes.Select(note => note.Id).SequenceEqual(_savedNoteIds) ? null : _notesChangedAt;
         foreach (var note in binder.Notes)
         {
-            if ((!_saved.TryGetValue(note.Id, out var saved) || saved.Content != NoteContent.Of(note))
+            if ((!_saved.TryGetValue(note.Id, out var saved) || saved.Content != _lastContent[note.Id].Content)
                 && (latest is null || note.Modified > latest))
             {
                 latest = note.Modified;
@@ -3205,6 +3338,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         return latest ?? _savedBinderModified;
+    }
+
+    private Binder Snapshot(Binder binder)
+    {
+        var snapshot = new Binder { Id = binder.Id, Created = binder.Created, Modified = binder.Modified };
+        foreach (var note in binder.Notes)
+        {
+            var content = _lastContent[note.Id].Content;
+            var copy = new Note
+            {
+                Id = note.Id, Title = content.Title, Body = content.Body,
+                Created = note.Created, Modified = note.Modified, Status = note.Status, Locked = note.Locked,
+                DiscardedAt = note.DiscardedAt, VerifiedAt = note.VerifiedAt,
+                PublishedAt = note.PublishedAt, RetiredAt = note.RetiredAt,
+            };
+            copy.Attachments.AddRange(note.Attachments);
+            snapshot.Notes.Add(copy);
+        }
+        return snapshot;
     }
 
     /// <summary>A note's content as the file stores it: what decides whether Modified moves.</summary>

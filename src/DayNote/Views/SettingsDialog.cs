@@ -52,7 +52,9 @@ public sealed class SettingsDialog : DialogBase
     private readonly ComboBox _timeZone;
     private readonly Button _saveButton;
     private readonly TextBlock _saveError;
-    private readonly Func<AppConfig, bool> _trySave;
+    private readonly TextBlock _validationError;
+    private readonly Func<AppConfig, Task<bool>> _trySave;
+    private readonly Action<Exception>? _logSaveFailure;
     private readonly Func<string, Task<bool>> _askBeforeRemoving;
     private readonly Func<Task<bool>>? _askBeforeDiscarding;
     private bool _loadingStyleEditor;
@@ -64,12 +66,14 @@ public sealed class SettingsDialog : DialogBase
     /// <param name="askBeforeDiscarding">Asks whether unsaved changes may go, in place of the stacked dialog.</param>
     public SettingsDialog(
         AppConfig config,
-        Func<AppConfig, bool> trySave,
+        Func<AppConfig, Task<bool>> trySave,
         Func<string, Task<bool>>? askBeforeRemoving = null,
-        Func<Task<bool>>? askBeforeDiscarding = null)
+        Func<Task<bool>>? askBeforeDiscarding = null,
+        Action<Exception>? logSaveFailure = null)
     {
         _config = config;
         _trySave = trySave;
+        _logSaveFailure = logSaveFailure;
         _askBeforeRemoving = askBeforeRemoving ?? AskBeforeRemovingAsync;
         _askBeforeDiscarding = askBeforeDiscarding;
         Localized.SetTitle(this, "settings.title");
@@ -225,6 +229,15 @@ public sealed class SettingsDialog : DialogBase
         panel.Children.Add(Group(Label("settings.uiFont"), _uiFont, Hint("settings.uiFontHint")));
         panel.Children.Add(Group(Label("settings.autosave"), _autosave));
         panel.Children.Add(Group(Label("settings.timeZone"), _timeZone));
+        _validationError = new TextBlock
+        {
+            Name = "SettingsValidationError",
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = false,
+        }.Themed(TextBlock.ForegroundProperty, "DangerTextBrush");
+        AutomationProperties.SetLiveSetting(_validationError, AutomationLiveSetting.Assertive);
+        panel.Children.Add(_validationError);
         _saveError = new TextBlock
         {
             FontSize = 12,
@@ -310,7 +323,7 @@ public sealed class SettingsDialog : DialogBase
     protected override Task<bool> AskBeforeDiscardingAsync() =>
         _askBeforeDiscarding?.Invoke() ?? base.AskBeforeDiscardingAsync();
 
-    protected override bool TryCommit(string tag)
+    protected override async Task<bool> TryCommitAsync(string tag)
     {
         if (tag != "ok")
         {
@@ -319,9 +332,14 @@ public sealed class SettingsDialog : DialogBase
 
         _saveError.IsVisible = false;
         _saveError.Text = string.Empty;
-        if (_trySave(_config))
+        try
         {
-            return true;
+            if (await _trySave(_config.Copy()))
+                return true;
+        }
+        catch (Exception ex)
+        {
+            _logSaveFailure?.Invoke(ex);
         }
 
         _saveError.Text = Localizer.T("failure.settingsSave");
@@ -537,7 +555,16 @@ public sealed class SettingsDialog : DialogBase
         _removeStyle.IsEnabled = row is not null && !row.Style.IsDefault && _styleRows.Count > 1;
     }
 
-    private void Revalidate() => _saveButton.IsEnabled = IsValid() && HasUnsavedChanges;
+    private void Revalidate()
+    {
+        _saveButton.IsEnabled = IsValid() && HasUnsavedChanges;
+        var blankFontIndex = _config.TextStyles.FindIndex(style => string.IsNullOrWhiteSpace(style.FontFamily));
+        _validationError.IsVisible = blankFontIndex >= 0;
+        _validationError.Text = blankFontIndex >= 0
+            ? Localizer.T("settings.fontRequired", ("style", TextStyleLabels.For(
+                _config.TextStyles, Localizer.T("settings.noFontFamily"), Localizer.Current.Culture)[blankFontIndex]))
+            : string.Empty;
+    }
 
     private bool IsValid()
     {

@@ -21,6 +21,8 @@ public sealed class JsonStore<T>
     private readonly string _path;
     private readonly int _formatVersion;
     private readonly bool _recordBackup;
+    private readonly AtomicFile.TextPublication _publication = new();
+    internal bool HasPendingPublication => _publication.Hash is not null;
 
     public JsonStore(string path, int formatVersion, bool recordBackup = true)
     {
@@ -86,7 +88,7 @@ public sealed class JsonStore<T>
             json += "\n";
         }
 
-        AtomicFile.WriteAllText(_path, json, _recordBackup);
+        AtomicFile.WriteAllText(_path, json, _recordBackup, _publication);
     }
 
     private static long ReadFormatVersion(JsonObject root)

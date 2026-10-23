@@ -6,6 +6,7 @@
   "about.reportIssue": "Сообщить о проблеме",
   "about.title": "О программе DayNote",
   "attachment.openFailed": "Не удалось открыть это вложение. Дважды щёлкните, чтобы повторить попытку.",
+  "attachment.sizeUnavailable": "Размер недоступен",
   "attachment.unavailable": "Недоступно",
   "attachment.unavailableMessage": "Это вложение отсутствует на диске.",
   "attachments.added": {
@@ -21,6 +22,7 @@
   "attachments.failed": "Не удалось добавить: {names}. Убедитесь, что файлы и папка блокнота доступны, и повторите попытку.",
   "attachments.folderFailed": "Не удалось подготовить папку для вложений. Убедитесь, что в расположение блокнота можно записывать, и повторите попытку.",
   "attachments.join": "{first} {rest}",
+  "attachments.linkedFolder": "Папки вложений, являющиеся ссылками файловой системы, нельзя изменять. Сначала переместите файлы в обычную папку вложений.",
   "attachments.lockedWhileAdding": "Заметка была заблокирована, пока добавлялись файлы, поэтому они не были вложены.",
   "attachments.noNote": "Выберите или создайте заметку, чтобы добавить вложения.",
   "attachments.pane": "Вложения",
@@ -42,7 +44,7 @@
   "binder.changedMessage": "Блокнот «{name}» был изменён вне DayNote, пока у вас есть несохранённые правки. Загрузить его заново с диска и потерять правки или оставить вашу версию (при следующем сохранении файл будет перезаписан)?",
   "binder.changedTitle": "Блокнот изменён на диске",
   "binder.keepMine": "Оставить мою версию",
-  "binder.missing": "Не найден",
+  "binder.missing": "Недоступен",
   "binder.noNotes": "Нет заметок",
   "binder.noteCount": {
     "one": "{count} заметка",
@@ -51,6 +53,7 @@
     "other": "{count} заметки"
   },
   "binder.openFailedTitle": "Не удалось открыть блокнот",
+  "binder.opening": "Открытие блокнота…",
   "binder.reloadFromDisk": "Загрузить заново с диска",
   "binder.remove": "Убрать из списка",
   "binder.replace": "Заменить",
@@ -213,6 +216,7 @@
   "settings.defaultBadge": "По умолчанию",
   "settings.fontFamily": "Шрифт",
   "settings.fontFamilyPlaceholder": "Шрифт (например, Menlo)",
+  "settings.fontRequired": "Выберите семейство шрифтов для «{style}».",
   "settings.fontSize": "Размер",
   "settings.italic": "Курсив",
   "settings.language": "Язык",

@@ -352,7 +352,7 @@
                      the metadata wrap) plus a usable body. Its 300 is the content minimum that
                      WindowMetrics folds into the window's minimum height (the tallest pane wins). -->
                 <Panel MinHeight="300">
-                    <TextBlock i18n:Localized.Text="editor.empty" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    <TextBlock Text="{Binding EditorEmptyStateText}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding !Editor.HasNote}"/>
                     <DockPanel IsVisible="{Binding Editor.HasNote}">
                         <!-- Header: title, lifecycle status and lock in one row, then the body directly

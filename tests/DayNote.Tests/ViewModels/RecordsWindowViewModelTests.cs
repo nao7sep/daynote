@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using DayNote.I18n;
@@ -174,6 +176,119 @@ public sealed class RecordsWindowViewModelTests
         Dispatcher.UIThread.RunJobs();
         Assert.Equal("2026-10-03T09:00:00.000Z", _source.PageQueries[^1].Session);
         Assert.Equal([1L], Ids(vm));
+    }
+
+    [AvaloniaFact]
+    public void Stored_notifications_admit_the_current_launch_once_without_rereading_launches_or_changing_the_filter()
+    {
+        const string earlier = "2026-10-03T09:00:00.000Z";
+        _source.Add(1, session: earlier);
+        using var vm = Started();
+        vm.SelectedLaunch = vm.LaunchOptions.Single(option => option.Value == earlier);
+        var selected = vm.SelectedLaunch;
+        _source.Add(1, session: _source.Session);
+
+        vm.OnStored();
+        vm.OnStored();
+        _timers.RunAll();
+        Dispatcher.UIThread.RunJobs();
+        vm.OnStored();
+        _timers.RunAll();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(1, _source.SessionReads);
+        Assert.Equal([null, _source.Session, earlier], vm.LaunchOptions.Select(option => option.Value));
+        Assert.Same(selected, vm.SelectedLaunch);
+        Assert.Equal(earlier, _source.PageQueries[^1].Session);
+    }
+
+    [AvaloniaFact]
+    public void An_in_flight_initial_launch_read_merges_with_a_current_launch_notification_without_duplicates()
+    {
+        const string earlier = "2026-10-03T09:00:00.000Z";
+        _source.HeldSessions = new TaskCompletionSource<IReadOnlyList<string>>();
+        using var vm = Started();
+        vm.OnStored();
+        var current = vm.LaunchOptions.Single(option => option.Value == _source.Session);
+        vm.SelectedLaunch = current;
+        Assert.Equal(1, _source.SessionReads);
+
+        _source.HeldSessions.SetResult([_source.Session, earlier]);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal([null, _source.Session, earlier], vm.LaunchOptions.Select(option => option.Value));
+        Assert.Same(current, vm.SelectedLaunch);
+        Assert.Same(current, vm.LaunchOptions[1]);
+        Assert.Equal(1, _source.SessionReads);
+    }
+
+    [AvaloniaFact]
+    public void A_failed_launch_read_retries_after_an_explicit_filter_read_instead_of_each_stored_notification()
+    {
+        _source.HeldSessions = new TaskCompletionSource<IReadOnlyList<string>>();
+        using var vm = Started();
+        _source.HeldSessions.SetException(new IOException("busy"));
+        Dispatcher.UIThread.RunJobs();
+        vm.OnStored();
+        vm.OnStored();
+
+        Assert.Equal(1, _source.SessionReads);
+        Assert.Equal(0, _timers.Pending);
+        Assert.Single(vm.LaunchOptions, option => option.Value == _source.Session);
+
+        _source.HeldSessions = null;
+        vm.SelectedLevel = vm.LevelOptions.Single(option => option.Value == RecordLevelFilter.Info);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(2, _source.SessionReads);
+        vm.OnStored();
+        _timers.RunAll();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, _source.SessionReads);
+    }
+
+    [AvaloniaFact]
+    public void A_display_zone_change_refreshes_existing_rows_launches_and_detail_and_unsubscribes_on_dispose()
+    {
+        _source.Add(1);
+        using var vm = Started();
+        vm.SelectedRecord = vm.Records[0];
+        Dispatcher.UIThread.RunJobs();
+        var row = vm.Records[0];
+        var oldTime = row.TimeText;
+        var oldDetail = vm.Detail;
+        var zone = TimeZoneInfo.CreateCustomTimeZone("records-test-plus-three", TimeSpan.FromHours(3), "Plus three", "Plus three");
+        _host.DisplayZone = zone;
+        _host.RaiseDisplayZoneChanged();
+
+        Assert.Same(row, vm.Records[0]);
+        Assert.NotEqual(oldTime, row.TimeText);
+        Assert.Equal(RecordFormat.TimeText(row.Record.Time, zone), row.TimeText);
+        Assert.NotSame(oldDetail, vm.Detail);
+        Assert.Equal(RecordFormat.TimeText(row.Record.Time, zone, milliseconds: true), vm.Detail!.Fields[0].Value);
+        Assert.Equal(RecordFormat.LaunchText(_source.Session, _source.Session, zone), vm.LaunchOptions[1].Text);
+        Assert.Equal(1, _host.DisplayZoneSubscribers);
+
+        vm.Dispose();
+        Assert.Equal(0, _host.DisplayZoneSubscribers);
+    }
+
+    [AvaloniaFact]
+    public void A_detail_read_shows_the_existing_loading_text_until_it_finishes()
+    {
+        _source.Add(1);
+        _source.HeldDetail = new TaskCompletionSource<RecordDetail?>();
+        using var vm = Started();
+        vm.SelectedRecord = vm.Records[0];
+
+        Assert.Equal(RecordDetailState.Loading, vm.DetailState);
+        Assert.Equal(Localizer.T("records.loading"), vm.DetailNote);
+        Assert.False(vm.IsDetailNoteError);
+
+        _source.HeldDetail.SetResult(_source.Records[0]);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(RecordDetailState.Ready, vm.DetailState);
+        Assert.Null(vm.DetailNote);
     }
 
     [AvaloniaFact]

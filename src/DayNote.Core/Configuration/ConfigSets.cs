@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DayNote.Core.Storage;
 
 namespace DayNote.Core.Configuration;
 
@@ -16,13 +17,17 @@ public static class ConfigSets
     // next save.
     private static readonly HashSet<string> Authored = ["binders", "textStyles"];
 
-    public static AppConfig Read(IReadOnlyDictionary<string, JsonElement> stored, Action<string> warn)
+    /// <summary>Validates each stored set once, returning its effective values and entries to preserve.</summary>
+    public static (AppConfig Config, Dictionary<string, JsonElement> Kept) Load(
+        IReadOnlyDictionary<string, JsonElement> stored, Action<string> warn)
     {
         var effective = new Dictionary<string, JsonElement>();
-        foreach (var key in Keys)
+        var kept = new Dictionary<string, JsonElement>();
+        foreach (var (key, value) in stored)
         {
-            if (!stored.TryGetValue(key, out var value))
+            if (!BuiltIns.TryGetProperty(key, out _))
             {
+                kept[key] = value.Clone();
                 continue;
             }
 
@@ -36,21 +41,13 @@ public static class ConfigSets
             else
             {
                 warn(key);
+                if (Authored.Contains(key))
+                    kept[key] = value.Clone();
             }
         }
 
-        return JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(effective), DayNoteJson.Options)!;
+        return (JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(effective), DayNoteJson.Options)!, kept);
     }
-
-    /// <summary>
-    /// The stored entries a save must keep as they are: keys this build does not know, which may belong
-    /// to another DayNote, and authored sets that failed their check.
-    /// </summary>
-    public static Dictionary<string, JsonElement> Kept(IReadOnlyDictionary<string, JsonElement> stored) =>
-        stored
-            .Where(entry => !BuiltIns.TryGetProperty(entry.Key, out _)
-                || (Authored.Contains(entry.Key) && !IsValid(entry.Key, entry.Value)))
-            .ToDictionary(entry => entry.Key, entry => entry.Value.Clone());
 
     /// <summary>The keys of the sets the draft holds differently from the baseline.</summary>
     public static IReadOnlyList<string> ChangedKeys(AppConfig draft, AppConfig baseline)
@@ -61,9 +58,8 @@ public static class ConfigSets
     }
 
     /// <summary>Every set that differs from its built-in, whole, keyed as the file stores it.</summary>
-    public static Dictionary<string, JsonElement> UserSets(AppConfig config)
+    public static Dictionary<string, JsonElement> UserSets(JsonElement values)
     {
-        var values = JsonSerializer.SerializeToElement(config, DayNoteJson.Options);
         return Keys
             .Where(key => !JsonElement.DeepEquals(values.GetProperty(key), BuiltIns.GetProperty(key)))
             .ToDictionary(key => key, key => values.GetProperty(key));
@@ -84,10 +80,33 @@ public static class ConfigSets
         },
     };
 
-    private static bool HasBinderListShape(JsonElement value) => value.ValueKind == JsonValueKind.Array
-        && value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.Object
-            && item.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.String
-            && item.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String);
+    private static bool HasBinderListShape(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array)
+            return false;
+
+        var paths = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object
+                || !item.TryGetProperty("path", out var path) || path.ValueKind != JsonValueKind.String
+                || !item.TryGetProperty("title", out var title) || title.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(path.GetString()))
+                return false;
+
+            try
+            {
+                // Identity checking is lexical: an offline binder remains valid, and its authored
+                // spelling stays untouched. Existing-file aliases belong to the binder load boundary.
+                if (!paths.Add(PathKey.Normalize(path.GetString()!)))
+                    return false;
+            }
+            catch (ArgumentException) { return false; }
+            catch (NotSupportedException) { return false; }
+            catch (PathTooLongException) { return false; }
+        }
+        return true;
+    }
 
     private static bool IsTheme(JsonElement value) => value.ValueKind == JsonValueKind.String
         && ThemePreferenceJsonConverter.TryParse(value.GetString(), out _);

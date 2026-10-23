@@ -1,6 +1,7 @@
 using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.TextInput;
@@ -76,12 +77,19 @@ public sealed class ComposingTextBoxTests : WindowTest
     [AvaloniaFact]
     public void Enter_in_the_multiline_body_inserts_a_newline_not_a_submit()
     {
-        var box = Host(new ComposingTextBox { AcceptsReturn = true });
+        var box = new ComposingTextBox { AcceptsReturn = true, Text = "abcd" };
+        var window = Show(new Window { Content = box, Width = 400, Height = 300 });
+        box.Focus();
+        Dispatcher.UIThread.RunJobs();
+        box.SelectionStart = box.SelectionEnd = box.CaretIndex = 2;
+        Assert.True(box.IsFocused);
         var submitted = 0;
         box.Submitted += (_, _) => submitted++;
 
-        RaiseKeyDown(box, Key.Enter);
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+        window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
 
+        Assert.Equal("ab" + box.NewLine + "cd", box.Text);
         Assert.Equal(0, submitted);
     }
 

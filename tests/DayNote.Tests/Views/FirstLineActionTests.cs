@@ -21,7 +21,7 @@ namespace DayNote.Tests.Views;
 /// A per-item X sits centred on its item's first text line: a row's remove or delete on the title, a
 /// result's close on the message's first line however far it wraps. Centred on the whole row, the
 /// row's X sat between the title and the line below it; pinned to the top, a result's X sat above
-/// its first line. The X moves by a render translation, so it moves nothing else.
+/// its first line. A top margin places the X within its first text line.
 /// </summary>
 [Collection(AppPathsEnvironment.CollectionName)]
 public sealed class FirstLineActionTests : WindowTest

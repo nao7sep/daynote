@@ -30,6 +30,10 @@ internal sealed class FakeRecordsSource : IRecordsSource
 
     public Exception? DetailFailure { get; set; }
 
+    public TaskCompletionSource<IReadOnlyList<string>>? HeldSessions { get; set; }
+
+    public TaskCompletionSource<RecordDetail?>? HeldDetail { get; set; }
+
     public int DetailReads { get; private set; }
 
     public int SessionReads { get; private set; }
@@ -94,6 +98,11 @@ internal sealed class FakeRecordsSource : IRecordsSource
     public Task<RecordDetail?> ReadDetailAsync(long id)
     {
         DetailReads++;
+        if (HeldDetail is { } held)
+        {
+            return held.Task;
+        }
+
         return DetailFailure is { } failure
             ? Task.FromException<RecordDetail?>(failure)
             : Task.FromResult(Records.FirstOrDefault(record => record.Id == id));
@@ -102,6 +111,11 @@ internal sealed class FakeRecordsSource : IRecordsSource
     public Task<IReadOnlyList<string>> ReadSessionsAsync()
     {
         SessionReads++;
+        if (HeldSessions is { } held)
+        {
+            return held.Task;
+        }
+
         return Task.FromResult<IReadOnlyList<string>>(
             Records.Select(record => record.Session).Distinct().OrderByDescending(session => session, StringComparer.Ordinal).ToList());
     }
@@ -122,6 +136,12 @@ internal sealed class FakeRecordsHost : IRecordsWindowHost
     public List<WindowPlacement> SavedPlacements { get; } = [];
 
     public TimeZoneInfo DisplayZone { get; set; } = TimeZoneInfo.Utc;
+
+    public event Action? DisplayZoneChanged;
+
+    public int DisplayZoneSubscribers => DisplayZoneChanged?.GetInvocationList().Length ?? 0;
+
+    public void RaiseDisplayZoneChanged() => DisplayZoneChanged?.Invoke();
 
     public void SaveRecordsListWidth(double width)
     {

@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using DayNote.Core.Configuration;
 
@@ -21,20 +22,49 @@ public sealed class ConfigStore(string path, Action<string> warn)
     private Dictionary<string, JsonElement> _kept = new();
     private JsonElement _loaded;
 
+    // Bootstrap and startup share the same validated outcome, including an original read failure.
+    private readonly object _loadGate = new();
+    private bool _loadAttempted;
+    private AppConfig? _loadedConfig;
+    private ExceptionDispatchInfo? _loadFailure;
+
     public AppConfig Load()
+    {
+        lock (_loadGate)
+        {
+            if (_loadAttempted)
+            {
+                _loadFailure?.Throw();
+                return _loadedConfig!;
+            }
+
+            _loadAttempted = true;
+            try
+            {
+                return _loadedConfig = LoadCore();
+            }
+            catch (Exception ex)
+            {
+                _loadFailure = ExceptionDispatchInfo.Capture(ex);
+                throw;
+            }
+        }
+    }
+
+    private AppConfig LoadCore()
     {
         _onDisk = _store.Load();
         var stored = _onDisk ?? new();
-        var config = ConfigSets.Read(stored, warn);
-        _kept = ConfigSets.Kept(stored);
+        var (config, kept) = ConfigSets.Load(stored, warn);
+        _kept = kept;
         _loaded = JsonSerializer.SerializeToElement(config, DayNoteJson.Options);
         return config;
     }
 
     public void Save(AppConfig config)
     {
-        var sets = ConfigSets.UserSets(config);
         var values = JsonSerializer.SerializeToElement(config, DayNoteJson.Options);
+        var sets = ConfigSets.UserSets(values);
         var replaced = new List<string>();
         foreach (var (key, stored) in _kept)
         {
@@ -54,7 +84,7 @@ public sealed class ConfigStore(string path, Action<string> warn)
             }
         }
 
-        if (_onDisk is null ? sets.Count == 0 : SameSets(_onDisk, sets))
+        if (!_store.HasPendingPublication && (_onDisk is null ? sets.Count == 0 : SameSets(_onDisk, sets)))
         {
             return;
         }

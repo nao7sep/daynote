@@ -31,7 +31,7 @@ public static class BinderTomlWriter
         var builder = new StringBuilder();
         builder.Append("format_version = ").Append(FormatVersions.Binder).Append('\n');
 
-        // The binder has no title line — its display title is a local label kept in app state, not
+        // The binder has no title line — its display title is a local label kept in app configuration, not
         // carried in the file (a collection's title does not travel to other machines).
         AppendBasic(builder, "id", binder.Id);
         AppendTimestamp(builder, "created", binder.Created);

@@ -6,6 +6,7 @@
   "about.reportIssue": "Relatar problema",
   "about.title": "Sobre o DayNote",
   "attachment.openFailed": "Não foi possível abrir este anexo. Clique duas vezes para tentar novamente.",
+  "attachment.sizeUnavailable": "Tamanho indisponível",
   "attachment.unavailable": "Indisponível",
   "attachment.unavailableMessage": "Este anexo não está disponível no disco.",
   "attachments.added": {
@@ -20,6 +21,7 @@
   "attachments.failed": "Não foi possível adicionar: {names}. Verifique se os arquivos e a pasta do fichário estão disponíveis e tente novamente.",
   "attachments.folderFailed": "Não foi possível preparar a pasta de anexos. Verifique se o local do fichário permite gravação e tente novamente.",
   "attachments.join": "{first} {rest}",
+  "attachments.linkedFolder": "Pastas de anexos que são links do sistema de arquivos não podem ser alteradas. Primeiro, mova os arquivos para uma pasta de anexos comum.",
   "attachments.lockedWhileAdding": "A nota foi bloqueada enquanto os arquivos eram adicionados, então eles não foram anexados.",
   "attachments.noNote": "Selecione ou crie uma nota para adicionar anexos.",
   "attachments.pane": "Anexos",
@@ -40,7 +42,7 @@
   "binder.changedMessage": "“{name}” foi modificado fora do DayNote enquanto você tem edições não salvas. Recarregar do disco e perder suas edições, ou manter sua versão (o próximo salvamento vai substituir o arquivo)?",
   "binder.changedTitle": "Fichário alterado no disco",
   "binder.keepMine": "Manter minha versão",
-  "binder.missing": "Não encontrado",
+  "binder.missing": "Indisponível",
   "binder.noNotes": "Nenhuma nota",
   "binder.noteCount": {
     "one": "{count} nota",
@@ -48,6 +50,7 @@
     "other": "{count} notas"
   },
   "binder.openFailedTitle": "Não foi possível abrir o fichário",
+  "binder.opening": "Abrindo fichário…",
   "binder.reloadFromDisk": "Recarregar do disco",
   "binder.remove": "Remover da lista",
   "binder.replace": "Substituir",
@@ -206,6 +209,7 @@
   "settings.defaultBadge": "Padrão",
   "settings.fontFamily": "Família da fonte",
   "settings.fontFamilyPlaceholder": "Família da fonte (ex.: Menlo)",
+  "settings.fontRequired": "Escolha uma família de fontes para “{style}”.",
   "settings.fontSize": "Tamanho",
   "settings.italic": "Itálico",
   "settings.language": "Idioma",

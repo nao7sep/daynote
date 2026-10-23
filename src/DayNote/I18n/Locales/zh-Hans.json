@@ -6,6 +6,7 @@
   "about.reportIssue": "报告问题",
   "about.title": "关于 DayNote",
   "attachment.openFailed": "无法打开此附件。双击可重试。",
+  "attachment.sizeUnavailable": "无法获取大小",
   "attachment.unavailable": "不可用",
   "attachment.unavailableMessage": "磁盘上找不到此附件。",
   "attachments.added": {
@@ -18,6 +19,7 @@
   "attachments.failed": "无法添加：{names}。请确认这些文件和笔记本文件夹可用，然后重试。",
   "attachments.folderFailed": "无法准备附件文件夹。请确认笔记本所在位置可写，然后重试。",
   "attachments.join": "{first}{rest}",
+  "attachments.linkedFolder": "无法更改作为文件系统链接的附件文件夹。请先将文件移到普通的附件文件夹中。",
   "attachments.lockedWhileAdding": "添加文件时笔记已被锁定，因此这些文件未被附加。",
   "attachments.noNote": "请选择或新建一条笔记以添加附件。",
   "attachments.pane": "附件",
@@ -36,12 +38,13 @@
   "binder.changedMessage": "在你有未保存的编辑时，“{name}”在 DayNote 之外被修改了。要从磁盘重新载入并丢弃你的编辑，还是保留你的版本（下次保存时会覆盖该文件）？",
   "binder.changedTitle": "笔记本在磁盘上已更改",
   "binder.keepMine": "保留我的版本",
-  "binder.missing": "找不到",
+  "binder.missing": "不可用",
   "binder.noNotes": "没有笔记",
   "binder.noteCount": {
     "other": "{count} 条笔记"
   },
   "binder.openFailedTitle": "无法打开笔记本",
+  "binder.opening": "正在打开笔记本…",
   "binder.reloadFromDisk": "从磁盘重新载入",
   "binder.remove": "从列表中移除",
   "binder.replace": "替换",
@@ -192,6 +195,7 @@
   "settings.defaultBadge": "默认",
   "settings.fontFamily": "字体",
   "settings.fontFamilyPlaceholder": "字体（例如 Menlo）",
+  "settings.fontRequired": "请为“{style}”选择字体系列。",
   "settings.fontSize": "字号",
   "settings.italic": "斜体",
   "settings.language": "语言",

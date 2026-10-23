@@ -3,7 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using DayNote.Views;
 using Xunit;
 
@@ -153,17 +153,49 @@ public sealed class WindowMetricsTests
         // Guard against a content column being added without a MinWidth: such a column would
         // contribute 0 to the derived window minimum and could be squeezed to invisibility. Read
         // the live XAML so this fails the moment a real column is added without a minimum. The
-        // splitter columns are intentionally Auto with no MinWidth and are excluded by the regex.
+        // columns used only by splitters do not contribute a content minimum.
         var minWidths = ColumnMinWidths(ReadMainWindowAxaml());
 
         Assert.NotEmpty(minWidths);
         Assert.All(minWidths, m => Assert.True(m > 0, "A pane column is missing a non-zero MinWidth."));
     }
 
-    private static IReadOnlyList<double> ColumnMinWidths(string axaml) =>
-        Regex.Matches(axaml, "<ColumnDefinition\\b[^>]*?MinWidth=\"(?<min>\\d+(?:\\.\\d+)?)\"")
-            .Select(m => double.Parse(m.Groups["min"].Value, CultureInfo.InvariantCulture))
-            .ToList();
+    [Fact]
+    public void A_content_column_without_MinWidth_is_included_in_the_guard()
+    {
+        var document = XDocument.Parse(ReadMainWindowAxaml());
+        var paneGrid = PaneGrid(document);
+        var definitions = paneGrid.Element(paneGrid.Name.Namespace + "Grid.ColumnDefinitions")!;
+        definitions.Elements().First().Attribute("MinWidth")!.Remove();
+        definitions.Add(new XElement(paneGrid.Name.Namespace + "ColumnDefinition", new XAttribute("Width", "*")));
+
+        var minWidths = ColumnMinWidths(document.ToString());
+
+        Assert.Equal(2, minWidths.Count(width => width == 0));
+    }
+
+    private static XElement PaneGrid(XDocument document) =>
+        document.Descendants().Single(element => element.Name.LocalName == "Grid"
+            && (string?)element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "PaneGrid");
+
+    private static IReadOnlyList<double> ColumnMinWidths(string axaml)
+    {
+        var grid = PaneGrid(XDocument.Parse(axaml));
+        var definitions = grid.Element(grid.Name.Namespace + "Grid.ColumnDefinitions")!.Elements().ToArray();
+        var children = grid.Elements().Where(element => element.Name.LocalName != "Grid.ColumnDefinitions").ToArray();
+        var minimums = new List<double>();
+        for (var column = 0; column < definitions.Length; column++)
+        {
+            var occupants = children.Where(element => ((int?)element.Attribute("Grid.Column") ?? 0) == column).ToArray();
+            if (occupants.Length > 0 && occupants.All(element => element.Name.LocalName == "GridSplitter"))
+                continue;
+
+            var minimum = (string?)definitions[column].Attribute("MinWidth");
+            minimums.Add(double.TryParse(minimum, NumberStyles.Float, CultureInfo.InvariantCulture, out var width)
+                && double.IsFinite(width) ? width : 0);
+        }
+        return minimums;
+    }
 
     // --- Side-pane distribution (the fill/pixel rule) ---
 

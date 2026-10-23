@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     // Drag and Cmd/Ctrl+Shift+Up/Down reordering; Avalonia owns each drag session.
     private readonly ListReorder<BinderListItemViewModel> _binderReorder;
     private readonly ListReorder<AttachmentItemViewModel> _attachmentReorder;
+    private readonly Dictionary<Control, AttachmentItemViewModel> _realizedAttachments = [];
 
     private MainWindowViewModel? Vm => DataContext as MainWindowViewModel;
 
@@ -86,7 +87,7 @@ public partial class MainWindow : Window
             BindersList,
             canReorder: null,
             (item, target) => Vm?.MoveBinder(item, target) ?? false,
-            () => Vm?.CommitBinderOrder(),
+            async () => { if (Vm is { } vm) await vm.CommitBinderOrder(); },
             () => Vm?.BinderOrder() ?? [],
             order => Vm?.RestoreBinderOrder(order) ?? false);
         _attachmentReorder = new ListReorder<AttachmentItemViewModel>(
@@ -96,6 +97,19 @@ public partial class MainWindow : Window
             () => Vm?.CommitAttachmentOrder(),
             () => Vm?.Attachments.ToArray() ?? [],
             order => Vm?.RestoreAttachmentOrder(order) ?? false);
+        AttachList.ContainerPrepared += (_, e) =>
+        {
+            if (e.Container.DataContext is AttachmentItemViewModel row)
+            {
+                _realizedAttachments[e.Container] = row;
+                row.Activate();
+            }
+        };
+        AttachList.ContainerClearing += (_, e) =>
+        {
+            if (_realizedAttachments.Remove(e.Container, out var row))
+                row.Deactivate();
+        };
         AttachList.DetachedFromVisualTree += (_, _) => ClearAttachDropHighlight();
         BindersList.AddHandler(KeyDownEvent, BindersList_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
         AttachList.AddHandler(KeyDownEvent, AttachList_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
@@ -531,6 +545,9 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closed = true;
+        foreach (var row in _realizedAttachments.Values)
+            row.Deactivate();
+        _realizedAttachments.Clear();
         Localizer.Changed -= OnLanguageChanged;
         Activated -= OnWindowActivated;
         SetNoteCreatedSource(null);
@@ -666,22 +683,22 @@ public partial class MainWindow : Window
 
     // Blur applies the title edit. (Enter/Escape are handled in BinderTitle_KeyDown first, which
     // clears IsEditing, so this becomes a no-op for those paths.)
-    private void BinderTitle_LostFocus(object? sender, RoutedEventArgs e)
+    private async void BinderTitle_LostFocus(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: BinderListItemViewModel item } && DataContext is MainWindowViewModel vm)
         {
-            vm.ApplyBinderRename(item, item.EditText);
+            await vm.ApplyBinderRename(item, item.EditText);
         }
     }
 
     // Commit the inline binder rename. Submitted is raised by ComposingTextBox only on a genuine Enter —
     // an Enter consumed by the IME to accept a composition candidate arrives as Key.ImeProcessed and is
     // ignored — so renaming with an IME no longer commits (and tears the field closed) mid-composition.
-    private void BinderTitle_Submitted(object? sender, RoutedEventArgs e)
+    private async void BinderTitle_Submitted(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: BinderListItemViewModel item } && DataContext is MainWindowViewModel vm)
         {
-            vm.ApplyBinderRename(item, item.EditText);
+            await vm.ApplyBinderRename(item, item.EditText);
             FocusSelectedBinderRow();
         }
     }

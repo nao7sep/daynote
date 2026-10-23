@@ -22,4 +22,6 @@ public interface IRecordsWindowHost
     void SaveRecordsWindowPlacement(WindowPlacement placement);
 
     TimeZoneInfo DisplayZone { get; }
+
+    event Action? DisplayZoneChanged;
 }

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using DayNote.Core.Storage;
 using static DayNote.Views.ObjC;
 
@@ -11,50 +10,35 @@ namespace DayNote.I18n;
 /// reader's language, and on macOS the items AppKit contributes itself — Services, Emoji &amp;
 /// Symbols, Start Dictation — are drawn in the language it settles on when the application object is
 /// created, which Avalonia does as it starts. So the language is resolved and handed to AppKit before
-/// the app is built, from the saved preference read straight out of <c>config.json</c>.
+/// the app is built, from the saved preference in the shared validated config store.
 ///
-/// The read is deliberately its own, and forgiving: the real store stops startup on a file it cannot
-/// parse, and that decision belongs to the app's startup path, not to a language lookup. A file that
-/// cannot be read here simply means System, and the startup-failure surfaces then speak the
-/// computer's language, which is what the localization conventions ask of them.
+/// A failed read chooses System for the startup-failure surface. The store retains that same failure
+/// for the app's startup gate, so language lookup cannot hide a failed required read.
 /// </summary>
 internal static class LanguageBootstrap
 {
     /// <summary>
-    /// Resolves the language, tells the app, and points AppKit at it. <paramref name="configFile"/> is
-    /// <c>config.json</c>, or null when the storage location itself could not be resolved. Returns the
+    /// Resolves the language, tells the app, and points AppKit at it. <paramref name="store"/> is the
+    /// shared config store, or null when the storage location itself could not be resolved. Returns the
     /// computer's own languages, which the app keeps so a later change resolves System the same way.
     /// </summary>
-    internal static IReadOnlyList<string> Start(string? configFile)
+    internal static IReadOnlyList<string> Start(ConfigStore? store)
     {
         var computerLanguages = ComputerLanguages.Read();
-        Localizer.Use(SavedPreference(configFile), computerLanguages);
+        Localizer.Use(ReadPreference(store), computerLanguages);
         AlignAppKit(Localizer.Language);
         return computerLanguages;
     }
 
-    /// <summary>
-    /// The language preference in <c>config.json</c>, or System when there is none to read, including when
-    /// the file records no format version this build reads (store-recovery-conventions).
-    /// </summary>
-    internal static string SavedPreference(string? configFile)
+    internal static string ReadPreference(ConfigStore? store)
     {
         try
         {
-            if (configFile is null || !File.Exists(configFile))
-                return Languages.System;
-
-            using var document = JsonDocument.Parse(File.ReadAllText(configFile));
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("formatVersion", out var version)
-                && version.TryGetInt64(out var number) && number is >= 1 and <= FormatVersions.Config
-                && document.RootElement.TryGetProperty("language", out var language)
-                && language.ValueKind == JsonValueKind.String
-                ? Languages.NormalizePreference(language.GetString())
-                : Languages.System;
+            return store?.Load().Language ?? Languages.System;
         }
         catch (Exception)
         {
+            // The same store rethrows this failure at the required startup gate; only language uses System.
             return Languages.System;
         }
     }

@@ -97,7 +97,7 @@ public class LanguageChangeTests : WindowTest
     [AvaloniaFact]
     public void a_dialog_built_in_code_follows_the_language()
     {
-        var dialog = Show(new SettingsDialog(new AppConfig(), _ => true));
+        var dialog = Show(new SettingsDialog(new AppConfig(), _ => Task.FromResult(true)));
 
         var theme = dialog.GetVisualDescendants().OfType<TextBlock>()
             .Single(text => text.Text == English.Of("settings.theme"));
@@ -171,7 +171,7 @@ public class LanguageChangeTests : WindowTest
     public void choosing_a_language_enables_save()
     {
         var config = new AppConfig();
-        var dialog = Show(new SettingsDialog(config, _ => true, askBeforeDiscarding: () => Task.FromResult(true)));
+        var dialog = Show(new SettingsDialog(config, _ => Task.FromResult(true), askBeforeDiscarding: () => Task.FromResult(true)));
         var save = Button(dialog, English.Of("common.save"));
         var languages = dialog.GetVisualDescendants().OfType<ComboBox>().Single(box => box.Name == "LanguageBox");
         Assert.False(save.IsEnabled);

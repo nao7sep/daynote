@@ -1,11 +1,9 @@
 using Avalonia;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DayNote.Core.Models;
 using DayNote.I18n;
 using DayNote.Logging;
-using SkiaSharp;
 
 namespace DayNote.ViewModels;
 
@@ -17,25 +15,30 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposable
 {
-    // A note can contain many camera images. Own one physical decode through completion, including
-    // after its row is disposed; queued obsolete rows never start another full native decode.
-    private static readonly SemaphoreSlim DecodeAdmission = new(1, 1);
+    // File metadata can stall on a mounted volume. Bound physical reads while keeping them off the UI.
+    private static readonly SemaphoreSlim MetadataAdmission = new(Math.Max(2, Environment.ProcessorCount));
     private const string UnavailableKey = "attachment.unavailableMessage";
 
     private readonly IAppLogger _log;
-    private long _size;
+    private long? _size;
     private PixelSize? _dimensions;
     private bool _disposed;
+    private bool _active;
+    private CancellationTokenSource? _refreshCancellation;
     private int _thumbnailGeneration;
-    private readonly Func<string, Task<(Bitmap Bitmap, PixelSize Size)>> _decodeThumbnail;
+    private readonly Func<string, CancellationToken, Task<(Bitmap Bitmap, PixelSize Size)>> _decodeThumbnail;
 
     internal Task ThumbnailTask { get; private set; } = Task.CompletedTask;
 
     public AttachmentItemViewModel(Attachment attachment, IAppLogger log, string thumbnailsDirectory)
-        : this(attachment, log, path => AttachmentThumbnails.LoadAsync(path, thumbnailsDirectory, log)) { }
+        : this(attachment, log, (path, token) => AttachmentThumbnails.LoadAsync(path, thumbnailsDirectory, log, token)) { }
 
     internal AttachmentItemViewModel(Attachment attachment, IAppLogger log,
         Func<string, Task<(Bitmap Bitmap, PixelSize Size)>> decodeThumbnail)
+        : this(attachment, log, (path, _) => decodeThumbnail(path)) { }
+
+    private AttachmentItemViewModel(Attachment attachment, IAppLogger log,
+        Func<string, CancellationToken, Task<(Bitmap Bitmap, PixelSize Size)>> decodeThumbnail)
     {
         _decodeThumbnail = decodeThumbnail;
         _log = log;
@@ -43,23 +46,6 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         FileName = attachment.FileName;
         FullPath = attachment.FullPath;
         IsImage = attachment.IsImage;
-        // On the UI thread, as the note's rows are built: these files sit in the open binder's own folder,
-        // and when that volume stalls the binder cannot be used anyway.
-        Exists = File.Exists(attachment.FullPath);
-        _size = FileSize(attachment.FullPath);
-
-        if (!Exists)
-        {
-            _log.Warn("Attachment is unavailable", new { path = FullPath });
-            Result = new OperationResultViewModel(
-                OperationResultKind.Warning,
-                Message.Of(UnavailableKey));
-        }
-
-        if (IsImage && Exists)
-        {
-            ThumbnailTask = LoadThumbnailAsync();
-        }
     }
 
     public Attachment Attachment { get; }
@@ -72,7 +58,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DetailsText))]
-    private bool _exists;
+    private bool _exists = true;
 
     /// <summary>
     /// Secondary line: "<c>W×H · size</c>" for an image whose dimensions have loaded, just the size
@@ -81,8 +67,10 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     public string DetailsText => !Exists
         ? Localizer.T("attachment.unavailable")
         : _dimensions is { } size
-            ? $"{size.Width}×{size.Height} · {FormatSize(_size)}"
-            : FormatSize(_size);
+            ? $"{size.Width}×{size.Height} · {SizeText}"
+            : SizeText;
+
+    private string SizeText => _size is { } bytes ? FormatSize(bytes) : Localizer.T("attachment.sizeUnavailable");
 
     [ObservableProperty]
     private Bitmap? _thumbnail;
@@ -119,7 +107,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
     public void ShowUnavailable()
     {
-        _thumbnailGeneration++;
+        CancelRefresh();
         Exists = false;
         Thumbnail?.Dispose();
         Thumbnail = null;
@@ -134,85 +122,125 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             Message.Of(UnavailableKey));
     }
 
+    /// <summary>Starts work only while a list container is realized.</summary>
+    public void Activate()
+    {
+        if (_disposed || _active)
+            return;
+        _active = true;
+        Refresh();
+    }
+
+    public void Deactivate()
+    {
+        _active = false;
+        CancelRefresh();
+        ClearThumbnail();
+    }
+
     public void ClearOpenResult()
     {
         if (_disposed)
             return;
-        _thumbnailGeneration++;
-        _size = FileSize(FullPath);
-        Exists = true;
-        OnPropertyChanged(nameof(DetailsText));
         if (Result?.Kind is OperationResultKind.Warning or OperationResultKind.Error)
-        {
             Result = null;
-        }
-
-        if (IsImage && Thumbnail is null)
-        {
-            ThumbnailTask = LoadThumbnailAsync();
-        }
+        // Opening can reveal that an existing source has changed. Always consult its current
+        // fingerprint, even when a preview is already present.
+        if (_active)
+            Refresh();
     }
 
-    private async Task LoadThumbnailAsync()
+    private void Refresh()
     {
-        var path = FullPath;
-        var generation = ++_thumbnailGeneration;
+        CancelRefresh();
+        var cancellation = new CancellationTokenSource();
+        _refreshCancellation = cancellation;
+        var work = LoadAttachmentAsync(_thumbnailGeneration, cancellation);
+        // A canceled caller still owns any native or filesystem work already in flight.
+        ThumbnailTask = ThumbnailTask.IsCompleted ? work : Task.WhenAll(ThumbnailTask, work);
+    }
+
+    private void CancelRefresh()
+    {
+        _thumbnailGeneration++;
+        _refreshCancellation?.Cancel();
+    }
+
+    private bool IsCurrent(int generation) => !_disposed && _active && generation == _thumbnailGeneration;
+
+    private async Task LoadAttachmentAsync(int generation, CancellationTokenSource cancellation)
+    {
+        var token = cancellation.Token;
         try
         {
-            await DecodeAdmission.WaitAsync();
-            Bitmap bitmap;
-            PixelSize size;
+            long? size = null;
+            var available = true;
             try
             {
-                if (_disposed || generation != _thumbnailGeneration || !Exists)
-                    return;
-                (bitmap, size) = await _decodeThumbnail(path);
+                await MetadataAdmission.WaitAsync(token);
+                try
+                {
+                    size = await Task.Run(() => new FileInfo(FullPath).Length, token);
+                }
+                finally
+                {
+                    MetadataAdmission.Release();
+                }
             }
-            finally
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+            catch (Exception ex)
             {
-                DecodeAdmission.Release();
+                available = ex is not (FileNotFoundException or DirectoryNotFoundException);
+                _log.Warn("Could not read attachment metadata", new { path = FullPath }, ex);
             }
 
-            if (_disposed || generation != _thumbnailGeneration || !Exists)
+            if (!IsCurrent(generation))
+                return;
+            _size = size;
+            Exists = available;
+            OnPropertyChanged(nameof(DetailsText));
+            if (!available)
+            {
+                ShowUnavailable();
+                return;
+            }
+            if (Result is { Kind: OperationResultKind.Warning, Message.Key: UnavailableKey })
+                Result = null;
+            if (!IsImage)
+                return;
+
+            var (bitmap, dimensions) = await _decodeThumbnail(FullPath, token);
+            if (!IsCurrent(generation))
             {
                 bitmap.Dispose();
                 return;
             }
-
-            Thumbnail?.Dispose();
+            ClearThumbnail();
             Thumbnail = bitmap;
-            _dimensions = size;
+            _dimensions = dimensions;
             OnPropertyChanged(nameof(DetailsText));
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            // A corrupt or unsupported image is recoverable — the row just shows no preview — but it
-            // is unexpected for a file we classified as an image, so it is recorded rather than swallowed.
-            _log.Warn("Could not decode attachment thumbnail", new { path }, ex);
-            ClearThumbnail(generation);
+            _log.Warn("Could not decode attachment thumbnail", new { path = FullPath }, ex);
+            if (IsCurrent(generation))
+                ClearThumbnail();
+        }
+        finally
+        {
+            if (ReferenceEquals(_refreshCancellation, cancellation))
+                _refreshCancellation = null;
+            cancellation.Dispose();
         }
     }
 
-    private void ClearThumbnail(int generation)
+    private void ClearThumbnail()
     {
-        if (!_disposed && generation == _thumbnailGeneration)
-        {
-            Thumbnail?.Dispose();
-            Thumbnail = null;
-        }
-    }
-
-
-    private static long FileSize(string path)
-    {
-        try
-        {
-            return new FileInfo(path).Length;
-        }
-        catch
-        {
-            return 0;
-        }
+        Thumbnail?.Dispose();
+        Thumbnail = null;
+        _dimensions = null;
+        OnPropertyChanged(nameof(DetailsText));
     }
 
     // The unit is catalogue text, since some languages abbreviate it their own way (French writes
@@ -241,8 +269,6 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     public void Dispose()
     {
         _disposed = true;
-        _thumbnailGeneration++;
-        Thumbnail?.Dispose();
-        Thumbnail = null;
+        Deactivate();
     }
 }

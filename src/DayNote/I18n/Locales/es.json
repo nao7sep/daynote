@@ -6,6 +6,7 @@
   "about.reportIssue": "Notificar un problema",
   "about.title": "Acerca de DayNote",
   "attachment.openFailed": "No se pudo abrir este adjunto. Haz doble clic para intentarlo de nuevo.",
+  "attachment.sizeUnavailable": "Tamaño no disponible",
   "attachment.unavailable": "No disponible",
   "attachment.unavailableMessage": "Este adjunto no está disponible en el disco.",
   "attachments.added": {
@@ -20,6 +21,7 @@
   "attachments.failed": "No se pudo agregar: {names}. Comprueba que los archivos y la carpeta del archivador estén disponibles e inténtalo de nuevo.",
   "attachments.folderFailed": "No se pudo preparar la carpeta de adjuntos. Comprueba que se pueda escribir en la ubicación del archivador e inténtalo de nuevo.",
   "attachments.join": "{first} {rest}",
+  "attachments.linkedFolder": "No se pueden modificar las carpetas de adjuntos que son enlaces del sistema de archivos. Primero mueve los archivos a una carpeta de adjuntos normal.",
   "attachments.lockedWhileAdding": "La nota se bloqueó mientras se agregaban los archivos, así que no se adjuntaron.",
   "attachments.noNote": "Selecciona o crea una nota para agregarle adjuntos.",
   "attachments.pane": "Adjuntos",
@@ -40,7 +42,7 @@
   "binder.changedMessage": "«{name}» se modificó fuera de DayNote mientras tienes cambios sin guardar. ¿Quieres volver a cargarlo desde el disco y perder tus cambios, o conservar tu versión (al guardar la próxima vez se sobrescribirá el archivo)?",
   "binder.changedTitle": "El archivador cambió en el disco",
   "binder.keepMine": "Conservar mi versión",
-  "binder.missing": "No encontrado",
+  "binder.missing": "No disponible",
   "binder.noNotes": "Sin notas",
   "binder.noteCount": {
     "one": "{count} nota",
@@ -48,6 +50,7 @@
     "other": "{count} notas"
   },
   "binder.openFailedTitle": "No se pudo abrir el archivador",
+  "binder.opening": "Abriendo archivador…",
   "binder.reloadFromDisk": "Volver a cargar desde el disco",
   "binder.remove": "Quitar de la lista",
   "binder.replace": "Reemplazar",
@@ -206,6 +209,7 @@
   "settings.defaultBadge": "Predeterminado",
   "settings.fontFamily": "Familia de fuente",
   "settings.fontFamilyPlaceholder": "Familia de fuente (p. ej., Menlo)",
+  "settings.fontRequired": "Elige una familia de fuentes para «{style}».",
   "settings.fontSize": "Tamaño",
   "settings.italic": "Cursiva",
   "settings.language": "Idioma",

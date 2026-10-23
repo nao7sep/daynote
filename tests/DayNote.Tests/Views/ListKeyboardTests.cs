@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -41,7 +42,11 @@ public sealed class ListKeyboardTests : WindowTest
 
         // Enter submits from the field; on macOS it is also the rename key, and the list leaves it alone.
         field.Text = "Renamed";
+        var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        item.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(item.Title)) saved.TrySetResult(); };
         Press(window, PhysicalKey.Enter);
+        await saved.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Dispatcher.UIThread.RunJobs();
 
         Assert.False(item.IsEditing);
         var renamed = Assert.IsType<BinderListItemViewModel>(list.SelectedItem);
@@ -83,6 +88,7 @@ public sealed class ListKeyboardTests : WindowTest
 
         Press(window, PhysicalKey.Enter);
 
+        await populated.ViewModel.OpenAttachmentCommand.ExecutionTask!;
         Assert.Equal(attachment.FullPath, populated.Dialogs.LastOpenedPath);
     }
 

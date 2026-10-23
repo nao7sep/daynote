@@ -31,34 +31,86 @@ internal static class AttachmentThumbnails
     internal const int FormatVersion = 1;
     private const int Quality = 75;
 
-    /// <summary>The thumbnail of <paramref name="path"/> and the image's own dimensions.</summary>
-    internal static Task<(Bitmap Bitmap, PixelSize Size)> LoadAsync(string path, string directory, IAppLogger log) => Task.Run(() =>
-    {
-        var file = new FileInfo(path);
-        // The codec reads only the header here; the pixels are decoded below, and only when no
-        // thumbnail is kept yet. It owns the stream and closes it.
-        using var codec = SKCodec.Create(File.OpenRead(path)) ?? throw new InvalidDataException("Image codec could not be opened.");
-        var original = new PixelSize(codec.Info.Width, codec.Info.Height);
+    // Full native decodes can allocate the source dimensions (PNG/GIF). Only that physical work
+    // occupies this slot; cached previews and header reads remain available while it runs.
+    internal static readonly SemaphoreSlim DecodeAdmission = new(1, 1);
 
-        var kept = Path.Combine(directory, NameFor(file));
-        if (File.Exists(kept))
+    private static readonly SemaphoreSlim PreparationAdmission = new(Math.Max(2, Environment.ProcessorCount));
+
+    /// <summary>The thumbnail of <paramref name="path"/> and the image's own dimensions.</summary>
+    internal static async Task<(Bitmap Bitmap, PixelSize Size)> LoadAsync(string path, string directory,
+        IAppLogger log, CancellationToken cancellationToken = default)
+    {
+        // Admission happens before dispatch: stalled source/header reads cannot occupy an unbounded
+        // number of workers as rows are scrolled away and back. Cached loads share this light budget.
+        await PreparationAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
+        (SKCodec Codec, PixelSize Original, string Kept, Bitmap? Cached) prepared;
+        try
         {
-            try
-            {
-                return (new Bitmap(kept), original);
-            }
-            catch (Exception ex)
-            {
-                // A damaged thumbnail is made again from the original.
-                log.Warn("Could not read a kept attachment thumbnail", new { path = kept }, ex);
-            }
+            prepared = await Task.Run(() => Prepare(path, directory, log), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            PreparationAdmission.Release();
         }
 
-        using var made = Make(codec, original);
-        Keep(made, kept, log);
-        return (new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, made.GetPixels(), new PixelSize(made.Width, made.Height),
-            new Vector(96, 96), made.RowBytes), original);
-    });
+        using var codec = prepared.Codec;
+        if (prepared.Cached is { } cached)
+            return (cached, prepared.Original);
+
+        // Release preparation capacity before waiting for a native decode, so cached rows can load.
+        await DecodeAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() =>
+        {
+            SKBitmap made;
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                made = Make(codec, prepared.Original);
+            }
+            finally
+            {
+                DecodeAdmission.Release();
+            }
+            using var owned = made;
+            Keep(made, prepared.Kept, log);
+            return (new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, made.GetPixels(),
+                new PixelSize(made.Width, made.Height), new Vector(96, 96), made.RowBytes), prepared.Original);
+        }).ConfigureAwait(false);
+    }
+
+    private static (SKCodec Codec, PixelSize Original, string Kept, Bitmap? Cached) Prepare(
+        string path, string directory, IAppLogger log)
+    {
+        var file = new FileInfo(path);
+        file.Refresh();
+        // The codec reads only the header here and owns its source stream until the decode settles.
+        var codec = SKCodec.Create(File.OpenRead(path))
+            ?? throw new InvalidDataException("Image codec could not be opened.");
+        try
+        {
+            var original = new PixelSize(codec.Info.Width, codec.Info.Height);
+            var kept = Path.Combine(directory, NameFor(file));
+            if (File.Exists(kept))
+            {
+                try
+                {
+                    return (codec, original, kept, new Bitmap(kept));
+                }
+                catch (Exception ex)
+                {
+                    // A damaged thumbnail is made again from the original.
+                    log.Warn("Could not read a kept attachment thumbnail", new { path = kept }, ex);
+                }
+            }
+            return (codec, original, kept, null);
+        }
+        catch
+        {
+            codec.Dispose();
+            throw;
+        }
+    }
 
     /// <summary>The file name a thumbnail of <paramref name="file"/> is kept under.</summary>
     internal static string NameFor(FileInfo file)

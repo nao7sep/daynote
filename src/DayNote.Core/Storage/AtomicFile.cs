@@ -24,14 +24,33 @@ public static partial class AtomicFile
 {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
-    public static void WriteAllText(string path, string content, bool recordBackup = true)
+    // A writer retains this receipt until required synchronization and optional-history admission
+    // finish. Equal bytes alone cannot establish that a preceding failed publication completed.
+    internal sealed class TextPublication
     {
+        internal string? Hash { get; set; }
+    }
+
+    public static void WriteAllText(string path, string content, bool recordBackup = true) =>
+        WriteAllText(path, content, recordBackup, new TextPublication(), FlushDirectory);
+
+    internal static void WriteAllText(string path, string content, bool recordBackup,
+        TextPublication publication, Action<string>? synchronize = null)
+    {
+        synchronize ??= FlushDirectory;
         var fullPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath)
             ?? throw new ArgumentException($"Path has no directory: {path}", nameof(path));
         var bytes = Utf8NoBom.GetBytes(content);
         if (HoldsExactly(fullPath, bytes))
         {
+            if (publication.Hash == ContentHash.Sha256Hex(content))
+            {
+                synchronize(directory);
+                if (recordBackup)
+                    BackupStore.Record(fullPath, bytes);
+            }
+            publication.Hash = null;
             return;
         }
 
@@ -59,12 +78,21 @@ public static partial class AtomicFile
                 File.SetUnixFileMode(tempPath, File.GetUnixFileMode(fullPath));
             }
 
-            File.Move(tempPath, fullPath, overwrite: true);
+            if (OperatingSystem.IsWindows())
+            {
+                // Preserve same-directory replacement and request namespace write-through. This is
+                // the platform request, not a promise covering every filesystem or power failure.
+                if (!MoveFileEx(WindowsExtendedPath(tempPath), WindowsExtendedPath(fullPath), 0x1 | 0x8))
+                    throw new IOException("Could not publish text file.", new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError()));
+            }
+            else
+                File.Move(tempPath, fullPath, overwrite: true);
+            publication.Hash = ContentHash.Sha256Hex(content);
 
             // Flushing the temp file's data (above) is not enough: a crash right after the rename can
             // leave the directory entry pointing at the old inode, silently rolling the save back to
             // the previous version. Flushing the containing directory closes that window.
-            FlushDirectory(directory);
+            synchronize(directory);
         }
         catch
         {
@@ -81,6 +109,7 @@ public static partial class AtomicFile
         {
             BackupStore.Record(fullPath, bytes);
         }
+        publication.Hash = null;
     }
 
     /// <summary>
@@ -108,15 +137,28 @@ public static partial class AtomicFile
         {
             File.Copy(source, tempPath);
             flushFile(tempPath);
-            if (OperatingSystem.IsWindows())
+            try
             {
-                // Publish without replacement and ask Windows to settle the move before returning.
-                if (!MoveFileEx(WindowsExtendedPath(tempPath), WindowsExtendedPath(fullPath), 0x8)) // MOVEFILE_WRITE_THROUGH
-                    throw new IOException("Could not publish attachment copy.", new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError()));
+                if (OperatingSystem.IsWindows())
+                {
+                    // Publish without replacement and ask Windows to settle the move before returning.
+                    if (!MoveFileEx(WindowsExtendedPath(tempPath), WindowsExtendedPath(fullPath), 0x8))
+                    {
+                        var error = Marshal.GetLastPInvokeError();
+                        if (error is 80 or 183)
+                            throw new AttachmentNameConflictException(fullPath);
+                        throw new IOException("Could not publish attachment copy.", new System.ComponentModel.Win32Exception(error));
+                    }
+                }
+                else
+                {
+                    File.Move(tempPath, fullPath, overwrite: false);
+                }
             }
-            else
+            catch (IOException error) when (error is not AttachmentNameConflictException && Path.Exists(fullPath))
             {
-                File.Move(tempPath, fullPath, overwrite: false);
+                // This catch covers only the no-replace move, never synchronization after publication.
+                throw new AttachmentNameConflictException(fullPath, error);
             }
             flushDirectory(Path.GetDirectoryName(fullPath)!);
         }
@@ -234,3 +276,7 @@ public static partial class AtomicFile
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool MoveFileEx(string existing, string destination, uint flags);
 }
+
+/// <summary>A no-replace attachment publication found an occupied destination name.</summary>
+public sealed class AttachmentNameConflictException(string path, Exception? inner = null)
+    : IOException($"The attachment destination already exists: {path}", inner);

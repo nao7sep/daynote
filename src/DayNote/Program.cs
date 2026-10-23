@@ -50,11 +50,27 @@ internal static class Program
             unresolved = ex;
         }
 
+        // Language is needed before the logger can open. Keep validation warnings until that owner is up.
+        var bootstrapWarnings = new List<string>();
+        IAppLogger? startupLogger = null;
+        var configStore = resolved is null ? null : new ConfigStore(resolved.ConfigFile, key =>
+        {
+            if (startupLogger is { } log)
+            {
+                log.Warn("Invalid configuration set; using built-in", new { key });
+            }
+            else
+            {
+                bootstrapWarnings.Add(key);
+            }
+        });
+        App.StartupConfigStore = configStore;
+
         // The interface language, before anything can draw and before Avalonia creates the macOS
         // application object, which settles the language of the menu items AppKit contributes itself.
-        // It reads the saved preference straight from config.json and falls back to the computer's own
-        // languages, so it holds on the startup-failure paths below, where there is no usable storage.
-        App.ComputerLanguages = LanguageBootstrap.Start(resolved?.ConfigFile);
+        // It shares the validated load outcome with startup and uses the computer's own languages on a
+        // failed read, so the startup-failure paths below have a usable interface language.
+        App.ComputerLanguages = LanguageBootstrap.Start(configStore);
 
         if (resolved is not { } paths)
         {
@@ -104,6 +120,12 @@ internal static class Program
         // record every later failure.
         var logger = RecordsLogger.Open(paths.RecordsFile, paths.LogsDirectory, DebugEnabled());
         Log = logger;
+        startupLogger = logger;
+        foreach (var key in bootstrapWarnings)
+        {
+            logger.Warn("Invalid configuration set; using built-in", new { key });
+        }
+        bootstrapWarnings.Clear();
         Records = logger;
         Paths = paths;
         RegisterCrashHooks(logger);

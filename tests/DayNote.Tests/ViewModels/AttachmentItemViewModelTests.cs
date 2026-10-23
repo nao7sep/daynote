@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Headless.XUnit;
@@ -34,16 +34,34 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     public AttachmentItemViewModelTests() => File.WriteAllBytes(_path, [1]);
 
     [AvaloniaFact]
+    public async Task Construction_does_not_start_preview_work()
+    {
+        var called = false;
+        using var row = Row(_ =>
+        {
+            called = true;
+            return Task.FromResult((Bitmap(), new PixelSize(1, 1)));
+        });
+        Assert.False(called);
+        Assert.True(row.ThumbnailTask.IsCompleted);
+        row.Activate();
+        await row.ThumbnailTask;
+        Assert.True(called);
+    }
+
+    [AvaloniaFact]
     public async Task A_decode_completed_after_unavailable_does_not_restore_a_thumbnail()
     {
         var pending = new TaskCompletionSource<(Bitmap, PixelSize)>();
-        using var row = Row(_ => pending.Task);
+        using var row = await ActivateRow(_ => pending.Task);
         var task = row.ThumbnailTask;
         row.ShowUnavailable();
-        pending.SetResult((Bitmap(), new PixelSize(1, 1)));
+        var bitmap = new CountedBitmap();
+        pending.SetResult((bitmap, new PixelSize(1, 1)));
         await task;
         Assert.False(row.Exists);
         Assert.Null(row.Thumbnail);
+        Assert.Equal(1, bitmap.DisposeCalls);
     }
 
     [AvaloniaTheory]
@@ -52,20 +70,24 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     public async Task An_older_decode_cannot_replace_or_clear_the_newer_thumbnail(bool olderFails)
     {
         var older = new TaskCompletionSource<(Bitmap, PixelSize)>();
-        var newer = new TaskCompletionSource<(Bitmap, PixelSize)>();
+        var newerEntered = new TaskCompletionSource();
         var calls = 0;
-        using var row = Row(_ => ++calls == 1 ? older.Task : newer.Task);
-        var olderTask = row.ThumbnailTask;
-        row.ClearOpenResult();
-        var newerTask = row.ThumbnailTask;
         var latest = Bitmap();
-        newer.SetResult((latest, new PixelSize(9, 7)));
+        using var row = await ActivateRow(_ =>
+        {
+            if (++calls == 1) return older.Task;
+            newerEntered.SetResult();
+            return Task.FromResult((latest, new PixelSize(9, 7)));
+        });
+        row.ClearOpenResult();
+        await newerEntered.Task;
+        // The aggregate continues to own the older physical request after a newer result arrives.
+        Assert.False(row.ThumbnailTask.IsCompleted);
         if (olderFails)
             older.SetException(new IOException("older decode failed"));
         else
             older.SetResult((Bitmap(), new PixelSize(1, 1)));
-        await olderTask;
-        await newerTask;
+        await row.ThumbnailTask;
         Assert.Same(latest, row.Thumbnail);
         Assert.Contains("9×7", row.DetailsText);
     }
@@ -74,32 +96,72 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     public async Task A_disposed_row_rejects_a_pending_decode()
     {
         var pending = new TaskCompletionSource<(Bitmap, PixelSize)>();
-        var row = Row(_ => pending.Task);
+        var row = await ActivateRow(_ => pending.Task);
         var task = row.ThumbnailTask;
         row.Dispose();
-        pending.SetResult((Bitmap(), new PixelSize(1, 1)));
+        var bitmap = new CountedBitmap();
+        pending.SetResult((bitmap, new PixelSize(1, 1)));
         await task;
         Assert.Null(row.Thumbnail);
+        Assert.Equal(1, bitmap.DisposeCalls);
     }
 
     [AvaloniaFact]
-    public async Task A_disposed_queued_row_does_not_start_a_decode()
+    public async Task Deactivation_releases_the_preview_and_reactivation_refreshes_it()
     {
-        var pending = new TaskCompletionSource<(Bitmap, PixelSize)>();
-        using var active = Row(_ => pending.Task);
-        var called = false;
-        using var queued = Row(_ =>
+        var first = new CountedBitmap();
+        var second = new CountedBitmap();
+        var calls = 0;
+        using var row = Row(_ => Task.FromResult<(Bitmap, PixelSize)>((++calls == 1 ? first : second, new PixelSize(calls, 1))));
+        row.Activate();
+        await row.ThumbnailTask;
+        Assert.Same(first, row.Thumbnail);
+        row.Deactivate();
+        Assert.Null(row.Thumbnail);
+        Assert.Equal(1, first.DisposeCalls);
+        row.Activate();
+        await row.ThumbnailTask;
+        Assert.Same(second, row.Thumbnail);
+        row.Dispose();
+        Assert.Equal(1, second.DisposeCalls);
+    }
+
+    [AvaloniaFact]
+    public async Task Opening_an_inactive_row_defers_metadata_and_preview_until_reactivation()
+    {
+        var calls = 0;
+        using var row = Row(_ =>
         {
-            called = true;
+            calls++;
             return Task.FromResult((Bitmap(), new PixelSize(1, 1)));
         });
-        queued.Dispose();
-        pending.SetResult((Bitmap(), new PixelSize(1, 1)));
-        await active.ThumbnailTask;
-        await queued.ThumbnailTask;
-        Assert.False(called);
-        queued.ClearOpenResult();
-        Assert.False(called);
+        row.Activate();
+        await row.ThumbnailTask;
+        row.Deactivate();
+        File.Delete(_path);
+        row.ClearOpenResult();
+        await row.ThumbnailTask;
+        Assert.Equal(1, calls);
+        Assert.True(row.Exists);
+        Assert.Null(row.Thumbnail);
+        row.Activate();
+        await row.ThumbnailTask;
+        Assert.False(row.Exists);
+        Assert.Equal(1, calls);
+        Assert.Equal(OperationResultKind.Warning, row.Result?.Kind);
+    }
+
+    [AvaloniaFact]
+    public async Task A_missing_file_is_reported_after_activation_without_a_zero_size()
+    {
+        File.Delete(_path);
+        using var row = new AttachmentItemViewModel(new Attachment("file.txt", _path), new NullLogger(), _thumbnails);
+        Assert.True(row.Exists);
+        row.Activate();
+        await row.ThumbnailTask;
+        Assert.False(row.Exists);
+        Assert.Equal(OperationResultKind.Warning, row.Result?.Kind);
+        Assert.Null(row.Thumbnail);
     }
 
     [AvaloniaTheory]
@@ -168,6 +230,7 @@ public sealed class AttachmentItemViewModelTests : IDisposable
 
         using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), new NullLogger(),
             path => AttachmentThumbnails.LoadAsync(path, _thumbnails, new NullLogger()));
+        row.Activate();
         await row.ThumbnailTask;
 
         Assert.Null(row.Thumbnail);
@@ -179,87 +242,63 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         new(new Attachment("image.png", _path), new NullLogger(), decode);
 
     [AvaloniaFact]
-    public async Task Repeated_preview_replacement_and_cancellation_disposes_every_bitmap_once()
+    public async Task A_cached_thumbnail_bypasses_the_original_decode_admission()
     {
-        var created = new List<CountedBitmap>();
-        var active = 0;
-        var maximumActive = 0;
-        var queuedCalls = 0;
-        for (var round = 0; round < 12; round++)
+        WriteImage(1600, 800);
+        using (var first = (await Thumbnail()).Bitmap) { }
+        await AttachmentThumbnails.DecodeAdmission.WaitAsync();
+        try
         {
-            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var calls = 0;
-            var tasks = new List<Task>();
-            var queued = new List<AttachmentItemViewModel>();
-            using var row = Row(async _ =>
-            {
-                active++;
-                maximumActive = Math.Max(maximumActive, active);
-                var bitmap = new CountedBitmap();
-                created.Add(bitmap);
-                try
-                {
-                    if (++calls == 1)
-                    {
-                        entered.SetResult();
-                        await release.Task;
-                    }
-                    return (bitmap, new PixelSize(1, 1));
-                }
-                finally { active--; }
-            });
-            tasks.Add(row.ThumbnailTask);
-            try
-            {
-                await entered.Task;
-                for (var index = 0; index < 3; index++)
-                {
-                    var obsolete = Row(_ =>
-                    {
-                        queuedCalls++;
-                        var bitmap = new CountedBitmap();
-                        created.Add(bitmap);
-                        return Task.FromResult<(Bitmap, PixelSize)>((bitmap, new PixelSize(1, 1)));
-                    });
-                    queued.Add(obsolete);
-                    tasks.Add(obsolete.ThumbnailTask);
-                    obsolete.Dispose();
-                }
-                row.ShowUnavailable();
-                if (round % 2 == 0)
-                {
-                    row.ClearOpenResult();
-                    tasks.Add(row.ThumbnailTask);
-                }
-                else row.Dispose();
-                release.SetResult();
-                await Task.WhenAll(tasks);
-                if (round % 2 == 0)
-                {
-                    var adopted = Assert.IsType<CountedBitmap>(row.Thumbnail);
-                    Assert.Equal(0, adopted.DisposeCalls);
-                    row.ShowUnavailable();
-                    Assert.Equal(1, adopted.DisposeCalls);
-                    row.ClearOpenResult();
-                    tasks.Add(row.ThumbnailTask);
-                    await row.ThumbnailTask;
-                    Assert.Equal(0, Assert.IsType<CountedBitmap>(row.Thumbnail).DisposeCalls);
-                }
-            }
-            finally
-            {
-                release.TrySetResult();
-                row.Dispose();
-                queued.ForEach(item => item.Dispose());
-                await Task.WhenAll(tasks);
-            }
+            var cached = Thumbnail();
+            var (bitmap, dimensions) = await cached.WaitAsync(TimeSpan.FromSeconds(5));
+            using (bitmap) Assert.Equal(new PixelSize(1600, 800), dimensions);
         }
-        Assert.Equal(1, maximumActive);
-        Assert.Equal(0, active);
-        Assert.Equal(0, queuedCalls);
-        Assert.Equal(24, created.Count);
-        Assert.All(created, bitmap => Assert.Equal(1, bitmap.DisposeCalls));
+        finally { AttachmentThumbnails.DecodeAdmission.Release(); }
+    }
+
+    [AvaloniaFact]
+    public async Task A_canceled_request_does_not_decode_or_keep_a_thumbnail_while_admission_is_held()
+    {
+        WriteImage(1600, 800);
+        using var cancellation = new CancellationTokenSource();
+        await AttachmentThumbnails.DecodeAdmission.WaitAsync();
+        try
+        {
+            var queued = AttachmentThumbnails.LoadAsync(_path, _thumbnails, new NullLogger(), cancellation.Token);
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
+            Assert.False(Directory.Exists(_thumbnails));
+        }
+        finally { AttachmentThumbnails.DecodeAdmission.Release(); }
+    }
+
+    [AvaloniaFact]
+    public async Task Reopening_an_image_replaces_an_existing_preview_when_its_fingerprint_changes()
+    {
+        WriteImage(1600, 800);
+        using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), new NullLogger(), _thumbnails);
+        row.Activate();
+        await row.ThumbnailTask;
+        Assert.Contains("1600×800", row.DetailsText);
+        WriteImage(800, 1600);
+        File.SetLastWriteTimeUtc(_path, File.GetLastWriteTimeUtc(_path).AddSeconds(5));
+        row.ClearOpenResult();
+        await row.ThumbnailTask;
+        Assert.Contains("800×1600", row.DetailsText);
+        Assert.Equal(new PixelSize(AttachmentThumbnails.Size / 2, AttachmentThumbnails.Size), row.Thumbnail?.PixelSize);
+    }
+
+    private async Task<AttachmentItemViewModel> ActivateRow(Func<string, Task<(Bitmap, PixelSize)>> decode)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var row = Row(path =>
+        {
+            entered.TrySetResult();
+            return decode(path);
+        });
+        row.Activate();
+        await entered.Task;
+        return row;
     }
 
     [AvaloniaFact]
