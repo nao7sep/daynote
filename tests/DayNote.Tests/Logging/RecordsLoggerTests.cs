@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using DayNote.Core.Identity;
 using DayNote.Core.Storage;
 using DayNote.Logging;
@@ -106,18 +108,102 @@ public sealed class RecordsLoggerTests : IDisposable
     [Fact]
     public void Closing_waits_only_within_its_bound_while_the_records_thread_is_still_busy()
     {
-        using var release = new System.Threading.ManualResetEventSlim();
-        var log = Open();
-        log.Stored += () => release.Wait();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var secondStored = new ManualResetEventSlim();
+        using var log = Open();
+        var stored = 0;
+        log.Stored += () =>
+        {
+            if (Interlocked.Increment(ref stored) == 1)
+            {
+                entered.Set();
+                release.Wait();
+            }
+            else
+            {
+                secondStored.Set();
+            }
+        };
         log.Info("written before the close");
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The records owner did not reach the stored gate.");
+            log.Info("queued before the close");
 
-        var stopwatch = Stopwatch.StartNew();
-        log.Close(TimeSpan.FromMilliseconds(100));
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2), $"Closing waited {stopwatch.Elapsed}.");
+            var stopwatch = Stopwatch.StartNew();
+            log.Close(TimeSpan.FromMilliseconds(100));
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2), $"Closing waited {stopwatch.Elapsed}.");
+            Assert.False(secondStored.IsSet);
+        }
+        finally
+        {
+            release.Set();
+        }
 
-        // The thread carries on past the bound: what it was writing is kept, and it closes the database.
-        release.Set();
-        Assert.Equal(["written before the close"], ReadRows().Select(r => r.Message));
+        Assert.True(secondStored.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The records owner did not finish the queued entry.");
+        Assert.Equal(["written before the close", "queued before the close"], ReadRows().Select(r => r.Message));
+    }
+
+    [Fact]
+    public async Task A_saturated_logger_drops_excess_records_without_waiting_and_reports_the_count_when_it_recovers()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var drained = new ManualResetEventSlim();
+        using var log = Open();
+        var stored = 0;
+        log.Stored += () =>
+        {
+            var count = Interlocked.Increment(ref stored);
+            if (count == 1)
+            {
+                entered.Set();
+                release.Wait();
+            }
+            else if (count == RecordsLogger.PendingCapacity + 2)
+            {
+                // The original row, every admitted row and the directly inserted overload warning.
+                drained.Set();
+            }
+        };
+        log.Info("holds the owner");
+        Task? producer = null;
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The records owner did not reach the stored gate.");
+            producer = Task.Run(() =>
+            {
+                for (var i = 0; i < RecordsLogger.PendingCapacity + 7; i++)
+                {
+                    log.Info("burst", new { index = i });
+                }
+            }, TestContext.Current.CancellationToken);
+            await producer.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.False(drained.IsSet);
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => log.ReadSessionsAsync());
+            Assert.Contains("busy", error.Message);
+        }
+        finally
+        {
+            release.Set();
+            if (producer is not null)
+            {
+                await producer;
+            }
+        }
+
+        Assert.True(drained.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The records owner did not drain admitted records.");
+        log.Info("after recovery");
+        log.Flush();
+
+        var rows = ReadRows();
+        Assert.Equal(RecordsLogger.PendingCapacity + 3, rows.Count);
+        Assert.Equal(RecordsLogger.PendingCapacity, rows.Count(row => row.Message == "burst"));
+        var warning = Assert.Single(rows, row => row.Level == "warn");
+        Assert.Equal("Records dropped while the logger was busy", warning.Message);
+        Assert.Equal(7, (long)warning.Fields["droppedCount"]!);
+        Assert.Equal("after recovery", rows[^1].Message);
     }
 
     [Fact]
