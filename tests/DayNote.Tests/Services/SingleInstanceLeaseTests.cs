@@ -1,6 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -60,6 +63,110 @@ public sealed class SingleInstanceLeaseTests
             release.Set();
             ownerThread.Join(TimeSpan.FromSeconds(10));
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Incomplete_activation_does_not_block_the_next_client()
+    {
+        var root = NewRoot();
+        using var activated = new ManualResetEventSlim();
+        try
+        {
+            await WithOwnerAsync(root, async () =>
+            {
+                SingleInstanceLease.RegisterOwnerActivationHandler(activated.Set);
+                using var incomplete = await ConnectActivationClientAsync(root);
+                await incomplete.GetStream().WriteAsync("act"u8.ToArray(), TestContext.Current.CancellationToken);
+                using var valid = await ConnectActivationClientAsync(root);
+                await valid.GetStream().WriteAsync("activate"u8.ToArray(), TestContext.Current.CancellationToken);
+
+                Assert.True(activated.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            });
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Complete_activation_frame_activates_without_peer_eof()
+    {
+        var root = NewRoot();
+        using var activated = new ManualResetEventSlim();
+        try
+        {
+            await WithOwnerAsync(root, async () =>
+            {
+                SingleInstanceLease.RegisterOwnerActivationHandler(activated.Set);
+                using var client = await ConnectActivationClientAsync(root);
+                await client.GetStream().WriteAsync("activate"u8.ToArray(), TestContext.Current.CancellationToken);
+
+                // The peer remains open while the owner handles the fixed-length frame.
+                Assert.True(activated.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            });
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Disposal_closes_an_accepted_incomplete_activation_stream()
+    {
+        var root = NewRoot();
+        try
+        {
+            await Task.Run(() => AssertDisposalClosesAcceptedStream(root), TestContext.Current.CancellationToken);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    // The compatibility mutex belongs to the acquiring thread, so acquisition, the physical-close
+    // wait, and final disposal stay together on one synchronous owner thread.
+    private static void AssertDisposalClosesAcceptedStream(string root)
+    {
+        Assert.True(SingleInstanceLease.TryAcquire(root, out var lease));
+        using (lease)
+        using (var client = new TcpClient())
+        {
+            client.Connect(IPAddress.Loopback, ActivationPort(root));
+            client.GetStream().Write("act"u8);
+
+            // Observe the actual accepted socket without adding a production test hook or
+            // inferring cancellation from a timing bound shorter than the request deadline.
+            var acceptedField = typeof(SingleInstanceLease).GetField("_acceptedClient", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var gate = typeof(SingleInstanceLease).GetField("_acceptedClientGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(lease)!;
+            TcpClient? accepted = null;
+            Assert.True(SpinWait.SpinUntil(() =>
+            {
+                lock (gate)
+                    accepted = (TcpClient?)acceptedField.GetValue(lease);
+                return accepted is not null;
+            }, TimeSpan.FromSeconds(10)));
+            var socketHandle = accepted!.Client.SafeHandle;
+
+            lease!.Dispose(TimeSpan.Zero);
+
+            Assert.True(socketHandle.IsClosed);
+            var listenerThread = (Thread)typeof(SingleInstanceLease)
+                .GetField("_listenerThread", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(lease)!;
+            Assert.True(listenerThread.Join(TimeSpan.FromSeconds(10)));
+            Assert.True(((IAsyncResult)lease.Closing).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(10)));
+        }
+    }
+
+    private static int ActivationPort(string root) => int.Parse(
+        File.ReadAllText(Path.Combine(root, "instance.endpoint")), System.Globalization.CultureInfo.InvariantCulture);
+
+    private static async Task<TcpClient> ConnectActivationClientAsync(string root)
+    {
+        var client = new TcpClient();
+        try
+        {
+            await client.ConnectAsync(IPAddress.Loopback, ActivationPort(root), TestContext.Current.CancellationToken);
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
         }
     }
 

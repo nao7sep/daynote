@@ -62,6 +62,8 @@ internal sealed class SingleInstanceLease : IDisposable
     internal Task Closing => _closing;
     private readonly TcpListener _listener;
     private readonly Thread _listenerThread;
+    private readonly object _acceptedClientGate = new();
+    private TcpClient? _acceptedClient;
     private readonly ActivationRequestRouter _activationRouter = new();
     private volatile bool _disposed;
 
@@ -238,30 +240,44 @@ internal sealed class SingleInstanceLease : IDisposable
     {
         while (!_disposed)
         {
+            TcpClient? client = null;
             try
             {
-                using var client = _listener.AcceptTcpClient();
+                client = _listener.AcceptTcpClient();
+                lock (_acceptedClientGate)
+                {
+                    if (_disposed)
+                        return;
+                    _acceptedClient = client;
+                }
+
                 using var stream = client.GetStream();
-                using var reader = new StreamReader(stream, Encoding.ASCII);
-                if (reader.ReadToEnd().StartsWith("activate", StringComparison.Ordinal))
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+                // One frame is exactly the eight ASCII bytes "activate". Do not wait for EOF;
+                // any bytes after the frame are ignored when this connection closes.
+                var request = new byte[8];
+                // An incomplete IValueTaskSource-backed ValueTask cannot be waited synchronously
+                // through GetResult directly; Task supplies the blocking wait on this owner thread.
+                stream.ReadExactlyAsync(request, deadline.Token).AsTask().GetAwaiter().GetResult();
+                if (request.AsSpan().SequenceEqual("activate"u8))
                     _activationRouter.Request();
             }
-            catch (SocketException) when (_disposed)
+            catch (Exception error) when (error is OperationCanceledException or TimeoutException
+                or IOException or SocketException or ObjectDisposedException)
             {
-                return;
+                // A partial request, deadline, or loopback failure ends only this connection.
+                // Closing the accepted client during disposal also interrupts its pending read.
+                if (_disposed)
+                    return;
             }
-            catch (ObjectDisposedException) when (_disposed)
+            finally
             {
-                return;
-            }
-            catch (IOException)
-            {
-                // A client can disconnect mid-request; keep the owner available
-                // for the next legitimate activation rather than losing the listener.
-            }
-            catch (SocketException)
-            {
-                // A transient loopback failure is not a reason to surrender ownership.
+                lock (_acceptedClientGate)
+                {
+                    if (ReferenceEquals(_acceptedClient, client))
+                        _acceptedClient = null;
+                }
+                client?.Dispose();
             }
         }
     }
@@ -286,6 +302,8 @@ internal sealed class SingleInstanceLease : IDisposable
         }
 
         _listener.Stop();
+        lock (_acceptedClientGate)
+            _acceptedClient?.Dispose();
         var ownership = Interlocked.Exchange(ref _ownership, null);
         _closing = Task.Run(() =>
         {
