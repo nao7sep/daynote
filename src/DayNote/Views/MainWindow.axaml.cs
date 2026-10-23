@@ -49,6 +49,7 @@ public partial class MainWindow : Window
 
     private MainWindowViewModel? _themeSource;
     private MainWindowViewModel? _noteCreatedSource;
+    private LocalDateRefresh? _localDateRefresh;
 
     public MainWindow()
     {
@@ -241,10 +242,21 @@ public partial class MainWindow : Window
         if (ReferenceEquals(source, _noteCreatedSource))
             return;
         if (_noteCreatedSource is not null)
+        {
             _noteCreatedSource.NoteCreated -= OnNoteCreated;
+            _noteCreatedSource.DisplayZoneChanged -= OnDisplayZoneChanged;
+        }
+        _localDateRefresh?.Dispose();
+        _localDateRefresh = null;
         _noteCreatedSource = source;
         if (source is not null)
+        {
             source.NoteCreated += OnNoteCreated;
+            source.DisplayZoneChanged += OnDisplayZoneChanged;
+            _localDateRefresh = new LocalDateRefresh(source.Clock, () => source.DisplayZone,
+                source.Editor.RefreshMetadata, action => Dispatcher.UIThread.Post(action));
+            _localDateRefresh.RefreshAndSchedule();
+        }
     }
 
     // The theme is app-wide: when Settings commits a new one, every window and title bar follows.
@@ -325,8 +337,13 @@ public partial class MainWindow : Window
     private void OnScreensChanged(object? sender, EventArgs e) => ApplyNativeMinimum();
 
     // Coming back to DayNote is when a binder deleted or restored in another app is worth showing on its row.
-    private void OnWindowActivated(object? sender, EventArgs e) =>
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        _localDateRefresh?.RefreshAndSchedule();
         _ = (DataContext as MainWindowViewModel)?.RefreshKnownBinders();
+    }
+
+    private void OnDisplayZoneChanged() => _localDateRefresh?.RefreshAndSchedule();
 
     public void RestoreWindowGeometry()
     {

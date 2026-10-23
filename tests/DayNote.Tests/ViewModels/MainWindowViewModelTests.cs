@@ -3891,6 +3891,52 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Calendar_metadata_refresh_belongs_only_to_the_windows_live_context()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        _dialogs.SettingsApplied = true;
+        _dialogs.SettingsEdit = config => config.TimeZone = "UTC";
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        var window = new MainWindow { DataContext = vm };
+        _windows.Add(window);
+        var today = vm.Editor.CreatedText;
+        _clock.Advance(TimeSpan.FromHours(15));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(today, vm.Editor.CreatedText); // Constructing a window does not start its timer.
+
+        window.Show();
+        await PumpUntilAsync(() => !vm.IsOpeningBinder);
+        var tomorrow = vm.Editor.CreatedText;
+        Assert.NotEqual(today, tomorrow);
+        _clock.Advance(new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero) - _clock.Now);
+        Assert.Equal(tomorrow, vm.Editor.CreatedText); // The timer's UI callback has not run yet.
+        typeof(MainWindow).GetMethod("OnWindowActivated", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(window, [window, EventArgs.Empty]);
+        Assert.NotEqual(tomorrow, vm.Editor.CreatedText);
+        var newYear = vm.Editor.CreatedText;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(newYear, vm.Editor.CreatedText); // The posted timer belongs to the older schedule.
+
+        var replacement = NewViewModel();
+        window.DataContext = replacement;
+        Assert.False(HasDateSubscription(vm));
+        Assert.True(HasDateSubscription(replacement));
+        _clock.Advance(TimeSpan.FromDays(366));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(newYear, vm.Editor.CreatedText);
+        await CloseTestWindowAsync(replacement, window);
+        Assert.False(HasDateSubscription(replacement));
+        await vm.ShutdownAsync();
+
+        bool HasDateSubscription(MainWindowViewModel source) =>
+            ((Action?)typeof(MainWindowViewModel).GetField(nameof(MainWindowViewModel.DisplayZoneChanged),
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(source))?
+            .GetInvocationList().Any(handler => ReferenceEquals(handler.Target, window)) == true;
+    }
+
+    [AvaloniaFact]
     public async Task A_window_detaches_the_note_created_subscription_when_its_context_changes_or_closes()
     {
         var first = NewViewModel();

@@ -441,6 +441,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     public TimeZoneInfo DisplayZone => _displayZone;
+    internal TimeProvider Clock => _clock;
     public event Action? DisplayZoneChanged;
 
     /// <summary>The app's logger, which the windows this one opens log through.</summary>
