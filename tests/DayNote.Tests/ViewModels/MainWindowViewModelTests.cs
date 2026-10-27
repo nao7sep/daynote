@@ -2113,7 +2113,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.SelectedNote = selectedNote;
 
         var item = Assert.Single(vm.Attachments);
-        item.Activate();
         await item.ThumbnailTask;
         var result = Assert.IsType<OperationResultViewModel>(item.Result);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
@@ -3959,7 +3958,6 @@ public sealed class MainWindowViewModelTests : IDisposable
                     return (bitmap, new PixelSize(1, 1));
                 });
                 vm.Attachments.Add(row);
-                row.Activate();
                 unfinished = row.ThumbnailTask;
                 await decoding.Entered.Task;
                 vm.NewNoteCommand.Execute(null);

@@ -34,26 +34,10 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     public AttachmentItemViewModelTests() => File.WriteAllBytes(_path, [1]);
 
     [AvaloniaFact]
-    public async Task Construction_does_not_start_preview_work()
-    {
-        var called = false;
-        using var row = Row(_ =>
-        {
-            called = true;
-            return Task.FromResult((Bitmap(), new PixelSize(1, 1)));
-        });
-        Assert.False(called);
-        Assert.True(row.ThumbnailTask.IsCompleted);
-        row.Activate();
-        await row.ThumbnailTask;
-        Assert.True(called);
-    }
-
-    [AvaloniaFact]
     public async Task A_decode_completed_after_unavailable_does_not_restore_a_thumbnail()
     {
         var pending = new TaskCompletionSource<(Bitmap, PixelSize)>();
-        using var row = await ActivateRow(_ => pending.Task);
+        using var row = await LoadingRow(_ => pending.Task);
         var task = row.ThumbnailTask;
         row.ShowUnavailable();
         var bitmap = new CountedBitmap();
@@ -73,7 +57,7 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         var newerEntered = new TaskCompletionSource();
         var calls = 0;
         var latest = Bitmap();
-        using var row = await ActivateRow(_ =>
+        using var row = await LoadingRow(_ =>
         {
             if (++calls == 1) return older.Task;
             newerEntered.SetResult();
@@ -96,7 +80,7 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     public async Task A_disposed_row_rejects_a_pending_decode()
     {
         var pending = new TaskCompletionSource<(Bitmap, PixelSize)>();
-        var row = await ActivateRow(_ => pending.Task);
+        var row = await LoadingRow(_ => pending.Task);
         var task = row.ThumbnailTask;
         row.Dispose();
         var bitmap = new CountedBitmap();
@@ -107,57 +91,10 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Deactivation_releases_the_preview_and_reactivation_refreshes_it()
-    {
-        var first = new CountedBitmap();
-        var second = new CountedBitmap();
-        var calls = 0;
-        using var row = Row(_ => Task.FromResult<(Bitmap, PixelSize)>((++calls == 1 ? first : second, new PixelSize(calls, 1))));
-        row.Activate();
-        await row.ThumbnailTask;
-        Assert.Same(first, row.Thumbnail);
-        row.Deactivate();
-        Assert.Null(row.Thumbnail);
-        Assert.Equal(1, first.DisposeCalls);
-        row.Activate();
-        await row.ThumbnailTask;
-        Assert.Same(second, row.Thumbnail);
-        row.Dispose();
-        Assert.Equal(1, second.DisposeCalls);
-    }
-
-    [AvaloniaFact]
-    public async Task Opening_an_inactive_row_defers_metadata_and_preview_until_reactivation()
-    {
-        var calls = 0;
-        using var row = Row(_ =>
-        {
-            calls++;
-            return Task.FromResult((Bitmap(), new PixelSize(1, 1)));
-        });
-        row.Activate();
-        await row.ThumbnailTask;
-        row.Deactivate();
-        File.Delete(_path);
-        row.ClearOpenResult();
-        await row.ThumbnailTask;
-        Assert.Equal(1, calls);
-        Assert.True(row.Exists);
-        Assert.Null(row.Thumbnail);
-        row.Activate();
-        await row.ThumbnailTask;
-        Assert.False(row.Exists);
-        Assert.Equal(1, calls);
-        Assert.Equal(OperationResultKind.Warning, row.Result?.Kind);
-    }
-
-    [AvaloniaFact]
-    public async Task A_missing_file_is_reported_after_activation_without_a_zero_size()
+    public async Task A_missing_file_is_reported_without_a_zero_size()
     {
         File.Delete(_path);
         using var row = new AttachmentItemViewModel(new Attachment("file.txt", _path), new NullLogger(), _thumbnails);
-        Assert.True(row.Exists);
-        row.Activate();
         await row.ThumbnailTask;
         Assert.False(row.Exists);
         Assert.Equal(OperationResultKind.Warning, row.Result?.Kind);
@@ -230,7 +167,6 @@ public sealed class AttachmentItemViewModelTests : IDisposable
 
         using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), new NullLogger(),
             path => AttachmentThumbnails.LoadAsync(path, _thumbnails, new NullLogger()));
-        row.Activate();
         await row.ThumbnailTask;
 
         Assert.Null(row.Thumbnail);
@@ -277,7 +213,6 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     {
         WriteImage(1600, 800);
         using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), new NullLogger(), _thumbnails);
-        row.Activate();
         await row.ThumbnailTask;
         Assert.Contains("1600×800", row.DetailsText);
         WriteImage(800, 1600);
@@ -288,7 +223,7 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         Assert.Equal(new PixelSize(AttachmentThumbnails.Size / 2, AttachmentThumbnails.Size), row.Thumbnail?.PixelSize);
     }
 
-    private async Task<AttachmentItemViewModel> ActivateRow(Func<string, Task<(Bitmap, PixelSize)>> decode)
+    private async Task<AttachmentItemViewModel> LoadingRow(Func<string, Task<(Bitmap, PixelSize)>> decode)
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var row = Row(path =>
@@ -296,7 +231,6 @@ public sealed class AttachmentItemViewModelTests : IDisposable
             entered.TrySetResult();
             return decode(path);
         });
-        row.Activate();
         await entered.Task;
         return row;
     }

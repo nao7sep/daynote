@@ -15,15 +15,12 @@ namespace DayNote.ViewModels;
 /// </summary>
 public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposable
 {
-    // File metadata can stall on a mounted volume. Bound physical reads while keeping them off the UI.
-    private static readonly SemaphoreSlim MetadataAdmission = new(Math.Max(2, Environment.ProcessorCount));
     private const string UnavailableKey = "attachment.unavailableMessage";
 
     private readonly IAppLogger _log;
     private long? _size;
     private PixelSize? _dimensions;
     private bool _disposed;
-    private bool _active;
     private CancellationTokenSource? _refreshCancellation;
     private int _thumbnailGeneration;
     private readonly Func<string, CancellationToken, Task<(Bitmap Bitmap, PixelSize Size)>> _decodeThumbnail;
@@ -46,6 +43,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         FileName = attachment.FileName;
         FullPath = attachment.FullPath;
         IsImage = attachment.IsImage;
+        Refresh();
     }
 
     public Attachment Attachment { get; }
@@ -122,22 +120,6 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             Message.Of(UnavailableKey));
     }
 
-    /// <summary>Starts work only while a list container is realized.</summary>
-    public void Activate()
-    {
-        if (_disposed || _active)
-            return;
-        _active = true;
-        Refresh();
-    }
-
-    public void Deactivate()
-    {
-        _active = false;
-        CancelRefresh();
-        ClearThumbnail();
-    }
-
     public void ClearOpenResult()
     {
         if (_disposed)
@@ -146,16 +128,40 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             Result = null;
         // Opening can reveal that an existing source has changed. Always consult its current
         // fingerprint, even when a preview is already present.
-        if (_active)
-            Refresh();
+        Refresh();
     }
 
+    // The size is read on the UI thread, as the note's rows are built: these files sit in the open
+    // binder's own folder, and when that volume stalls the binder cannot be used anyway.
     private void Refresh()
     {
         CancelRefresh();
+        try
+        {
+            _size = new FileInfo(FullPath).Length;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            _log.Warn("Attachment is unavailable", new { path = FullPath });
+            ShowUnavailable();
+            return;
+        }
+        catch (Exception ex)
+        {
+            _size = null;
+            _log.Warn("Could not read attachment metadata", new { path = FullPath }, ex);
+        }
+
+        Exists = true;
+        OnPropertyChanged(nameof(DetailsText));
+        if (Result is { Kind: OperationResultKind.Warning, Message.Key: UnavailableKey })
+            Result = null;
+        if (!IsImage)
+            return;
+
         var cancellation = new CancellationTokenSource();
         _refreshCancellation = cancellation;
-        var work = LoadAttachmentAsync(_thumbnailGeneration, cancellation);
+        var work = LoadThumbnailAsync(_thumbnailGeneration, cancellation);
         // A canceled caller still owns any native or filesystem work already in flight.
         ThumbnailTask = ThumbnailTask.IsCompleted ? work : Task.WhenAll(ThumbnailTask, work);
     }
@@ -166,49 +172,13 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         _refreshCancellation?.Cancel();
     }
 
-    private bool IsCurrent(int generation) => !_disposed && _active && generation == _thumbnailGeneration;
+    private bool IsCurrent(int generation) => !_disposed && generation == _thumbnailGeneration;
 
-    private async Task LoadAttachmentAsync(int generation, CancellationTokenSource cancellation)
+    private async Task LoadThumbnailAsync(int generation, CancellationTokenSource cancellation)
     {
         var token = cancellation.Token;
         try
         {
-            long? size = null;
-            var available = true;
-            try
-            {
-                await MetadataAdmission.WaitAsync(token);
-                try
-                {
-                    size = await Task.Run(() => new FileInfo(FullPath).Length, token);
-                }
-                finally
-                {
-                    MetadataAdmission.Release();
-                }
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
-            catch (Exception ex)
-            {
-                available = ex is not (FileNotFoundException or DirectoryNotFoundException);
-                _log.Warn("Could not read attachment metadata", new { path = FullPath }, ex);
-            }
-
-            if (!IsCurrent(generation))
-                return;
-            _size = size;
-            Exists = available;
-            OnPropertyChanged(nameof(DetailsText));
-            if (!available)
-            {
-                ShowUnavailable();
-                return;
-            }
-            if (Result is { Kind: OperationResultKind.Warning, Message.Key: UnavailableKey })
-                Result = null;
-            if (!IsImage)
-                return;
-
             var (bitmap, dimensions) = await _decodeThumbnail(FullPath, token);
             if (!IsCurrent(generation))
             {
@@ -223,6 +193,8 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            // A corrupt or unsupported image is recoverable — the row just shows no preview — but it
+            // is unexpected for a file we classified as an image, so it is recorded rather than swallowed.
             _log.Warn("Could not decode attachment thumbnail", new { path = FullPath }, ex);
             if (IsCurrent(generation))
                 ClearThumbnail();
@@ -269,6 +241,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     public void Dispose()
     {
         _disposed = true;
-        Deactivate();
+        CancelRefresh();
+        ClearThumbnail();
     }
 }

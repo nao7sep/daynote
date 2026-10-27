@@ -1720,7 +1720,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     [RelayCommand]
     private async Task OpenAttachment(AttachmentItemViewModel item)
     {
-        if (!await Task.Run(() => _fileExists(item.FullPath)))
+        if (!_fileExists(item.FullPath))
         {
             _log.Warn("Could not open unavailable attachment", new { path = item.FullPath });
             item.ShowUnavailable();
@@ -2150,7 +2150,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             binder.Modified = BinderContentModified(binder);
             var noteIds = binder.Notes.Select(note => note.Id).ToArray();
 
-            var snapshot = Snapshot(binder);
+            // Serializing the binder to text is pure, in-memory work over the (UI-owned, mutable)
+            // Binder object, so it stays on the UI thread; only the text — an immutable snapshot — and
+            // the I/O that writes it (the read of the version it replaces and the atomic write) move to a
+            // background thread, so a keystroke landing mid-save can never race a background reader of
+            // the binder.
+            var text = BinderStore.Serialize(binder);
             var generationAtSnapshot = _dirtyGeneration;
             var modifiedAtSnapshot = binder.Modified;
             var expectedHash = _baselineHash;
@@ -2159,7 +2164,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 var publication = await Task.Run(() =>
                 {
-                    var result = _binderStore.SaveText(path, BinderStore.Serialize(snapshot), expectedHash);
+                    var result = _binderStore.SaveText(path, text, expectedHash);
                     return (Saved: result, Key: PathKey.Resolve(result.Path));
                 });
                 var saved = publication.Saved;
@@ -3263,25 +3268,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         return latest ?? _savedBinderModified;
-    }
-
-    private Binder Snapshot(Binder binder)
-    {
-        var snapshot = new Binder { Id = binder.Id, Created = binder.Created, Modified = binder.Modified };
-        foreach (var note in binder.Notes)
-        {
-            var content = _lastContent[note.Id].Content;
-            var copy = new Note
-            {
-                Id = note.Id, Title = content.Title, Body = content.Body,
-                Created = note.Created, Modified = note.Modified, Status = note.Status, Locked = note.Locked,
-                DiscardedAt = note.DiscardedAt, VerifiedAt = note.VerifiedAt,
-                PublishedAt = note.PublishedAt, RetiredAt = note.RetiredAt,
-            };
-            copy.Attachments.AddRange(note.Attachments);
-            snapshot.Notes.Add(copy);
-        }
-        return snapshot;
     }
 
     /// <summary>A note's content as the file stores it: what decides whether Modified moves.</summary>

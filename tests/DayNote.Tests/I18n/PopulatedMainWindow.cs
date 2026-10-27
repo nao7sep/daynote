@@ -29,7 +29,6 @@ namespace DayNote.Tests.I18n;
 internal sealed class PopulatedMainWindow : IDisposable
 {
     private readonly string? _previousHome;
-    private readonly HashSet<AttachmentItemViewModel> _attachmentRows = [];
 
     private PopulatedMainWindow(IAppLogger? log = null)
     {
@@ -38,11 +37,6 @@ internal sealed class PopulatedMainWindow : IDisposable
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, Home);
         Dialogs = new QuietDialogs();
         ViewModel = new MainWindowViewModel(new AppPaths(), Dialogs, log ?? new NullLogger());
-        ViewModel.Attachments.CollectionChanged += (_, e) =>
-        {
-            if (e.NewItems is { } rows)
-                foreach (AttachmentItemViewModel row in rows) _attachmentRows.Add(row);
-        };
         Window = new MainWindow { DataContext = ViewModel };
         Dialogs.Owner = Window;
     }
@@ -105,8 +99,6 @@ internal sealed class PopulatedMainWindow : IDisposable
         Dialogs.NewBinderPickerError = null;
         vm.CycleTextStyleCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
-        await Task.WhenAll(vm.Attachments.Select(row => row.ThumbnailTask));
-        Dispatcher.UIThread.RunJobs();
     }
 
     /// <summary>
@@ -146,8 +138,6 @@ internal sealed class PopulatedMainWindow : IDisposable
         await vm.AddDroppedFiles(files);
 
         vm.CycleTextStyleCommand.Execute(null);
-        Dispatcher.UIThread.RunJobs();
-        await Task.WhenAll(vm.Attachments.Select(row => row.ThumbnailTask));
         Dispatcher.UIThread.RunJobs();
     }
 
@@ -193,15 +183,6 @@ internal sealed class PopulatedMainWindow : IDisposable
                     throw new InvalidOperationException("The fixture view model could not save before shutdown.");
                 }
             }
-            var previews = Task.WhenAll(_attachmentRows.Select(row => row.ThumbnailTask));
-            while (!previews.IsCompleted && DateTime.UtcNow < deadline)
-            {
-                Dispatcher.UIThread.RunJobs();
-                System.Threading.Thread.Sleep(1);
-            }
-            if (!previews.IsCompleted)
-                throw new TimeoutException("The fixture attachment work did not finish.");
-            previews.GetAwaiter().GetResult();
         }
         finally
         {

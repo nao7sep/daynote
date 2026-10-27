@@ -35,30 +35,17 @@ internal static class AttachmentThumbnails
     // occupies this slot; cached previews and header reads remain available while it runs.
     internal static readonly SemaphoreSlim DecodeAdmission = new(1, 1);
 
-    private static readonly SemaphoreSlim PreparationAdmission = new(Math.Max(2, Environment.ProcessorCount));
-
     /// <summary>The thumbnail of <paramref name="path"/> and the image's own dimensions.</summary>
     internal static async Task<(Bitmap Bitmap, PixelSize Size)> LoadAsync(string path, string directory,
         IAppLogger log, CancellationToken cancellationToken = default)
     {
-        // Admission happens before dispatch: stalled source/header reads cannot occupy an unbounded
-        // number of workers as rows are scrolled away and back. Cached loads share this light budget.
-        await PreparationAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
-        (SKCodec Codec, PixelSize Original, string Kept, Bitmap? Cached) prepared;
-        try
-        {
-            prepared = await Task.Run(() => Prepare(path, directory, log), cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            PreparationAdmission.Release();
-        }
+        var prepared = await Task.Run(() => Prepare(path, directory, log), cancellationToken).ConfigureAwait(false);
 
         using var codec = prepared.Codec;
         if (prepared.Cached is { } cached)
             return (cached, prepared.Original);
 
-        // Release preparation capacity before waiting for a native decode, so cached rows can load.
+        // Only the native decode waits for the permit, so cached previews load while it runs.
         await DecodeAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
         return await Task.Run(() =>
         {
