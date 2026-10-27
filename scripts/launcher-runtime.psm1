@@ -1,147 +1,92 @@
-function Get-LauncherOwnerFile {
+# Shared by run-dev, run-built and rebuild: one DayNote per repository. The launcher that starts DayNote
+# records its process ID and executable under .git; the next launcher asks that process to close only
+# while it still runs that executable, and stops with a message rather than force-closing it when it
+# stays open, for example while it asks about unsaved work. A DayNote started any other way is left to
+# its single-instance behavior, which brings its window forward instead of opening a second one.
+
+$singleInstanceNote = 'If DayNote was already running outside these launchers, its window is brought forward instead.'
+
+function Get-RuntimeRecordFile {
     param([Parameter(Mandatory = $true)][string]$RepoDir)
-    return Join-Path (Join-Path $RepoDir '.git') 'launcher-runtime-owner'
+    return Join-Path (Join-Path $RepoDir '.git') 'launcher-runtime-process'
 }
 
-function Claim-LauncherRuntime {
-    param(
-        [Parameter(Mandatory = $true)][string]$Token,
-        [Parameter(Mandatory = $true)][string]$RepoDir
-    )
-    $ownerFile = Get-LauncherOwnerFile -RepoDir $RepoDir
-    $temporaryFile = "$ownerFile.$PID.$([guid]::NewGuid().ToString('N'))"
-    [System.IO.File]::WriteAllText($temporaryFile, "$Token`n", [System.Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporaryFile -Destination $ownerFile -Force
+function Save-RuntimeRecord {
+    param([string]$RepoDir, [int]$ProcessId, [string]$Executable)
+    [System.IO.File]::WriteAllText((Get-RuntimeRecordFile -RepoDir $RepoDir), "$ProcessId`n$Executable`n", [System.Text.UTF8Encoding]::new($false))
 }
 
-function Test-LauncherRuntimeOwner {
-    param(
-        [Parameter(Mandatory = $true)][string]$Token,
-        [Parameter(Mandatory = $true)][string]$RepoDir
-    )
-    $ownerFile = Get-LauncherOwnerFile -RepoDir $RepoDir
-    return (Test-Path -LiteralPath $ownerFile) -and
-        ((Get-Content -LiteralPath $ownerFile -Raw).Trim() -ceq $Token)
-}
-
-function Release-LauncherRuntime {
-    param(
-        [Parameter(Mandatory = $true)][string]$Token,
-        [Parameter(Mandatory = $true)][string]$RepoDir
-    )
-    if (Test-LauncherRuntimeOwner -Token $Token -RepoDir $RepoDir) {
-        Remove-Item -LiteralPath (Get-LauncherOwnerFile -RepoDir $RepoDir) -Force -ErrorAction SilentlyContinue
-    }
-}
-
-function Assert-LauncherRuntimeOwner {
-    param([string]$Token, [string]$RepoDir)
-    if (-not (Test-LauncherRuntimeOwner -Token $Token -RepoDir $RepoDir)) {
-        throw 'A newer launcher has taken over. This launcher will not close or start DayNote; use the newer launcher.'
-    }
-}
-
-function Get-RuntimeProcess {
-    param(
-        [Parameter(Mandatory = $true)][string]$RepoDir,
-        [Parameter(Mandatory = $true)][string]$BuiltExecutable,
-        [ValidateSet('Any', 'Built', 'Development')][string]$Mode = 'Any'
-    )
-    $paths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    if ($Mode -ne 'Development') {
-        $null = $paths.Add([System.IO.Path]::GetFullPath($BuiltExecutable))
-    }
-    if ($Mode -ne 'Built') {
-        $developmentBin = Join-Path $RepoDir 'src/DayNote/bin'
-        if (Test-Path -LiteralPath $developmentBin -PathType Container) {
-            foreach ($file in Get-ChildItem -LiteralPath $developmentBin -Filter 'DayNote.exe' -File -Recurse) {
-                $null = $paths.Add([System.IO.Path]::GetFullPath($file.FullName))
-            }
-        }
-    }
-    foreach ($process in Get-Process) {
-        $selected = $false
-        try {
-            try {
-                $path = $process.Path
-            } catch [System.ComponentModel.Win32Exception] {
-                # An inaccessible process has no proven app identity and is never selected.
-                continue
-            } catch [System.InvalidOperationException] {
-                # A process can exit while its executable identity is being read.
-                continue
-            }
-            if ($path -and $paths.Contains([System.IO.Path]::GetFullPath($path))) {
-                $selected = $true
-                $process
-            }
-        } finally {
-            if (-not $selected) { $process.Dispose() }
-        }
-    }
-}
-
-function Request-RuntimeClose {
-    param(
-        [Parameter(Mandatory = $true)][string]$Label,
-        [Parameter(Mandatory = $true)][string]$RepoDir,
-        [Parameter(Mandatory = $true)][string]$BuiltExecutable,
-        [Parameter(Mandatory = $true)][string]$Token
-    )
-    $selected = @(Get-RuntimeProcess -RepoDir $RepoDir -BuiltExecutable $BuiltExecutable)
+# The recorded process ID, returned only while that process still runs the recorded executable.
+function Get-RecordedRuntimeId {
+    param([Parameter(Mandatory = $true)][string]$RepoDir)
+    $recordFile = Get-RuntimeRecordFile -RepoDir $RepoDir
+    if (-not (Test-Path -LiteralPath $recordFile)) { return $null }
+    $lines = @(Get-Content -LiteralPath $recordFile)
+    if ($lines.Count -lt 2 -or $lines[0] -notmatch '^\d+$' -or -not $lines[1]) { return $null }
+    $process = Get-Process -Id ([int]$lines[0]) -ErrorAction SilentlyContinue
+    if ($null -eq $process) { return $null }
     try {
-        Assert-LauncherRuntimeOwner -Token $Token -RepoDir $RepoDir
-        if ($selected.Count -eq 0) { return }
-        Write-Host "Requesting ordinary closure of $Label (pid $($selected.Id -join ', '))."
-        $elapsed = [System.Diagnostics.Stopwatch]::StartNew()
-        foreach ($process in $selected) {
-            if ($process.HasExited) { continue }
-            try {
-                $requested = $process.CloseMainWindow()
-            } catch {
-                if ($process.HasExited) { continue }
-                throw "Could not ask $Label to close. Close it normally and run this launcher again. $($_.Exception.Message)"
-            }
-            if (-not $requested -and -not $process.HasExited) {
-                throw "$Label could not accept a close request. Close it normally and run this launcher again."
-            }
-        }
-        do {
-            $remaining = @($selected | Where-Object { -not $_.HasExited })
-            if ($remaining.Count -eq 0) { return }
-            Start-Sleep -Milliseconds 100
-        } while ($elapsed.Elapsed.TotalSeconds -lt 5)
-        throw "$Label is still open, possibly waiting for an answer or unfinished work. Finish closing it normally and run this launcher again. Nothing new was launched."
+        if ($process.Path -and $process.Path -ieq $lines[1]) { return $process.Id }
+        return $null
     } finally {
-        foreach ($process in $selected) { $process.Dispose() }
+        $process.Dispose()
     }
 }
 
-function Wait-RuntimeReady {
-    param(
-        [Parameter(Mandatory = $true)][string]$Label,
-        [Parameter(Mandatory = $true)][string]$RepoDir,
-        [Parameter(Mandatory = $true)][string]$BuiltExecutable,
-        [Parameter(Mandatory = $true)][string]$Token,
-        [Parameter(Mandatory = $true)][ValidateSet('Built', 'Development')][string]$Mode,
-        [object]$StartedProcess,
-        [int]$TimeoutSeconds = 30
-    )
+# Asks the recorded DayNote to close as a user would, so it can still finish or ask about unsaved work.
+function Stop-RecordedRuntime {
+    param([Parameter(Mandatory = $true)][string]$RepoDir)
+    $id = Get-RecordedRuntimeId -RepoDir $RepoDir
+    if ($null -eq $id) { return }
+    Write-Host "Asking the running DayNote (pid $id) to close."
+    $process = Get-Process -Id $id -ErrorAction SilentlyContinue
+    if ($null -ne $process) {
+        try { $null = $process.CloseMainWindow() } finally { $process.Dispose() }
+    }
     $elapsed = [System.Diagnostics.Stopwatch]::StartNew()
-    do {
-        Assert-LauncherRuntimeOwner -Token $Token -RepoDir $RepoDir
-        if ($null -ne $StartedProcess -and $StartedProcess.HasExited) {
-            throw "$Label exited before it was ready (exit code $($StartedProcess.ExitCode)). Check the launch output and try again."
-        }
-        $selected = @(Get-RuntimeProcess -RepoDir $RepoDir -BuiltExecutable $BuiltExecutable -Mode $Mode)
-        try {
-            if (@($selected | Where-Object { -not $_.HasExited }).Count -gt 0) { return }
-        } finally {
-            foreach ($process in $selected) { $process.Dispose() }
-        }
+    while ($elapsed.Elapsed.TotalSeconds -lt 5) {
+        if ((Get-RecordedRuntimeId -RepoDir $RepoDir) -ne $id) { return }
         Start-Sleep -Milliseconds 100
-    } while ($elapsed.Elapsed.TotalSeconds -lt $TimeoutSeconds)
-    throw "$Label did not start in $Mode mode within ${TimeoutSeconds}s."
+    }
+    throw 'DayNote is still open, perhaps finishing or asking about unsaved work. Close it, then run this launcher again.'
+}
+
+function Start-RecordedRuntime {
+    param([Parameter(Mandatory = $true)][string]$RepoDir, [Parameter(Mandatory = $true)][string]$Executable)
+    $fullPath = [System.IO.Path]::GetFullPath($Executable)
+    $process = Start-Process -FilePath $fullPath -PassThru
+    try { Save-RuntimeRecord -RepoDir $RepoDir -ProcessId $process.Id -Executable $fullPath } finally { $process.Dispose() }
+    Write-Host $singleInstanceNote
+}
+
+# Records the DayNote that `dotnet run` (the wrapper) starts from the development build, once it
+# appears. Fails when the wrapper ends first, as it does when the build fails.
+function Save-WrappedRuntime {
+    param([Parameter(Mandatory = $true)][string]$RepoDir, [Parameter(Mandatory = $true)][System.Diagnostics.Process]$Wrapper)
+    $developmentBin = [System.IO.Path]::GetFullPath((Join-Path $RepoDir 'src/DayNote/bin')) + [System.IO.Path]::DirectorySeparatorChar
+    while ($true) {
+        if ($Wrapper.HasExited) { throw 'The DayNote development runtime ended before the app started.' }
+        $processes = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, ExecutablePath)
+        $descendants = [System.Collections.Generic.HashSet[int]]::new()
+        $null = $descendants.Add($Wrapper.Id)
+        do {
+            $grown = $false
+            foreach ($item in $processes) {
+                if ($descendants.Contains([int]$item.ParentProcessId) -and $descendants.Add([int]$item.ProcessId)) { $grown = $true }
+            }
+        } while ($grown)
+        foreach ($item in $processes) {
+            $path = $item.ExecutablePath
+            if ($descendants.Contains([int]$item.ProcessId) -and $path -and
+                $path.StartsWith($developmentBin, [System.StringComparison]::OrdinalIgnoreCase) -and
+                [System.IO.Path]::GetFileName($path) -ieq 'DayNote.exe') {
+                Save-RuntimeRecord -RepoDir $RepoDir -ProcessId $item.ProcessId -Executable $path
+                Write-Host $singleInstanceNote
+                return
+            }
+        }
+        Start-Sleep -Milliseconds 200
+    }
 }
 
 function Publish-RuntimeCandidate {
@@ -164,4 +109,4 @@ function Publish-RuntimeCandidate {
     }
 }
 
-Export-ModuleMember -Function Claim-LauncherRuntime, Test-LauncherRuntimeOwner, Assert-LauncherRuntimeOwner, Release-LauncherRuntime, Get-RuntimeProcess, Request-RuntimeClose, Wait-RuntimeReady, Publish-RuntimeCandidate
+Export-ModuleMember -Function Stop-RecordedRuntime, Start-RecordedRuntime, Save-WrappedRuntime, Publish-RuntimeCandidate

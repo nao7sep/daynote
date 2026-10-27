@@ -1,80 +1,101 @@
 #!/usr/bin/env bash
 
-claim_launcher_runtime() {
-  local token="$1" repo_dir="$2"
-  local owner_file="$repo_dir/.git/launcher-runtime-owner"
-  local temporary_file="${owner_file}.$$.$RANDOM"
-  printf '%s\n' "$token" > "$temporary_file"
-  mv -f "$temporary_file" "$owner_file"
+# Shared by run-dev, run-built and rebuild: one DayNote per repository. The launcher that starts DayNote
+# records its process ID and executable under .git; the next launcher asks that process to quit only
+# while it still runs that executable, and stops with a message rather than force-closing it when it
+# stays open, for example while it asks about unsaved work. A DayNote started any other way is left to
+# its single-instance behavior, which brings its window forward instead of opening a second one.
+# The caller sets REPO_DIR.
+
+RUNTIME_RECORD="$REPO_DIR/.git/launcher-runtime-process"
+SINGLE_INSTANCE_NOTE='If DayNote was already running outside these launchers, its window is brought forward instead.'
+
+# The executable a process runs, or nothing when no such process exists.
+executable_of() {
+  ps -p "$1" -o comm= 2>/dev/null || true
 }
 
-is_launcher_runtime_owner() {
-  local token="$1" repo_dir="$2"
-  local owner_file="$repo_dir/.git/launcher-runtime-owner"
-  [[ -f "$owner_file" && "$(tr -d '\r\n' < "$owner_file")" == "$token" ]]
+record_runtime() {
+  printf '%s\n%s\n' "$1" "$2" > "$RUNTIME_RECORD"
 }
 
-require_launcher_runtime_owner() {
-  if ! is_launcher_runtime_owner "$1" "$2"; then
-    echo "A newer DayNote launcher replaced this request. Run the desired launcher again." >&2
-    return 1
+# The recorded process ID, printed only while that process still runs the recorded executable.
+recorded_runtime_pid() {
+  local pid="" executable=""
+  [[ -f "$RUNTIME_RECORD" ]] || return 0
+  { read -r pid; read -r executable; } < "$RUNTIME_RECORD" || true
+  [[ "$pid" =~ ^[0-9]+$ && -n "$executable" ]] || return 0
+  if [[ "$(executable_of "$pid")" == "$executable" ]]; then
+    printf '%s\n' "$pid"
   fi
 }
 
-release_launcher_runtime() {
-  local token="$1" repo_dir="$2"
-  if is_launcher_runtime_owner "$token" "$repo_dir"; then
-    rm "$repo_dir/.git/launcher-runtime-owner"
-  fi
-}
-
-runtime_paths() {
-  local repo_dir="$1" built_executable="$2" mode="$3"
-  if [[ "$mode" != dev ]]; then
-    printf '%s\0' "$built_executable"
-  fi
-  if [[ "$mode" != built && -d "$repo_dir/src/DayNote/bin" ]]; then
-    find "$repo_dir/src/DayNote/bin" -type f -name DayNote -print0
-  fi
-}
-
-runtime_application_operation() {
-  local operation="$1" repo_dir="$2" built_executable="$3" mode="$4" path paths_file
-  local paths=()
-  if ! command -v osascript >/dev/null 2>&1; then
-    echo 'Missing required command: osascript' >&2
-    return 1
-  fi
-  paths_file="$(mktemp "${TMPDIR:-/tmp}/daynote-launch-paths.XXXXXX")" || return
-  if ! runtime_paths "$repo_dir" "$built_executable" "$mode" > "$paths_file"; then
-    rm "$paths_file"
-    return 1
-  fi
-  while IFS= read -r -d '' path; do paths+=("$path"); done < "$paths_file"
-  rm "$paths_file"
-  osascript -l JavaScript "$repo_dir/scripts/launcher-apps.js" "$operation" ${paths[@]+"${paths[@]}"}
-}
-
-request_runtime_close() {
-  local repo_dir="$1" built_executable="$2"
-  require_launcher_runtime_owner "$RUNTIME_TOKEN" "$repo_dir" || return
-  echo 'Requesting ordinary quit for an existing DayNote app.'
-  runtime_application_operation close "$repo_dir" "$built_executable" all >/dev/null
-}
-
-wait_for_runtime() {
-  local repo_dir="$1" built_executable="$2" mode="$3" timeout_seconds="$4"
-  local deadline=$((SECONDS + timeout_seconds)) state
+# Asks the recorded DayNote to quit as a user would, so it can still finish or ask about unsaved work.
+stop_recorded_runtime() {
+  local pid deadline
+  pid="$(recorded_runtime_pid)"
+  [[ -n "$pid" ]] || return 0
+  echo "Asking the running DayNote (pid $pid) to quit."
+  osascript -l JavaScript -e 'ObjC.import("AppKit");
+function run(args) {
+  var application = $.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(args[0]));
+  if (application) application.terminate;
+}' "$pid" >/dev/null
+  deadline=$((SECONDS + 5))
   while (( SECONDS < deadline )); do
-    require_launcher_runtime_owner "$RUNTIME_TOKEN" "$repo_dir" || return
-    state="$(runtime_application_operation ready "$repo_dir" "$built_executable" "$mode")" || return
-    [[ "$state" == ready ]] && return 0
-    if [[ "$mode" == dev && -n "${DEV_PID:-}" ]] && ! kill -0 "$DEV_PID" 2>/dev/null; then
-      echo 'The recorded DayNote development child exited before the app became ready.' >&2
-      return 1
-    fi
+    [[ "$(recorded_runtime_pid)" == "$pid" ]] || return 0
     sleep 0.1
   done
-  echo "DayNote did not start within ${timeout_seconds}s." >&2
+  echo 'DayNote is still open, perhaps finishing or asking about unsaved work. Close it, then run this launcher again.' >&2
   return 1
+}
+
+# Opens a new instance of the bundle through Launch Services, which gives it its bundle identity, and
+# records it.
+launch_bundle() {
+  local pid
+  pid="$(osascript -l JavaScript -e 'ObjC.import("AppKit");
+function run(args) {
+  var application = $.NSWorkspace.sharedWorkspace.launchApplicationAtURLOptionsConfigurationError(
+    $.NSURL.fileURLWithPath(args[0]), $.NSWorkspaceLaunchNewInstance, $({}), null);
+  return application.isNil() ? "" : String(application.processIdentifier);
+}' "$1")"
+  if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+    echo 'DayNote could not be opened.' >&2
+    return 1
+  fi
+  record_runtime "$pid" "$(executable_of "$pid")"
+  echo "$SINGLE_INSTANCE_NOTE"
+}
+
+# Records the DayNote that `dotnet run` (process $1) starts from the development build, once it
+# appears. Fails when the wrapper ends first, as it does when the build fails.
+record_wrapped_runtime() {
+  local wrapper="$1" development_bin="$REPO_DIR/src/DayNote/bin/" processes descendants pid parent executable grown
+  while true; do
+    if ! kill -0 "$wrapper" 2>/dev/null; then
+      echo 'The DayNote development runtime ended before the app started.' >&2
+      return 1
+    fi
+    processes="$(ps -axo pid=,ppid=,comm=)"
+    descendants=" $wrapper "
+    grown=1
+    while (( grown )); do
+      grown=0
+      while read -r pid parent executable; do
+        if [[ "$descendants" == *" $parent "* && "$descendants" != *" $pid "* ]]; then
+          descendants+="$pid "
+          grown=1
+        fi
+      done <<< "$processes"
+    done
+    while read -r pid parent executable; do
+      if [[ "$descendants" == *" $pid "* && "$executable" == "$development_bin"*/DayNote ]]; then
+        record_runtime "$pid" "$executable"
+        echo "$SINGLE_INSTANCE_NOTE"
+        return 0
+      fi
+    done <<< "$processes"
+    sleep 0.2
+  done
 }

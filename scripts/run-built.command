@@ -10,7 +10,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_BUNDLE="$REPO_DIR/publish/DayNote.app"
 APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/DayNote"
-RUNTIME_TOKEN="run-built-$$-$(date +%s)-$RANDOM"
 source "$SCRIPT_DIR/launcher-runtime.sh"
 
 log_step() {
@@ -30,7 +29,7 @@ trap 'pause_on_failure $?' EXIT
 
 cd "$REPO_DIR"
 
-for required in open osascript; do
+for required in osascript; do
   command -v "$required" >/dev/null 2>&1 || { echo "Missing required command: $required" >&2; exit 1; }
 done
 
@@ -45,13 +44,10 @@ fi
 # Age tracks the actual build: rebuild resets Contents/MacOS, but never touches
 # the .app dir's own mtime — stat'ing the bundle root would report a stale date.
 built_at="$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S %Z' "$APP_BUNDLE/Contents/MacOS" 2>/dev/null || echo 'unknown')"
-claim_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
-request_runtime_close "$REPO_DIR" "$APP_EXECUTABLE"
+stop_recorded_runtime
 log_step "Launching the existing build (built: $built_at)"
 echo "If you changed source since then, run rebuild instead."
 
-# `open` routes through Launch Services, which registers the bundle identity with
-# TCC and triggers permission prompts on first access.
-require_launcher_runtime_owner "$RUNTIME_TOKEN" "$REPO_DIR"
-open -n "$APP_BUNDLE"
-wait_for_runtime "$REPO_DIR" "$APP_EXECUTABLE" built 30
+# Launch Services registers the bundle identity with TCC and triggers permission
+# prompts on first access.
+launch_bundle "$APP_BUNDLE"

@@ -13,8 +13,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_FILE="$REPO_DIR/src/DayNote/DayNote.csproj"
-APP_EXECUTABLE="$REPO_DIR/publish/DayNote.app/Contents/MacOS/DayNote"
-RUNTIME_TOKEN="run-dev-$$-$(date +%s)-$RANDOM"
 source "$SCRIPT_DIR/launcher-runtime.sh"
 
 log_step() {
@@ -37,33 +35,22 @@ pause_on_failure() {
   fi
 }
 
-cleanup() {
-  local status="$?"
-  trap - EXIT
-  if is_launcher_runtime_owner "$RUNTIME_TOKEN" "$REPO_DIR"; then
-    release_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
-  fi
-  pause_on_failure "$status"
-  exit "$status"
-}
-
-trap cleanup EXIT
+trap 'pause_on_failure $?' EXIT
 
 require_command dotnet
+require_command osascript
 
 cd "$REPO_DIR"
 
 log_step "Replacing any existing DayNote runtime"
-claim_launcher_runtime "$RUNTIME_TOKEN" "$REPO_DIR"
-request_runtime_close "$REPO_DIR" "$APP_EXECUTABLE"
+stop_recorded_runtime
 
 log_step "Restoring packages required for launch"
 dotnet restore "$PROJECT_FILE"
 
 log_step "Starting DayNote (Debug, from source)"
-require_launcher_runtime_owner "$RUNTIME_TOKEN" "$REPO_DIR"
 dotnet run --project "$PROJECT_FILE" &
 DEV_PID=$!
-wait_for_runtime "$REPO_DIR" "$APP_EXECUTABLE" dev 120
+record_wrapped_runtime "$DEV_PID"
 log_step "DayNote is ready"
 wait "$DEV_PID"

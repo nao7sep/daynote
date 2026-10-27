@@ -26,8 +26,6 @@ function Write-Step {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoDir = Split-Path -Parent $scriptDir
 $exePath = Join-Path $repoDir "bin/Release/net10.0/win-x64/publish/DayNote.exe"
-$projectFile = Join-Path $repoDir "src/DayNote/DayNote.csproj"
-$runtimeToken = [guid]::NewGuid().ToString("N")
 
 try {
     Set-Utf8Console
@@ -43,15 +41,12 @@ try {
     }
 
     $builtAt = (Get-Item $exePath).LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
-    Claim-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-    Request-RuntimeClose -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $exePath -Token $runtimeToken
+    Stop-RecordedRuntime -RepoDir $repoDir
     Write-Step "Launching the existing build (built: $builtAt)"
     Write-Host "If you changed source since then, run rebuild instead."
 
     # GUI app: launch non-blocking via Start-Process.
-    Assert-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir
-    Start-Process -FilePath $exePath | Out-Null
-    Wait-RuntimeReady -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $exePath -Token $runtimeToken -Mode Built -TimeoutSeconds 30
+    Start-RecordedRuntime -RepoDir $repoDir -Executable $exePath
 }
 catch {
     Write-Host ""
@@ -59,9 +54,6 @@ catch {
     $scriptExitCode = 1
 }
 finally {
-    if (Get-Command Release-LauncherRuntime -ErrorAction SilentlyContinue) {
-        Release-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-    }
     Read-Host "Press Enter to close" | Out-Null
 }
 

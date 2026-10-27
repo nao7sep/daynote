@@ -49,8 +49,7 @@ $repoDir = Split-Path -Parent $scriptDir
 $projectFile = Join-Path $repoDir "src/DayNote/DayNote.csproj"
 $publishDir = Join-Path $repoDir "bin/Release/net10.0/win-x64/publish"
 $exePath = Join-Path $publishDir "DayNote.exe"
-$runtimeToken = [guid]::NewGuid().ToString("N")
-$candidateDir = "$publishDir.candidate.$runtimeToken"
+$candidateDir = "$publishDir.candidate.$([guid]::NewGuid().ToString("N"))"
 
 try {
     Set-Utf8Console
@@ -59,7 +58,6 @@ try {
 
     Set-Location $repoDir
 
-    Claim-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
     Write-Step "Publishing self-contained win-x64 candidate"
     Invoke-Native -FilePath "dotnet" -ArgumentList @(
         "publish", $projectFile,
@@ -73,15 +71,12 @@ try {
     }
 
     Write-Step "Requesting closure of the existing DayNote runtime"
-    Request-RuntimeClose -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $exePath -Token $runtimeToken
-    Assert-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir
+    Stop-RecordedRuntime -RepoDir $repoDir
     Write-Step "Publishing the validated build"
     Publish-RuntimeCandidate -CandidateDir $candidateDir -PublishDir $publishDir
 
     Write-Step "Launching DayNote"
-    Assert-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir
-    Start-Process -FilePath $exePath | Out-Null
-    Wait-RuntimeReady -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $exePath -Token $runtimeToken -Mode Built -TimeoutSeconds 30
+    Start-RecordedRuntime -RepoDir $repoDir -Executable $exePath
 
 }
 catch {
@@ -92,9 +87,6 @@ catch {
 finally {
     if (Test-Path -LiteralPath $candidateDir) {
         Remove-Item -LiteralPath $candidateDir -Recurse -Force
-    }
-    if (Get-Command Release-LauncherRuntime -ErrorAction SilentlyContinue) {
-        Release-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
     }
     Read-Host "Press Enter to close" | Out-Null
 }

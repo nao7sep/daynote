@@ -48,8 +48,6 @@ function Invoke-Native {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoDir = Split-Path -Parent $scriptDir
 $projectFile = Join-Path $repoDir "src/DayNote/DayNote.csproj"
-$builtExecutable = Join-Path $repoDir "bin/Release/net10.0/win-x64/publish/DayNote.exe"
-$runtimeToken = [guid]::NewGuid().ToString("N")
 $devProcess = $null
 
 try {
@@ -59,19 +57,17 @@ try {
 
     Set-Location $repoDir
 
-    Claim-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
     Write-Step "Restoring packages required for launch"
     Invoke-Native -FilePath "dotnet" -ArgumentList @("restore", $projectFile)
     Write-Step "Requesting closure of the existing DayNote runtime"
-    Request-RuntimeClose -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $builtExecutable -Token $runtimeToken
+    Stop-RecordedRuntime -RepoDir $repoDir
     # The running development app can lock the existing build output on Windows.
     Write-Step "Building DayNote (Debug)"
     Invoke-Native -FilePath "dotnet" -ArgumentList @("build", $projectFile, "--no-restore")
 
     Write-Step "Starting DayNote (Debug, from source)"
-    Assert-LauncherRuntimeOwner -Token $runtimeToken -RepoDir $repoDir
     $devProcess = Start-Process -FilePath "dotnet" -ArgumentList @("run", "--no-build", "--no-restore", "--project", "`"$projectFile`"") -NoNewWindow -PassThru
-    Wait-RuntimeReady -Label "DayNote" -RepoDir $repoDir -BuiltExecutable $builtExecutable -Token $runtimeToken -Mode Development -StartedProcess $devProcess -TimeoutSeconds 120
+    Save-WrappedRuntime -RepoDir $repoDir -Wrapper $devProcess
     Write-Step "DayNote is ready"
     $devProcess.WaitForExit()
     if ($devProcess.ExitCode -notin @(0, 130, -1073741510)) {
@@ -85,9 +81,6 @@ catch {
 }
 finally {
     if ($null -ne $devProcess) { $devProcess.Dispose() }
-    if (Get-Command Release-LauncherRuntime -ErrorAction SilentlyContinue) {
-        Release-LauncherRuntime -Token $runtimeToken -RepoDir $repoDir
-    }
     Read-Host "Press Enter to close" | Out-Null
 }
 
