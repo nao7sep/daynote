@@ -101,20 +101,6 @@ public class BinderStore
     public static string NoteAssetsDirectory(string binderPath, string noteId) =>
         Path.Combine(AssetsDirectory(binderPath), noteId);
 
-    /// <summary>Creates the fixed attachment-directory chain before a copy can be admitted.</summary>
-    public static void EnsureNoteAssetsDirectory(string directory) => EnsureNoteAssetsDirectory(directory, AtomicFile.FlushDirectory);
-
-    internal static void EnsureNoteAssetsDirectory(string directory, Action<string> flush)
-    {
-        Directory.CreateDirectory(directory);
-        // Repeat even when visible already: an earlier failed synchronization may have created it.
-        // A parent flush is not recursive, so each newly usable name needs its containing directory.
-        var assets = Path.GetDirectoryName(directory)!;
-        flush(directory);
-        flush(assets);
-        flush(Path.GetDirectoryName(assets)!);
-    }
-
     /// <summary>Checked once right before each physical delete under the assets folder. A link the user placed
     /// there is the user's and is followed, so the check is of the path as written, not where a link points:
     /// it must still lie inside <paramref name="ownedDirectory"/>, the folder DayNote owns.</summary>

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AssemblyTitle>DayNote.Core</AssemblyTitle>
     <Description>Framework-independent core for DayNote: domain model, the TOML notebook format, body cleanup, character counting, identifier generation, application configuration and state, and the write-through data-backup store.</Description>
-    <!-- Required by the source-generated LibraryImport marshalling in AtomicFile's directory fsync. -->
+    <!-- Required by the source-generated LibraryImport marshalling in PathKey's native name resolution. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

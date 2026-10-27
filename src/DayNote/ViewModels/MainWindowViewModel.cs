@@ -1405,7 +1405,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         var directory = import.Directory;
         var noteId = import.Note.Id;
-        BinderStore.EnsureNoteAssetsDirectory(directory);
+        Directory.CreateDirectory(directory);
 
         // Hash the note's current attachments so a file whose content the note already has is not
         // copied again; a later identical file in the same batch dedups against earlier ones too.

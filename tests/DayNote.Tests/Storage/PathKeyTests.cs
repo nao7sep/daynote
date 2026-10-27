@@ -97,4 +97,11 @@ public sealed class PathKeyTests : IDisposable
     }
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);
+
+    [Theory]
+    [InlineData(@"C:\folder\file.txt", @"\\?\C:\folder\file.txt")]
+    [InlineData(@"\\server\share\file.txt", @"\\?\UNC\server\share\file.txt")]
+    [InlineData(@"\\?\C:\folder\file.txt", @"\\?\C:\folder\file.txt")]
+    public void Windows_native_calls_preserve_extended_paths(string path, string expected) =>
+        Assert.Equal(expected, PathKey.WindowsExtendedPath(path));
 }

@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Text;
 using DayNote.Core.Backup;
 using DayNote.Core.Identity;
@@ -20,7 +19,7 @@ namespace DayNote.Core.Storage;
 /// the settings are what the user creates and maintains, so they are recorded; state.json opts out, since
 /// placement and selection are state, never the user's work.
 /// </remarks>
-public static partial class AtomicFile
+public static class AtomicFile
 {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -82,9 +81,8 @@ public static partial class AtomicFile
     /// Copies a user's file to a new name that nothing else holds: into a temp file beside it, then
     /// published under that name without replacing anything there, so the name never shows a partial
     /// copy. <see cref="File.Copy(string, string)"/> keeps the source's modified time and the metadata the
-    /// destination volume supports (content-lifecycle-conventions). Data is synchronized before
-    /// publication, followed by namespace synchronization on Unix. A failed copy removes its temp;
-    /// a synchronization failure after publication can leave an unreferenced final copy.
+    /// destination volume supports (content-lifecycle-conventions). The temp is flushed before it is
+    /// renamed, and a failed copy removes it.
     /// </summary>
     /// <remarks>
     /// The copy is a file the user adds, such as an attachment, which the backup history protects once, when
@@ -93,9 +91,9 @@ public static partial class AtomicFile
     /// copy from its published name and keeps it only if it still holds those bytes.
     /// </remarks>
     /// <exception cref="IOException">The destination already exists, or the copy failed.</exception>
-    public static void CopyNew(string source, string destination) => CopyNew(source, destination, FlushCopiedFile, FlushDirectory);
+    public static void CopyNew(string source, string destination) => CopyNew(source, destination, FlushCopiedFile);
 
-    internal static void CopyNew(string source, string destination, Action<string> flushFile, Action<string> flushDirectory)
+    internal static void CopyNew(string source, string destination, Action<string> flushFile)
     {
         var fullPath = Path.GetFullPath(destination);
         var tempPath = TempPathFor(fullPath);
@@ -103,17 +101,7 @@ public static partial class AtomicFile
         {
             File.Copy(source, tempPath);
             flushFile(tempPath);
-            if (OperatingSystem.IsWindows())
-            {
-                // Publish without replacement and ask Windows to settle the move before returning.
-                if (!MoveFileEx(WindowsExtendedPath(tempPath), WindowsExtendedPath(fullPath), 0x8)) // MOVEFILE_WRITE_THROUGH
-                    throw new IOException("Could not publish attachment copy.", new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError()));
-            }
-            else
-            {
-                File.Move(tempPath, fullPath, overwrite: false);
-            }
-            flushDirectory(Path.GetDirectoryName(fullPath)!);
+            File.Move(tempPath, fullPath, overwrite: false);
         }
         catch
         {
@@ -121,12 +109,6 @@ public static partial class AtomicFile
             throw;
         }
     }
-
-    // Native publication must retain .NET's extended DOS/UNC path support.
-    internal static string WindowsExtendedPath(string path) =>
-        path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal)
-            ? path
-            : path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..] : @"\\?\" + path;
 
     private static void FlushCopiedFile(string path)
     {
@@ -166,38 +148,6 @@ public static partial class AtomicFile
         return file.Exists && file.Length == bytes.Length && File.ReadAllBytes(path).AsSpan().SequenceEqual(bytes);
     }
 
-    /// <summary>
-    /// Synchronizes the containing directory after publication on Unix. .NET exposes no
-    /// portable directory flush, so this uses the Unix primitive. Windows has no corresponding ordinary
-    /// directory operation here. Physical crash durability on each destination remains platform
-    /// qualification; journaling alone is not a promise that a rename survives power loss.
-    /// </summary>
-    internal static void FlushDirectory(string directory)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        var fd = open(directory, O_RDONLY);
-        if (fd < 0)
-        {
-            throw new IOException($"Could not open directory to flush ('{directory}'); errno {Marshal.GetLastPInvokeError()}.");
-        }
-
-        try
-        {
-            if (fsync(fd) != 0)
-            {
-                throw new IOException($"Could not flush directory ('{directory}'); errno {Marshal.GetLastPInvokeError()}.");
-            }
-        }
-        finally
-        {
-            close(fd);
-        }
-    }
-
     private static void TryDelete(string path)
     {
         try
@@ -212,20 +162,4 @@ public static partial class AtomicFile
             // Best effort: a temp left behind is debris, per the storage-path-conventions.
         }
     }
-
-    // O_RDONLY is 0 on both Linux and macOS; a read-only handle is sufficient to fsync a directory.
-    private const int O_RDONLY = 0;
-
-    [LibraryImport("libc", SetLastError = true, StringMarshalling = StringMarshalling.Utf8)]
-    private static partial int open(string path, int flags);
-
-    [LibraryImport("libc", SetLastError = true)]
-    private static partial int fsync(int fd);
-
-    [LibraryImport("libc", SetLastError = true)]
-    private static partial int close(int fd);
-
-    [LibraryImport("kernel32.dll", EntryPoint = "MoveFileExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool MoveFileEx(string existing, string destination, uint flags);
 }

@@ -48,13 +48,6 @@ public sealed class AtomicFileTests : IDisposable
             .Where(f => !Path.GetFileName(f).StartsWith("backups.sqlite3", StringComparison.Ordinal))
             .ToArray();
 
-    [Theory]
-    [InlineData(@"C:\folder\file.txt", @"\\?\C:\folder\file.txt")]
-    [InlineData(@"\\server\share\file.txt", @"\\?\UNC\server\share\file.txt")]
-    [InlineData(@"\\?\C:\folder\file.txt", @"\\?\C:\folder\file.txt")]
-    public void Windows_publication_preserves_extended_paths(string path, string expected) =>
-        Assert.Equal(expected, AtomicFile.WindowsExtendedPath(path));
-
     [WindowsOnlyFact]
     public void A_copy_can_publish_to_a_long_Windows_path()
     {
@@ -254,24 +247,10 @@ public sealed class AtomicFileTests : IDisposable
         File.WriteAllText(source, "protected bytes");
 
         Assert.Throws<IOException>(() => AtomicFile.CopyNew(source, copy,
-            _ => throw new IOException("data sync failed"), _ => throw new InvalidOperationException("not reached")));
+            _ => throw new IOException("data sync failed")));
 
         Assert.False(File.Exists(copy));
         Assert.Equal("protected bytes", File.ReadAllText(source));
-        Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
-    }
-
-    [Fact]
-    public void A_copy_that_cannot_sync_its_published_name_reports_failure_without_undoing_the_copy()
-    {
-        var source = Path.Combine(_directory, "source.bin");
-        var copy = Path.Combine(_directory, "copy.bin");
-        File.WriteAllText(source, "protected bytes");
-
-        Assert.Throws<IOException>(() => AtomicFile.CopyNew(source, copy,
-            _ => { }, _ => throw new IOException("namespace sync failed")));
-
-        Assert.Equal("protected bytes", File.ReadAllText(copy));
         Assert.Empty(Directory.GetFiles(_directory, "*.tmp"));
     }
 

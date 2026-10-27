@@ -59,7 +59,7 @@ public static partial class PathKey
             else if (OperatingSystem.IsWindows())
             {
                 using var handle = Directory.Exists(full)
-                    ? OpenWindowsDirectory(AtomicFile.WindowsExtendedPath(full), 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)
+                    ? OpenWindowsDirectory(WindowsExtendedPath(full), 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)
                     : File.OpenHandle(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                 if (handle.IsInvalid)
                     return null;
@@ -81,6 +81,12 @@ public static partial class PathKey
         catch (UnauthorizedAccessException) { }
         return null;
     }
+
+    // Native calls must retain .NET's extended DOS/UNC path support.
+    internal static string WindowsExtendedPath(string path) =>
+        path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal)
+            ? path
+            : path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..] : @"\\?\" + path;
 
     [LibraryImport("libc", EntryPoint = "realpath", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     private static unsafe partial IntPtr GetMacPath(string path, byte* buffer);

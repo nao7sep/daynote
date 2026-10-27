@@ -538,28 +538,6 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task An_attachment_copy_with_failed_namespace_sync_is_not_written_into_the_binder()
-    {
-        var vm = NewViewModel(copyFile: (source, destination) => AtomicFile.CopyNew(source, destination,
-            _ => { }, _ => throw new IOException("namespace sync failed")));
-        _dialogs.BinderToCreate = BinderPath;
-        await vm.NewBinderCommand.ExecuteAsync(null);
-        vm.NewNoteCommand.Execute(null);
-        var note = vm.SelectedNote!.Note;
-        var file = Path.Combine(_home, "sync-failure.bin");
-        File.WriteAllText(file, "attachment bytes");
-
-        await AddDroppedFiles(vm, [file]);
-        await vm.SaveNowCommand.ExecuteAsync(null);
-
-        Assert.Empty(note.Attachments);
-        Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
-        Assert.Single(AssetFiles(note)); // An unreferenced copy is an accepted partial outcome.
-        Assert.NotNull(vm.AttachmentResult);
-        await vm.ShutdownAsync();
-    }
-
-    [AvaloniaFact]
     public async Task Mandatory_panes_explain_prerequisites_and_ordinary_empty_states()
     {
         var vm = NewViewModel();
