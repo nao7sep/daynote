@@ -16,9 +16,7 @@ namespace DayNote.Core.Backup;
 /// </summary>
 /// <remarks>
 /// <para>
-/// To restore a file by hand, take the row of the wanted path and session: its <c>content</c> is the file,
-/// unless <c>content</c> is empty while <c>byte_size</c> is not, in which case the file is the row's
-/// <c>backup_parts.content</c> joined in <c>part</c> order.
+/// To restore a file by hand, take the row of the wanted path and session: its <c>content</c> is the file.
 /// </para>
 /// </remarks>
 /// <remarks>
@@ -59,12 +57,6 @@ public static class BackupStore
         );
         CREATE INDEX IF NOT EXISTS idx_backups_path_id ON backups (path, id);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_backups_path_session ON backups (path, session_id);
-        CREATE TABLE IF NOT EXISTS backup_parts (
-          backup_id INTEGER NOT NULL REFERENCES backups (id),
-          part      INTEGER NOT NULL,
-          content   BLOB NOT NULL,
-          PRIMARY KEY (backup_id, part)
-        );
         """;
 
     // Guards the pending writes, the owner's state and the session.
@@ -83,11 +75,6 @@ public static class BackupStore
     // disabled for this session: not yet opened, or the open failed and its one warn was logged.
     private static SqliteConnection? _connection;
     private static bool _initialized;
-
-    // SQLite holds at most 1,000,000,000 bytes in one value (SQLITE_MAX_LENGTH, the bundled build's limit),
-    // so an added file larger than one part is stored as parts in backup_parts, as data-backup-conventions
-    // (The store) describe: every attachment is protected whatever its size, which one BLOB per row cannot do.
-    internal static long PartSize { get; set; } = 256L * 1024 * 1024;
 
     // A save's exact bytes, or an added file to read from its published path: Bytes is null and Sha256 is
     // the hash of what was copied there.
@@ -245,92 +232,52 @@ public static class BackupStore
         }
     }
 
-    // Inserts or replaces this session's row of the path and returns its id, dropping any parts the row had.
-    // With no content in hand, the content is a zero-filled BLOB of contentLength bytes, written in place.
+    // Inserts or replaces this session's row of the path and returns its id. With no content in hand, the
+    // content is a zero-filled BLOB of size bytes, written in place.
     private static long Upsert(
         SqliteConnection connection, SqliteTransaction transaction, string path, PendingWrite write, string hash,
-        long size, byte[]? content, long contentLength = 0)
+        long size, byte[]? content)
     {
-        long id;
-        using (var upsert = connection.CreateCommand())
+        using var upsert = connection.CreateCommand();
+        upsert.Transaction = transaction;
+        upsert.CommandText =
+            "INSERT INTO backups (session_id, path, content, content_sha256, byte_size, written_at_utc) " +
+            $"VALUES ($session, $path, {(content is null ? "zeroblob($size)" : "$content")}, $hash, $size, $writtenAt) " +
+            "ON CONFLICT (path, session_id) DO UPDATE SET content = excluded.content, " +
+            "content_sha256 = excluded.content_sha256, byte_size = excluded.byte_size, " +
+            "written_at_utc = excluded.written_at_utc RETURNING id";
+        upsert.Parameters.AddWithValue("$session", write.Session);
+        upsert.Parameters.AddWithValue("$path", path);
+        if (content is not null)
         {
-            upsert.Transaction = transaction;
-            upsert.CommandText =
-                "INSERT INTO backups (session_id, path, content, content_sha256, byte_size, written_at_utc) " +
-                $"VALUES ($session, $path, {(content is null ? "zeroblob($length)" : "$content")}, $hash, $size, $writtenAt) " +
-                "ON CONFLICT (path, session_id) DO UPDATE SET content = excluded.content, " +
-                "content_sha256 = excluded.content_sha256, byte_size = excluded.byte_size, " +
-                "written_at_utc = excluded.written_at_utc RETURNING id";
-            upsert.Parameters.AddWithValue("$session", write.Session);
-            upsert.Parameters.AddWithValue("$path", path);
-            if (content is null)
-            {
-                upsert.Parameters.AddWithValue("$length", contentLength);
-            }
-            else
-            {
-                upsert.Parameters.AddWithValue("$content", content);
-            }
-
-            upsert.Parameters.AddWithValue("$hash", hash);
-            upsert.Parameters.AddWithValue("$size", size);
-            upsert.Parameters.AddWithValue("$writtenAt", DayNoteTime.ToIso(write.WrittenAt));
-            id = (long)upsert.ExecuteScalar()!;
+            upsert.Parameters.AddWithValue("$content", content);
         }
 
-        using var parts = connection.CreateCommand();
-        parts.Transaction = transaction;
-        parts.CommandText = "DELETE FROM backup_parts WHERE backup_id = $id";
-        parts.Parameters.AddWithValue("$id", id);
-        parts.ExecuteNonQuery();
-        return id;
+        upsert.Parameters.AddWithValue("$hash", hash);
+        upsert.Parameters.AddWithValue("$size", size);
+        upsert.Parameters.AddWithValue("$writtenAt", DayNoteTime.ToIso(write.WrittenAt));
+        return (long)upsert.ExecuteScalar()!;
     }
 
-    // Streams an added file into this session's row, in parts when it is larger than one part. Returns false
-    // when what was read is not what was copied, so the caller rolls the row back.
+    // Streams an added file into this session's row as one value. A file beyond SQLite's value limit fails
+    // to record like any other recording failure. Returns false when what was read is not what was copied,
+    // so the caller rolls the row back.
     private static bool TryRecordFile(
         SqliteConnection connection, SqliteTransaction transaction, string path, PendingWrite write, string hash)
     {
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.SequentialScan);
         var size = file.Length;
-        var whole = size <= PartSize;
-        var id = Upsert(connection, transaction, path, write, hash, size, content: null, contentLength: whole ? size : 0);
+        var id = Upsert(connection, transaction, path, write, hash, size, content: null);
         using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        if (whole)
-        {
-            if (!CopyInto(connection, "backups", id, file, size, hasher))
-            {
-                return false;
-            }
-        }
-        else
-        {
-            for (long part = 0, offset = 0; offset < size; part++, offset += PartSize)
-            {
-                var length = Math.Min(PartSize, size - offset);
-                using var insert = connection.CreateCommand();
-                insert.Transaction = transaction;
-                insert.CommandText =
-                    "INSERT INTO backup_parts (backup_id, part, content) VALUES ($id, $part, zeroblob($length)) RETURNING rowid";
-                insert.Parameters.AddWithValue("$id", id);
-                insert.Parameters.AddWithValue("$part", part);
-                insert.Parameters.AddWithValue("$length", length);
-                var rowid = (long)insert.ExecuteScalar()!;
-                if (!CopyInto(connection, "backup_parts", rowid, file, length, hasher))
-                {
-                    return false;
-                }
-            }
-        }
-
-        return file.ReadByte() < 0 && Convert.ToHexStringLower(hasher.GetHashAndReset()) == hash;
+        return CopyInto(connection, id, file, size, hasher)
+            && file.ReadByte() < 0 && Convert.ToHexStringLower(hasher.GetHashAndReset()) == hash;
     }
 
     // Copies exactly length bytes of the file into the row's content, hashing them on the way. Returns false
     // when the file ends early.
-    private static bool CopyInto(SqliteConnection connection, string table, long rowid, Stream file, long length, IncrementalHash hasher)
+    private static bool CopyInto(SqliteConnection connection, long rowid, Stream file, long length, IncrementalHash hasher)
     {
-        using var blob = new SqliteBlob(connection, table, "content", rowid);
+        using var blob = new SqliteBlob(connection, "backups", "content", rowid);
         var buffer = new byte[1 << 16];
         for (var remaining = length; remaining > 0;)
         {

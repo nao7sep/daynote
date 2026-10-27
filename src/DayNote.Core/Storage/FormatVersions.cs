@@ -19,8 +19,7 @@ public static class FormatVersions
     /// <summary><c>records.sqlite3</c> (<c>PRAGMA user_version</c>).</summary>
     public const int Records = 1;
 
-    /// <summary><c>backups.sqlite3</c> (<c>PRAGMA user_version</c>). Format 2 keeps one row per path per
-    /// session; format 3 adds <c>backup_parts</c> for added files too large for one row, whose row content
-    /// an older build would misread as empty. Older experimental stores are left untouched and are not converted.</summary>
+    /// <summary><c>backups.sqlite3</c> (<c>PRAGMA user_version</c>). Each path keeps one row per session,
+    /// holding the file as one value. Older experimental stores are left untouched and are not converted.</summary>
     public const int Backups = 3;
 }

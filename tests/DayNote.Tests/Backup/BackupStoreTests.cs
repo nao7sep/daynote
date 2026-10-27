@@ -347,35 +347,6 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Equal(bytes, row!.Content);
         Assert.Equal(Sha256(bytes), row.ContentSha256);
         Assert.Equal(bytes.Length, row.ByteSize);
-        Assert.Empty(Parts(file));
-    }
-
-    [Fact]
-    public void A_file_larger_than_one_part_is_kept_in_parts_that_join_to_its_exact_bytes()
-    {
-        var previous = BackupStore.PartSize;
-        BackupStore.PartSize = 1000;
-        try
-        {
-            var bytes = new byte[2500];
-            new Random(7).NextBytes(bytes);
-            var file = AddedFile(bytes);
-
-            BackupStore.RecordAdded(file, Sha256(bytes));
-            var row = LatestRow(file);
-            var parts = Parts(file);
-
-            // The row holds the size and hash; its content is in three parts, in order.
-            Assert.Empty(row!.Content);
-            Assert.Equal(2500, row.ByteSize);
-            Assert.Equal(Sha256(bytes), row.ContentSha256);
-            Assert.Equal(3, parts.Count);
-            Assert.Equal(bytes, parts.SelectMany(part => part).ToArray());
-        }
-        finally
-        {
-            BackupStore.PartSize = previous;
-        }
     }
 
     [Fact]
@@ -393,26 +364,6 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Equal(1, RowCount(TargetPath));
     }
 
-    private List<byte[]> Parts(string path)
-    {
-        BackupStore.Close();
-        using var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Mode=ReadOnly;Pooling=False");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            "SELECT p.content FROM backup_parts p JOIN backups b ON b.id = p.backup_id " +
-            "WHERE b.path = $path ORDER BY b.id, p.part";
-        command.Parameters.AddWithValue("$path", Path.GetFullPath(path));
-        using var reader = command.ExecuteReader();
-        var parts = new List<byte[]>();
-        while (reader.Read())
-        {
-            parts.Add((byte[])reader["content"]);
-        }
-
-        return parts;
-    }
-
     // ----- Format version (PRAGMA user_version) --------------------------------------------------
 
     [Fact]
@@ -428,7 +379,7 @@ public sealed class BackupStoreTests : IDisposable
     [InlineData(0)] // tables but no version: unreadable
     [InlineData(-1)] // a version no DayNote writes
     [InlineData(1)] // experimental format before sessions
-    [InlineData(2)] // experimental format before binary parts
+    [InlineData(2)] // earlier experimental format
     [InlineData(FormatVersions.Backups + 1)]
     public void An_unsupported_store_is_left_byte_identical_with_one_warn_and_the_save_still_lands(long userVersion)
     {
