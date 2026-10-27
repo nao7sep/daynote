@@ -115,21 +115,14 @@ public class BinderStore
         flush(Path.GetDirectoryName(assets)!);
     }
 
-    /// <summary>Checked once right before each physical delete: a deletion never goes through a linked
-    /// assets or note folder, while adding and reading follow a link the user placed there. Binder-parent
-    /// aliases are outside this boundary; only the sibling assets and note folder are managed.</summary>
-    public static void CheckNoteAssetsDirectory(string directory)
+    /// <summary>Checked once right before each physical delete under the assets folder. A link the user placed
+    /// there is the user's and is followed, so the check is of the path as written, not where a link points:
+    /// it must still lie inside <paramref name="ownedDirectory"/>, the folder DayNote owns.</summary>
+    public static void CheckInside(string ownedDirectory, string path)
     {
-        foreach (var path in new[] { Path.GetDirectoryName(directory)!, directory })
-        {
-            try
-            {
-                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-                    throw new LinkedAttachmentDirectoryException(path);
-            }
-            catch (FileNotFoundException) { }
-            catch (DirectoryNotFoundException) { }
-        }
+        var owned = Path.TrimEndingDirectorySeparator(Path.GetFullPath(ownedDirectory)) + Path.DirectorySeparatorChar;
+        if (!Path.GetFullPath(path).StartsWith(owned, StringComparison.Ordinal))
+            throw new IOException($"Not deleting outside DayNote's folder {ownedDirectory}: {path}");
     }
 
     /// <summary>Resolves a note's bare attachment filenames into absolute-path <see cref="Attachment"/> objects.</summary>
@@ -145,7 +138,3 @@ public class BinderStore
         return resolved;
     }
 }
-
-/// <summary>A managed attachment folder points through a filesystem link.</summary>
-public sealed class LinkedAttachmentDirectoryException(string path)
-    : IOException($"Attachment folders must not be filesystem links: {path}");

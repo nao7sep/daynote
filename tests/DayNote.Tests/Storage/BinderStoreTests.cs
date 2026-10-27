@@ -52,6 +52,15 @@ public sealed class BinderStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_delete_is_checked_against_the_path_as_written()
+    {
+        var noteDirectory = BinderStore.NoteAssetsDirectory(_path, "note");
+        BinderStore.CheckInside(noteDirectory, Path.Combine(noteDirectory, "photo.jpg"));
+        Assert.Throws<IOException>(() => BinderStore.CheckInside(noteDirectory, Path.Combine(noteDirectory, "..", "photo.jpg")));
+        Assert.Throws<IOException>(() => BinderStore.CheckInside(noteDirectory, noteDirectory + "-other"));
+    }
+
+    [Fact]
     public void Attachment_directory_retry_syncs_the_whole_chain_even_when_it_already_exists()
     {
         var noteDirectory = BinderStore.NoteAssetsDirectory(_path, "note");

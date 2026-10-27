@@ -175,7 +175,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Linked_managed_folders_take_attachments_but_nothing_is_deleted_through_them(bool linkAssets)
+    public async Task Linked_managed_folders_take_attachments_and_deletes_go_through_them(bool linkAssets)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Symbolic-link creation needs separate Windows host qualification.");
         var vm = await OpenNewBinderAsync();
@@ -204,7 +204,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var row = Assert.Single(vm.Attachments);
         await vm.RemoveAttachmentCommand.ExecuteAsync(row);
         Assert.Empty(vm.SelectedNote!.Note.Attachments);
-        Assert.Equal("outside data", File.ReadAllText(Path.Combine(target, "retained.txt")));
+        Assert.False(File.Exists(Path.Combine(target, "retained.txt")));
         var source = Path.Combine(_home, "new.txt");
         File.WriteAllText(source, "new bytes");
         await AddDroppedFiles(vm, [source]);
@@ -212,8 +212,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal("new bytes", File.ReadAllText(Path.Combine(target, "new.txt")));
         await vm.DeleteNoteCommand.ExecuteAsync(vm.SelectedNote);
         Assert.Empty(vm.Notes);
-        Assert.Equal("outside data", File.ReadAllText(Path.Combine(target, "retained.txt")));
-        Assert.True(File.Exists(Path.Combine(target, "new.txt")));
+        Assert.False(Directory.Exists(noteDirectory));
     }
 
     [AvaloniaFact]

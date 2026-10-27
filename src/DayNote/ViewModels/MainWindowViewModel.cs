@@ -994,7 +994,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
             await Task.Run(() =>
             {
-                BinderStore.CheckNoteAssetsDirectory(directory);
+                BinderStore.CheckInside(BinderStore.AssetsDirectory(binderPath), directory);
                 _deleteDirectory(directory);
             });
         }
@@ -1457,7 +1457,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 takenNames.Add(name);
                 if (!import.Keep(name))
                 {
-                    DeleteCopy(copy, noteId);
+                    DeleteCopy(directory, name, noteId);
                     break;
                 }
 
@@ -1570,7 +1570,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             foreach (var name in names)
             {
-                DeleteCopy(Path.Combine(directory, name), noteId: null);
+                DeleteCopy(directory, name, noteId: null);
             }
         });
         _attachmentCleanup = _attachmentCleanup.IsCompleted
@@ -1579,11 +1579,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     // An attachment copy that nothing refers to. A failure leaves an unreferenced file, which is logged.
-    private void DeleteCopy(string path, string? noteId)
+    private void DeleteCopy(string directory, string name, string? noteId)
     {
+        var path = Path.Combine(directory, name);
         try
         {
-            BinderStore.CheckNoteAssetsDirectory(Path.GetDirectoryName(path)!);
+            BinderStore.CheckInside(directory, path);
             _deleteFile(path);
         }
         catch (Exception ex)
@@ -1692,7 +1693,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 }
                 await Task.Run(() =>
                 {
-                    BinderStore.CheckNoteAssetsDirectory(Path.GetDirectoryName(fullPath)!);
+                    BinderStore.CheckInside(BinderStore.NoteAssetsDirectory(binder.Path, note.Id), fullPath);
                     _deleteFile(fullPath);
                 });
             }
