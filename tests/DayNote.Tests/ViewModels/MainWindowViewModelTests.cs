@@ -175,7 +175,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Linked_managed_folders_preserve_note_references_and_outside_files(bool linkAssets)
+    public async Task Linked_managed_folders_take_attachments_but_nothing_is_deleted_through_them(bool linkAssets)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), "Symbolic-link creation needs separate Windows host qualification.");
         var vm = await OpenNewBinderAsync();
@@ -203,15 +203,17 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path == BinderPath));
         var row = Assert.Single(vm.Attachments);
         await vm.RemoveAttachmentCommand.ExecuteAsync(row);
-        Assert.Equal("retained.txt", Assert.Single(vm.SelectedNote!.Note.Attachments));
-        await vm.DeleteNoteCommand.ExecuteAsync(vm.SelectedNote);
-        Assert.Single(vm.Notes);
+        Assert.Empty(vm.SelectedNote!.Note.Attachments);
+        Assert.Equal("outside data", File.ReadAllText(Path.Combine(target, "retained.txt")));
         var source = Path.Combine(_home, "new.txt");
         File.WriteAllText(source, "new bytes");
         await AddDroppedFiles(vm, [source]);
-        Assert.Equal("retained.txt", Assert.Single(vm.SelectedNote!.Note.Attachments));
+        Assert.Equal("new.txt", Assert.Single(vm.SelectedNote!.Note.Attachments));
+        Assert.Equal("new bytes", File.ReadAllText(Path.Combine(target, "new.txt")));
+        await vm.DeleteNoteCommand.ExecuteAsync(vm.SelectedNote);
+        Assert.Empty(vm.Notes);
         Assert.Equal("outside data", File.ReadAllText(Path.Combine(target, "retained.txt")));
-        Assert.False(File.Exists(Path.Combine(target, "new.txt")));
+        Assert.True(File.Exists(Path.Combine(target, "new.txt")));
     }
 
     [AvaloniaFact]
@@ -4246,36 +4248,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         var adding = AddDroppedFiles(vm, [file]);
         await held.Entered.Task;
         return (vm, held, note, file, adding);
-    }
-
-    [AvaloniaFact]
-    public async Task An_attachment_publication_collision_retries_without_replacing_the_outside_file()
-    {
-        var calls = 0;
-        var vm = NewViewModel(copyFile: (source, destination) =>
-        {
-            if (Interlocked.Increment(ref calls) == 1)
-                File.WriteAllText(destination, "outside bytes");
-            AtomicFile.CopyNew(source, destination);
-        });
-        _dialogs.BinderToCreate = BinderPath;
-        await vm.NewBinderCommand.ExecuteAsync(null);
-        vm.NewNoteCommand.Execute(null);
-        var note = vm.SelectedNote!.Note;
-        var source = Path.Combine(_home, "collision.txt");
-        File.WriteAllText(source, "attachment bytes");
-
-        await AddDroppedFiles(vm, [source]);
-
-        Assert.Equal(2, calls);
-        Assert.Equal("collision (1).txt", Assert.Single(note.Attachments));
-        var directory = BinderStore.NoteAssetsDirectory(BinderPath, note.Id);
-        Assert.Equal("outside bytes", File.ReadAllText(Path.Combine(directory, "collision.txt")));
-        Assert.Equal("attachment bytes", File.ReadAllText(Path.Combine(directory, "collision (1).txt")));
-        Assert.Equal("collision (1).txt", Assert.Single(vm.Attachments).FileName);
-        await vm.SaveNowCommand.ExecuteAsync(null);
-        Assert.Equal("collision (1).txt", Assert.Single(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments));
-        await vm.ShutdownAsync();
     }
 
     [AvaloniaTheory]

@@ -1,5 +1,4 @@
 using System.Text;
-using System.Collections.Concurrent;
 using DayNote.Core.Identity;
 using DayNote.Core.Models;
 using DayNote.Core.Toml;
@@ -21,12 +20,6 @@ namespace DayNote.Core.Storage;
 /// </remarks>
 public class BinderStore
 {
-    private readonly ConcurrentDictionary<string, AtomicFile.TextPublication> _publications = new(StringComparer.Ordinal);
-    private readonly Action<string> _synchronize;
-
-    public BinderStore() : this(AtomicFile.FlushDirectory) { }
-    internal BinderStore(Action<string> synchronize) => _synchronize = synchronize;
-
     /// <summary>Loads a binder and the content hash of the version it read.</summary>
     /// <exception cref="NewerFormatException">The binder was written by a newer DayNote; it is left untouched.</exception>
     public virtual LoadedBinder Load(string path)
@@ -58,36 +51,26 @@ public class BinderStore
     public virtual SavedBinder SaveText(string path, string text, string? expectedHash)
     {
         var fullPath = Path.GetFullPath(path);
-        var publication = _publications.GetOrAdd(fullPath, static _ => new());
-        var existed = false;
-        try
+        var existed = File.Exists(fullPath);
+        if (existed)
         {
-            existed = File.Exists(fullPath);
-            if (existed)
+            var raw = File.ReadAllText(fullPath, Encoding.UTF8);
+            var diskHash = ContentHash.Sha256Hex(raw);
+            if (expectedHash is null || diskHash != expectedHash)
             {
-                var raw = File.ReadAllText(fullPath, Encoding.UTF8);
-                var diskHash = ContentHash.Sha256Hex(raw);
-                if (expectedHash is null || diskHash != expectedHash)
+                if (NewerVersion(raw) is { } newer)
                 {
-                    if (NewerVersion(raw) is { } newer)
-                    {
-                        throw new NewerFormatException("binder", newer, FormatVersions.Binder);
-                    }
+                    throw new NewerFormatException("binder", newer, FormatVersions.Binder);
+                }
 
-                    if (expectedHash is not null && publication.Hash != diskHash)
-                    {
-                        throw new BinderChangedOnDiskException(fullPath, diskHash);
-                    }
+                if (expectedHash is not null)
+                {
+                    throw new BinderChangedOnDiskException(fullPath, diskHash);
                 }
             }
+        }
 
-            AtomicFile.WriteAllText(fullPath, text, true, publication, _synchronize);
-        }
-        finally
-        {
-            if (publication.Hash is null)
-                _publications.TryRemove(fullPath, out _);
-        }
+        AtomicFile.WriteAllText(fullPath, text);
         return new SavedBinder(fullPath, ContentHash.Sha256Hex(text), text, Recreated: expectedHash is not null && !existed);
     }
 
@@ -123,9 +106,7 @@ public class BinderStore
 
     internal static void EnsureNoteAssetsDirectory(string directory, Action<string> flush)
     {
-        CheckNoteAssetsDirectory(directory);
         Directory.CreateDirectory(directory);
-        CheckNoteAssetsDirectory(directory);
         // Repeat even when visible already: an earlier failed synchronization may have created it.
         // A parent flush is not recursive, so each newly usable name needs its containing directory.
         var assets = Path.GetDirectoryName(directory)!;
@@ -134,8 +115,9 @@ public class BinderStore
         flush(Path.GetDirectoryName(assets)!);
     }
 
-    /// <summary>Refuses linked managed folders before writes or physical deletion. Binder-parent
-    /// aliases are intentionally outside this boundary; only the sibling assets and note folder are managed.</summary>
+    /// <summary>Checked once right before each physical delete: a deletion never goes through a linked
+    /// assets or note folder, while adding and reading follow a link the user placed there. Binder-parent
+    /// aliases are outside this boundary; only the sibling assets and note folder are managed.</summary>
     public static void CheckNoteAssetsDirectory(string directory)
     {
         foreach (var path in new[] { Path.GetDirectoryName(directory)!, directory })

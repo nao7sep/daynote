@@ -84,7 +84,7 @@ public sealed class ConfigStore(string path, Action<string> warn)
             }
         }
 
-        if (!_store.HasPendingPublication && (_onDisk is null ? sets.Count == 0 : SameSets(_onDisk, sets)))
+        if (_onDisk is null ? sets.Count == 0 : SameSets(_onDisk, sets))
         {
             return;
         }

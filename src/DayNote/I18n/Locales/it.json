@@ -21,7 +21,6 @@
   "attachments.failed": "Impossibile aggiungere: {names}. Verifica che i file e la cartella del raccoglitore siano disponibili, quindi riprova.",
   "attachments.folderFailed": "Impossibile preparare la cartella degli allegati. Verifica che la posizione del raccoglitore sia scrivibile, quindi riprova.",
   "attachments.join": "{first} {rest}",
-  "attachments.linkedFolder": "Le cartelle degli allegati che sono collegamenti del file system non possono essere modificate. Sposta prima i file in una normale cartella degli allegati.",
   "attachments.lockedWhileAdding": "La nota è stata bloccata mentre i file venivano aggiunti, quindi non sono stati allegati.",
   "attachments.noNote": "Seleziona o crea una nota per aggiungere allegati.",
   "attachments.pane": "Allegati",

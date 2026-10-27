@@ -932,9 +932,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        if (!await CanChangeAttachmentDirectoryAsync(_current!.Path, note))
-            return;
-
         var deletingSelected = ReferenceEquals(target, SelectedNote);
         var index = Notes.IndexOf(target);
         var binder = _current;
@@ -1192,7 +1189,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 {
                     AttachmentResult = new OperationResultViewModel(
                         OperationResultKind.Error,
-                        Message.Of(ex is LinkedAttachmentDirectoryException ? "attachments.linkedFolder" : "attachments.folderFailed"));
+                        Message.Of("attachments.folderFailed"));
                 }
 
                 return;
@@ -1470,21 +1467,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     continue;
                 }
 
-                string name;
-                string copy;
-                while (true)
-                {
-                    import.Stopping.ThrowIfCancellationRequested();
-                    BinderStore.CheckNoteAssetsDirectory(directory);
-                    name = UniqueFileName.Pick(takenNames, Path.GetFileName(source));
-                    copy = Path.Combine(directory, name);
-                    try { _copyFile(source, copy); break; }
-                    catch (AttachmentNameConflictException)
-                    {
-                        // Only the atomic no-replace collision is retried; other copy failures escape.
-                        takenNames.Add(name);
-                    }
-                }
+                var name = UniqueFileName.Pick(takenNames, Path.GetFileName(source));
+                var copy = Path.Combine(directory, name);
+                _copyFile(source, copy);
                 takenNames.Add(name);
                 if (!import.Keep(name))
                 {
@@ -1500,10 +1485,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 BackupStore.RecordAdded(Path.GetFullPath(copy), hash);
                 addedNames.Add(name);
                 hashes[hash] = name;
-            }
-            catch (OperationCanceledException) when (import.Stopping.IsCancellationRequested)
-            {
-                break;
             }
             catch (Exception ex)
             {
@@ -1649,23 +1630,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         ? QuotedValue.Name(names[0])
         : Message.Of("files.join", ("first", QuotedValue.Name(names[0])), ("rest", JoinNames(names.Skip(1).ToArray())));
 
-    private async Task<bool> CanChangeAttachmentDirectoryAsync(string binderPath, Note note)
-    {
-        try
-        {
-            await Task.Run(() => BinderStore.CheckNoteAssetsDirectory(BinderStore.NoteAssetsDirectory(binderPath, note.Id)));
-            return IsLiveNote(note);
-        }
-        catch (Exception ex)
-        {
-            _log.Warn("Could not admit attachment folder change", new { binderPath, noteId = note.Id }, ex);
-            ShowResult(OperationResultKind.Warning,
-                Message.Of(ex is LinkedAttachmentDirectoryException ? "attachments.linkedFolder" : "attachments.folderFailed"),
-                AttachmentCleanupResultKey);
-            return false;
-        }
-    }
-
     private Task OwnAttachmentCleanup(Task cleanup)
     {
         _attachmentCleanup = _attachmentCleanup.IsCompleted ? cleanup : Task.WhenAll(_attachmentCleanup, cleanup);
@@ -1705,9 +1669,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             return;
         }
-
-        if (!await CanChangeAttachmentDirectoryAsync(_current!.Path, note) || note.Locked || !note.Attachments.Contains(item.FileName))
-            return;
 
         _log.Info("Removing attachment", new { noteId = note.Id, file = item.FileName });
         var binder = _current;
