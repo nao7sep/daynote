@@ -3,7 +3,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
-using DayNote.Core.Storage;
 using DayNote.I18n;
 using DayNote.Services;
 using DayNote.ViewModels;
@@ -14,8 +13,6 @@ namespace DayNote;
 public partial class App : Application
 {
     internal static Message? StartupFailureMessage { get; set; }
-
-    internal static ConfigStore? StartupConfigStore { get; set; }
 
     /// <summary>
     /// The computer's own languages, in order, as <c>LanguageBootstrap</c> read them before the app was
@@ -59,10 +56,10 @@ public partial class App : Application
                 return;
             }
 
-            // Startup consumes the config outcome already read for language and gates required storage
+            // Startup takes the settings already loaded for the language and gates required storage
             // failures, so a failure becomes an in-app error rather than a pre-UI crash.
             var dialogs = new DialogService(Program.Log);
-            var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log, configStore: StartupConfigStore)
+            var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log, startupSettings: Program.Settings)
             {
                 ComputerLanguages = ComputerLanguages,
             };

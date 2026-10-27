@@ -159,7 +159,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         Action<string, string>? copyFile = null,
         Func<string, bool>? fileExists = null,
         Func<string, bool>? directoryExists = null,
-        ConfigStore? configStore = null)
+        (ConfigStore Store, AppConfig? Config, Exception? Error)? startupSettings = null)
     {
         _paths = paths;
         _dialogs = dialogs;
@@ -171,7 +171,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _copyFile = copyFile ?? AtomicFile.CopyNew;
         _fileExists = fileExists ?? File.Exists;
         _directoryExists = directoryExists ?? Directory.Exists;
-        _configStore = configStore ?? new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
+        _configStore = startupSettings?.Store ?? new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         // Not recorded in the backup history: placement and selection are state, never the user's work.
         _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
 
@@ -179,7 +179,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // crashing before any UI exists: a settings file that cannot be read halts with saving
         // disabled and an error dialog once the window is shown; a state file that cannot be read
         // only costs the remembered view.
-        LoadConfigAndState();
+        LoadConfigAndState(startupSettings);
         _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
 
         Editor = new EditorViewModel(_displayZone, _clock);
@@ -3093,18 +3093,27 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // whether unreadable, malformed or newer, halt and stay untouched: they may hold the binder list and
     // authored text styles. The view state is disposable: any failure is logged, defaults apply, and the
     // next state save replaces the file.
-    private void LoadConfigAndState()
+    private void LoadConfigAndState((ConfigStore Store, AppConfig? Config, Exception? Error)? startupSettings)
     {
-        try
+        var error = startupSettings?.Error;
+        if (error is null)
         {
-            _paths.EnsureCreated();
-            _config = _configStore.Load();
+            try
+            {
+                _paths.EnsureCreated();
+                _config = startupSettings?.Config ?? _configStore.Load();
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
         }
-        catch (Exception ex)
+
+        if (error is not null)
         {
-            _configLoadError = ex;
+            _configLoadError = error;
             _config = new AppConfig();
-            _log.Error("Failed to load configuration; saving disabled", new { path = _paths.ConfigFile }, ex);
+            _log.Error("Failed to load configuration; saving disabled", new { path = _paths.ConfigFile }, error);
             return;
         }
 

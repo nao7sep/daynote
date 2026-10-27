@@ -1,4 +1,3 @@
-using DayNote.Core.Storage;
 using static DayNote.Views.ObjC;
 
 namespace DayNote.I18n;
@@ -10,37 +9,24 @@ namespace DayNote.I18n;
 /// reader's language, and on macOS the items AppKit contributes itself — Services, Emoji &amp;
 /// Symbols, Start Dictation — are drawn in the language it settles on when the application object is
 /// created, which Avalonia does as it starts. So the language is resolved and handed to AppKit before
-/// the app is built, from the saved preference in the shared validated config store.
+/// the app is built, from the settings <c>Program</c> loads once and hands on to the main window.
 ///
-/// A failed read chooses System for the startup-failure surface. The store retains that same failure
-/// for the app's startup gate, so language lookup cannot hide a failed required read.
+/// Settings that could not be loaded mean System here, so the startup-failure surfaces speak the
+/// computer's language, which is what the localization conventions ask of them.
 /// </summary>
 internal static class LanguageBootstrap
 {
     /// <summary>
-    /// Resolves the language, tells the app, and points AppKit at it. <paramref name="store"/> is the
-    /// shared config store, or null when the storage location itself could not be resolved. Returns the
+    /// Resolves the language, tells the app, and points AppKit at it. <paramref name="preference"/> is
+    /// the saved language preference, or System when no settings could be loaded. Returns the
     /// computer's own languages, which the app keeps so a later change resolves System the same way.
     /// </summary>
-    internal static IReadOnlyList<string> Start(ConfigStore? store)
+    internal static IReadOnlyList<string> Start(string preference)
     {
         var computerLanguages = ComputerLanguages.Read();
-        Localizer.Use(ReadPreference(store), computerLanguages);
+        Localizer.Use(preference, computerLanguages);
         AlignAppKit(Localizer.Language);
         return computerLanguages;
-    }
-
-    internal static string ReadPreference(ConfigStore? store)
-    {
-        try
-        {
-            return store?.Load().Language ?? Languages.System;
-        }
-        catch (Exception)
-        {
-            // The same store rethrows this failure at the required startup gate; only language uses System.
-            return Languages.System;
-        }
     }
 
     /// <summary>

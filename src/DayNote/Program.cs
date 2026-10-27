@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Avalonia;
 using DayNote.Core.Backup;
+using DayNote.Core.Configuration;
 using DayNote.Core.Storage;
 using DayNote.I18n;
 using DayNote.Logging;
@@ -20,6 +21,13 @@ internal static class Program
 
     /// <summary>The single path resolver, resolved once here and threaded to the rest of the app.</summary>
     internal static AppPaths Paths { get; private set; } = null!;
+
+    /// <summary>
+    /// The settings store and the outcome of its one startup load, read here for the language and handed
+    /// to the main window, which owns presenting a load failure. Avalonia constructs the app itself, so
+    /// startup values reach it through this class, as <see cref="Paths"/> and <see cref="Log"/> do.
+    /// </summary>
+    internal static (ConfigStore Store, AppConfig? Config, Exception? Error) Settings { get; private set; }
 
     /// <summary>
     /// Set once the operating system is ending the session. Everything after the main window closes then
@@ -64,13 +72,27 @@ internal static class Program
                 bootstrapWarnings.Add(key);
             }
         });
-        App.StartupConfigStore = configStore;
+        AppConfig? config = null;
+        Exception? configError = null;
+        if (configStore is not null)
+        {
+            try
+            {
+                config = configStore.Load();
+            }
+            catch (Exception ex)
+            {
+                configError = ex;
+            }
+
+            Settings = (configStore, config, configError);
+        }
 
         // The interface language, before anything can draw and before Avalonia creates the macOS
         // application object, which settles the language of the menu items AppKit contributes itself.
-        // It shares the validated load outcome with startup and uses the computer's own languages on a
-        // failed read, so the startup-failure paths below have a usable interface language.
-        App.ComputerLanguages = LanguageBootstrap.Start(configStore);
+        // Settings that could not be loaded mean the computer's own languages, so the startup-failure
+        // paths below have a usable interface language.
+        App.ComputerLanguages = LanguageBootstrap.Start(config?.Language ?? Languages.System);
 
         if (resolved is not { } paths)
         {

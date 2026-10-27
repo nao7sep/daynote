@@ -1,4 +1,3 @@
-using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using DayNote.Core.Configuration;
 
@@ -22,36 +21,7 @@ public sealed class ConfigStore(string path, Action<string> warn)
     private Dictionary<string, JsonElement> _kept = new();
     private JsonElement _loaded;
 
-    // Bootstrap and startup share the same validated outcome, including an original read failure.
-    private readonly object _loadGate = new();
-    private bool _loadAttempted;
-    private AppConfig? _loadedConfig;
-    private ExceptionDispatchInfo? _loadFailure;
-
     public AppConfig Load()
-    {
-        lock (_loadGate)
-        {
-            if (_loadAttempted)
-            {
-                _loadFailure?.Throw();
-                return _loadedConfig!;
-            }
-
-            _loadAttempted = true;
-            try
-            {
-                return _loadedConfig = LoadCore();
-            }
-            catch (Exception ex)
-            {
-                _loadFailure = ExceptionDispatchInfo.Capture(ex);
-                throw;
-            }
-        }
-    }
-
-    private AppConfig LoadCore()
     {
         _onDisk = _store.Load();
         var stored = _onDisk ?? new();
