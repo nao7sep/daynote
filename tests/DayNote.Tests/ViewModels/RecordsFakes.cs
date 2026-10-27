@@ -30,8 +30,6 @@ internal sealed class FakeRecordsSource : IRecordsSource
 
     public Exception? DetailFailure { get; set; }
 
-    public TaskCompletionSource<IReadOnlyList<string>>? HeldSessions { get; set; }
-
     public TaskCompletionSource<RecordDetail?>? HeldDetail { get; set; }
 
     public int DetailReads { get; private set; }
@@ -111,11 +109,6 @@ internal sealed class FakeRecordsSource : IRecordsSource
     public Task<IReadOnlyList<string>> ReadSessionsAsync()
     {
         SessionReads++;
-        if (HeldSessions is { } held)
-        {
-            return held.Task;
-        }
-
         return Task.FromResult<IReadOnlyList<string>>(
             Records.Select(record => record.Session).Distinct().OrderByDescending(session => session, StringComparer.Ordinal).ToList());
     }

@@ -21,9 +21,8 @@ namespace DayNote.Logging;
 /// <c>logs/yyyymmdd-hhmmss-utc.log</c>, named for the session, carrying the database's error; if that
 /// fails too, it goes to <see cref="Console.Error"/>. Logging never throws.
 ///
-/// A bounded queue drops excess diagnostics while the sink is stalled and records their count once it
-/// recovers. The records window reads through the same thread (<see cref="IRecordsSource"/>), so a read
-/// sees every accepted entry queued before it and never contends with a write for the connection.
+/// The records window reads through the same thread (<see cref="IRecordsSource"/>), so a read sees
+/// every entry logged before it and never contends with a write for the connection.
 /// </remarks>
 public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
 {
@@ -53,9 +52,7 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     private static readonly TimeSpan CloseWait = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ReadWait = TimeSpan.FromSeconds(10);
 
-    // A small burst allowance for human desktop operations; a stalled sink must not grow memory forever.
-    internal const int PendingCapacity = 1024;
-    private readonly BlockingCollection<Action> _queue = new(PendingCapacity);
+    private readonly BlockingCollection<Action> _queue = new();
     private readonly Thread _owner;
     private readonly SqliteConnection? _connection;
     private readonly Exception? _openError;
@@ -64,7 +61,6 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     private readonly bool _debugEnabled;
     private readonly TimeProvider _clock;
     private int _disposed;
-    private long _droppedRecords;
 
     private RecordsLogger(
         SqliteConnection? connection, Exception? openError, DateTimeOffset sessionStart, string fallbackDirectory, bool debugEnabled,
@@ -157,10 +153,7 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     {
         var time = DayNoteTime.ToIso(_clock.GetUtcNow());
         var (fields, noteId) = SafeFields(data, error);
-        if (!TryQueue(() => Insert(time, level, message, noteId, fields)) && Volatile.Read(ref _disposed) == 0)
-        {
-            Interlocked.Increment(ref _droppedRecords);
-        }
+        TryQueue(() => Insert(time, level, message, noteId, fields));
     }
 
     private void Insert(string time, string level, string message, string? noteId, string fields)
@@ -241,9 +234,7 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         });
         if (!queued)
         {
-            result.TrySetException(new InvalidOperationException(Volatile.Read(ref _disposed) == 0
-                ? "The records logger is busy; try again."
-                : "The records logger is closed."));
+            result.TrySetException(new InvalidOperationException("The records logger is closed."));
         }
 
         try
@@ -263,13 +254,6 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         foreach (var operation in _queue.GetConsumingEnumerable())
         {
             operation();
-            var dropped = Interlocked.Exchange(ref _droppedRecords, 0);
-            if (dropped > 0)
-            {
-                var (fields, noteId) = SafeFields(new { droppedCount = dropped }, error: null);
-                Insert(DayNoteTime.ToIso(_clock.GetUtcNow()), "warn",
-                    "Records dropped while the logger was busy", noteId, fields);
-            }
         }
 
         // Closed by the owning thread once everything queued is written, so a close that checkpoints the
@@ -284,7 +268,7 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         }
     }
 
-    /// <summary>Queues <paramref name="operation"/> for the owning thread; false when the queue is full or the logger is closed.</summary>
+    /// <summary>Queues <paramref name="operation"/> for the owning thread; false once the logger is closed.</summary>
     private bool TryQueue(Action operation)
     {
         try

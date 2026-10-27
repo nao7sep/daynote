@@ -146,67 +146,6 @@ public sealed class RecordsLoggerTests : IDisposable
     }
 
     [Fact]
-    public async Task A_saturated_logger_drops_excess_records_without_waiting_and_reports_the_count_when_it_recovers()
-    {
-        using var entered = new ManualResetEventSlim();
-        using var release = new ManualResetEventSlim();
-        using var drained = new ManualResetEventSlim();
-        using var log = Open();
-        var stored = 0;
-        log.Stored += () =>
-        {
-            var count = Interlocked.Increment(ref stored);
-            if (count == 1)
-            {
-                entered.Set();
-                release.Wait();
-            }
-            else if (count == RecordsLogger.PendingCapacity + 2)
-            {
-                // The original row, every admitted row and the directly inserted overload warning.
-                drained.Set();
-            }
-        };
-        log.Info("holds the owner");
-        Task? producer = null;
-        try
-        {
-            Assert.True(entered.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The records owner did not reach the stored gate.");
-            producer = Task.Run(() =>
-            {
-                for (var i = 0; i < RecordsLogger.PendingCapacity + 7; i++)
-                {
-                    log.Info("burst", new { index = i });
-                }
-            }, TestContext.Current.CancellationToken);
-            await producer.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
-            Assert.False(drained.IsSet);
-            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => log.ReadSessionsAsync());
-            Assert.Contains("busy", error.Message);
-        }
-        finally
-        {
-            release.Set();
-            if (producer is not null)
-            {
-                await producer;
-            }
-        }
-
-        Assert.True(drained.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken), "The records owner did not drain admitted records.");
-        log.Info("after recovery");
-        log.Flush();
-
-        var rows = ReadRows();
-        Assert.Equal(RecordsLogger.PendingCapacity + 3, rows.Count);
-        Assert.Equal(RecordsLogger.PendingCapacity, rows.Count(row => row.Message == "burst"));
-        var warning = Assert.Single(rows, row => row.Level == "warn");
-        Assert.Equal("Records dropped while the logger was busy", warning.Message);
-        Assert.Equal(7, (long)warning.Fields["droppedCount"]!);
-        Assert.Equal("after recovery", rows[^1].Message);
-    }
-
-    [Fact]
     public void One_launch_is_one_session_and_the_next_launch_another()
     {
         using (var first = Open())

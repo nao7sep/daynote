@@ -61,8 +61,6 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
     private bool _liveSuspended;
     private bool _atTop = true;
     private bool _started;
-    private bool _sessionsLoaded;
-    private bool _readingSessions;
     private bool _disposed;
     private IDisposable? _searchTimer;
     private IDisposable? _liveTimer;
@@ -354,11 +352,6 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         {
             SelectedRecord = row;
         }
-
-        if (!_sessionsLoaded && !_readingSessions)
-        {
-            await ReadSessionsAsync();
-        }
     }
 
     private async Task LoadMoreAsync(bool retryFailed)
@@ -488,28 +481,10 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
 
     private async Task ReadSessionsAsync()
     {
-        if (_sessionsLoaded || _readingSessions || _disposed)
-        {
-            return;
-        }
-
-        _readingSessions = true;
+        IReadOnlyList<string> sessions;
         try
         {
-            var sessions = await _source.ReadSessionsAsync();
-            if (_disposed)
-            {
-                return;
-            }
-
-            // Merge by value: a current-session notification may have arrived during the initial read.
-            // Existing choices retain their identity, so the selected filter stays selected.
-            foreach (var session in sessions)
-            {
-                AddSession(session);
-            }
-
-            _sessionsLoaded = true;
+            sessions = await _source.ReadSessionsAsync();
         }
         catch (Exception ex)
         {
@@ -517,29 +492,25 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
             {
                 ReadFailed("launches", ex);
             }
-        }
-        finally
-        {
-            _readingSessions = false;
-        }
-    }
 
-    private void EnsureCurrentSession() => AddSession(_source.Session);
+            return;
+        }
 
-    private void AddSession(string session)
-    {
-        if (LaunchOptions.Any(option => option.Value == session))
+        if (_disposed)
         {
             return;
         }
 
-        var position = 1;
-        while (position < LaunchOptions.Count && string.CompareOrdinal(LaunchOptions[position].Value, session) > 0)
+        // Launches only ever join the list, newest first, after All; the chosen one stays chosen.
+        for (var index = 0; index < sessions.Count; index++)
         {
-            position++;
+            var position = index + 1;
+            if (position >= LaunchOptions.Count || LaunchOptions[position].Value != sessions[index])
+            {
+                var session = sessions[index];
+                LaunchOptions.Insert(position, new RecordFilterOption<string>(session, () => LaunchLabel(session)));
+            }
         }
-
-        LaunchOptions.Insert(position, new RecordFilterOption<string>(session, () => LaunchLabel(session)));
     }
 
     private async Task ReadDetailAsync(long id, long request)
@@ -582,13 +553,7 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
     // until the list is back there, so the list never moves under the reader.
     internal void OnStored()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
-        EnsureCurrentSession();
-        if (_liveTimer is not null || _liveSuspended)
+        if (_disposed || _liveTimer is not null || _liveSuspended)
         {
             return;
         }
@@ -601,6 +566,7 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
                 return;
             }
 
+            _ = ReadSessionsAsync();
             if (_atTop)
             {
                 _ = ReadNewestAsync();
