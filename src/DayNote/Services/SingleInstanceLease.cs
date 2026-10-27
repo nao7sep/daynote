@@ -62,8 +62,6 @@ internal sealed class SingleInstanceLease : IDisposable
     internal Task Closing => _closing;
     private readonly TcpListener _listener;
     private readonly Thread _listenerThread;
-    private readonly object _acceptedClientGate = new();
-    private TcpClient? _acceptedClient;
     private readonly ActivationRequestRouter _activationRouter = new();
     private volatile bool _disposed;
 
@@ -240,17 +238,9 @@ internal sealed class SingleInstanceLease : IDisposable
     {
         while (!_disposed)
         {
-            TcpClient? client = null;
             try
             {
-                client = _listener.AcceptTcpClient();
-                lock (_acceptedClientGate)
-                {
-                    if (_disposed)
-                        return;
-                    _acceptedClient = client;
-                }
-
+                using var client = _listener.AcceptTcpClient();
                 using var stream = client.GetStream();
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(1));
                 // One frame is exactly the eight ASCII bytes "activate". Do not wait for EOF;
@@ -266,18 +256,8 @@ internal sealed class SingleInstanceLease : IDisposable
                 or IOException or SocketException or ObjectDisposedException)
             {
                 // A partial request, deadline, or loopback failure ends only this connection.
-                // Closing the accepted client during disposal also interrupts its pending read.
                 if (_disposed)
                     return;
-            }
-            finally
-            {
-                lock (_acceptedClientGate)
-                {
-                    if (ReferenceEquals(_acceptedClient, client))
-                        _acceptedClient = null;
-                }
-                client?.Dispose();
             }
         }
     }
@@ -302,8 +282,6 @@ internal sealed class SingleInstanceLease : IDisposable
         }
 
         _listener.Stop();
-        lock (_acceptedClientGate)
-            _acceptedClient?.Dispose();
         var ownership = Interlocked.Exchange(ref _ownership, null);
         _closing = Task.Run(() =>
         {

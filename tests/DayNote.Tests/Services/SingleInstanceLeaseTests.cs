@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -105,51 +104,6 @@ public sealed class SingleInstanceLeaseTests
             });
         }
         finally { Directory.Delete(root, recursive: true); }
-    }
-
-    [Fact]
-    public async Task Disposal_closes_an_accepted_incomplete_activation_stream()
-    {
-        var root = NewRoot();
-        try
-        {
-            await Task.Run(() => AssertDisposalClosesAcceptedStream(root), TestContext.Current.CancellationToken);
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    // The compatibility mutex belongs to the acquiring thread, so acquisition, the physical-close
-    // wait, and final disposal stay together on one synchronous owner thread.
-    private static void AssertDisposalClosesAcceptedStream(string root)
-    {
-        Assert.True(SingleInstanceLease.TryAcquire(root, out var lease));
-        using (lease)
-        using (var client = new TcpClient())
-        {
-            client.Connect(IPAddress.Loopback, ActivationPort(root));
-            client.GetStream().Write("act"u8);
-
-            // Observe the actual accepted socket without adding a production test hook or
-            // inferring cancellation from a timing bound shorter than the request deadline.
-            var acceptedField = typeof(SingleInstanceLease).GetField("_acceptedClient", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            var gate = typeof(SingleInstanceLease).GetField("_acceptedClientGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(lease)!;
-            TcpClient? accepted = null;
-            Assert.True(SpinWait.SpinUntil(() =>
-            {
-                lock (gate)
-                    accepted = (TcpClient?)acceptedField.GetValue(lease);
-                return accepted is not null;
-            }, TimeSpan.FromSeconds(10)));
-            var socketHandle = accepted!.Client.SafeHandle;
-
-            lease!.Dispose(TimeSpan.Zero);
-
-            Assert.True(socketHandle.IsClosed);
-            var listenerThread = (Thread)typeof(SingleInstanceLease)
-                .GetField("_listenerThread", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(lease)!;
-            Assert.True(listenerThread.Join(TimeSpan.FromSeconds(10)));
-            Assert.True(((IAsyncResult)lease.Closing).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(10)));
-        }
     }
 
     private static int ActivationPort(string root) => int.Parse(
