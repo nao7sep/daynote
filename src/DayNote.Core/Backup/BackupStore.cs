@@ -296,7 +296,7 @@ public static class BackupStore
     }
 
     /// <summary>
-    /// Opens and initializes the store once: checks its format version, converts a format-1 store, creates
+    /// Opens and initializes the store once: checks its format version, creates
     /// the table if absent, and switches on WAL and a short busy timeout. On any failure it logs one warn and
     /// leaves recording disabled for the session; it never throws.
     /// </summary>
