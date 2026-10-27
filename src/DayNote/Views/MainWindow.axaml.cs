@@ -88,7 +88,7 @@ public partial class MainWindow : Window
             BindersList,
             canReorder: null,
             (item, target) => Vm?.MoveBinder(item, target) ?? false,
-            async () => { if (Vm is { } vm) await vm.CommitBinderOrder(); },
+            () => Vm?.CommitBinderOrder(),
             () => Vm?.BinderOrder() ?? [],
             order => Vm?.RestoreBinderOrder(order) ?? false);
         _attachmentReorder = new ListReorder<AttachmentItemViewModel>(
@@ -700,22 +700,22 @@ public partial class MainWindow : Window
 
     // Blur applies the title edit. (Enter/Escape are handled in BinderTitle_KeyDown first, which
     // clears IsEditing, so this becomes a no-op for those paths.)
-    private async void BinderTitle_LostFocus(object? sender, RoutedEventArgs e)
+    private void BinderTitle_LostFocus(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: BinderListItemViewModel item } && DataContext is MainWindowViewModel vm)
         {
-            await vm.ApplyBinderRename(item, item.EditText);
+            vm.ApplyBinderRename(item, item.EditText);
         }
     }
 
     // Commit the inline binder rename. Submitted is raised by ComposingTextBox only on a genuine Enter —
     // an Enter consumed by the IME to accept a composition candidate arrives as Key.ImeProcessed and is
     // ignored — so renaming with an IME no longer commits (and tears the field closed) mid-composition.
-    private async void BinderTitle_Submitted(object? sender, RoutedEventArgs e)
+    private void BinderTitle_Submitted(object? sender, RoutedEventArgs e)
     {
         if (sender is Control { DataContext: BinderListItemViewModel item } && DataContext is MainWindowViewModel vm)
         {
-            await vm.ApplyBinderRename(item, item.EditText);
+            vm.ApplyBinderRename(item, item.EditText);
             FocusSelectedBinderRow();
         }
     }

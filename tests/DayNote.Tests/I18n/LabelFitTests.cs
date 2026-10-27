@@ -46,7 +46,7 @@ public class LabelFitTests : WindowTest
     {
         using var speaking = Localizer.Speaking(tag);
 
-        var dialog = Show(new SettingsDialog(new AppConfig(), _ => Task.FromResult(true)));
+        var dialog = Show(new SettingsDialog(new AppConfig(), _ => true));
 
         // The theme choices, the checkboxes, the style list and its badge, and the buttons.
         AssertNothingClipped(dialog, Content(dialog), tag, atLeast: 10);

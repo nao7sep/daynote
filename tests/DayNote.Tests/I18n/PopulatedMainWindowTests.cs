@@ -40,7 +40,7 @@ public sealed class PopulatedMainWindowTests
                     Assert.True(Convert.ToInt64(command.ExecuteScalar()) > 0);
                 }
                 // Reopen through the managed write path so Dispose has a live singleton to close.
-                await fixture.ViewModel.CycleTextStyleCommand.ExecuteAsync(null);
+                fixture.ViewModel.CycleTextStyleCommand.Execute(null);
                 if (previousFixtureHome is not null)
                 {
                     Assert.False(Directory.Exists(previousFixtureHome));

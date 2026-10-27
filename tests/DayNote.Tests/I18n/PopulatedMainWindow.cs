@@ -103,7 +103,7 @@ internal sealed class PopulatedMainWindow : IDisposable
         Dialogs.NewBinderPickerError = new IOException("picker");
         await vm.NewBinderCommand.ExecuteAsync(null);
         Dialogs.NewBinderPickerError = null;
-        await vm.CycleTextStyleCommand.ExecuteAsync(null);
+        vm.CycleTextStyleCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
         await Task.WhenAll(vm.Attachments.Select(row => row.ThumbnailTask));
         Dispatcher.UIThread.RunJobs();
@@ -125,7 +125,7 @@ internal sealed class PopulatedMainWindow : IDisposable
         Dialogs.BinderToCreate = Path.Combine(deep, "a-binder-file-with-a-rather-long-descriptive-name-for-testing.daynote");
         await vm.NewBinderCommand.ExecuteAsync(null);
         var row = vm.Binders.Single(binder => binder.IsCurrent);
-        await vm.ApplyBinderRename(row, "A binder title long enough to need more room than the pane can give it");
+        vm.ApplyBinderRename(row, "A binder title long enough to need more room than the pane can give it");
 
         vm.NewNoteCommand.Execute(null);
         vm.Editor.Body = "An untitled note whose body runs on well past what the notes list can show on one line of text.";
@@ -145,7 +145,7 @@ internal sealed class PopulatedMainWindow : IDisposable
         // Adding them again names several and counts the rest.
         await vm.AddDroppedFiles(files);
 
-        await vm.CycleTextStyleCommand.ExecuteAsync(null);
+        vm.CycleTextStyleCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
         await Task.WhenAll(vm.Attachments.Select(row => row.ThumbnailTask));
         Dispatcher.UIThread.RunJobs();
@@ -202,15 +202,6 @@ internal sealed class PopulatedMainWindow : IDisposable
             if (!previews.IsCompleted)
                 throw new TimeoutException("The fixture attachment work did not finish.");
             previews.GetAwaiter().GetResult();
-            var stateWrites = ViewModel.PendingStateWrites;
-            while (!stateWrites.IsCompleted && DateTime.UtcNow < deadline)
-            {
-                Dispatcher.UIThread.RunJobs();
-                System.Threading.Thread.Sleep(1);
-            }
-            if (!stateWrites.IsCompleted)
-                throw new TimeoutException("The fixture state writes did not finish.");
-            stateWrites.GetAwaiter().GetResult();
         }
         finally
         {
@@ -247,12 +238,12 @@ internal sealed class PopulatedMainWindow : IDisposable
         /// <summary>What the reader changes in Settings before pressing Save; nothing is saved when null.</summary>
         public Action<AppConfig>? SettingsEdit { get; set; }
 
-        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, Task<bool>> trySave)
+        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
         {
             if (SettingsEdit is null)
                 return Task.FromResult(false);
             SettingsEdit(config);
-            return trySave(config);
+            return Task.FromResult(trySave(config));
         }
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName) => Task.FromResult(ExternalChangeChoice.KeepMine);
         public Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName) => Task.FromResult(UnsavedQuitChoice.Stay);

@@ -21,8 +21,6 @@ public partial class DialogBase : Window
     private readonly HashSet<Button> _dismissButtons = [];
     private Control? _initialFocusControl;
     private bool _closeConfirmed;
-    private bool _committing;
-    private bool _closed;
 
     public DialogBase()
     {
@@ -30,11 +28,9 @@ public partial class DialogBase : Window
         Opened += OnOpened;
         KeyDown += OnKeyDown;
         Closing += OnClosing;
-        Closed += (_, _) => _closed = true;
     }
 
     public string? ResultTag { get; private set; }
-    internal Action<string, Exception>? LogFailure { get; set; }
 
     /// <summary>
     /// Whether the user can close the dialog without choosing one of its buttons. A question whose every
@@ -99,7 +95,6 @@ public partial class DialogBase : Window
     /// </summary>
     public Task ShowBoundedAsync(Window owner)
     {
-        LogFailure ??= (owner as DialogBase)?.LogFailure;
         BoundHeight(owner.Screens.ScreenFromWindow(owner) ?? owner.Screens.Primary);
         return ShowDialog(owner);
     }
@@ -131,8 +126,6 @@ public partial class DialogBase : Window
 
     /// <summary>Allows a feature dialog to finish its commit before the shell closes.</summary>
     protected virtual bool TryCommit(string tag) => true;
-
-    protected virtual Task<bool> TryCommitAsync(string tag) => Task.FromResult(TryCommit(tag));
 
     /// <summary>Whether closing now would discard edits the user has not saved.</summary>
     protected virtual bool HasUnsavedChanges => false;
@@ -182,73 +175,42 @@ public partial class DialogBase : Window
         }
     }
 
-    private async void OnButtonClick(object? sender, RoutedEventArgs e)
+    private void OnButtonClick(object? sender, RoutedEventArgs e)
     {
-        try
+        if (sender is Button button)
         {
-            if (_committing || sender is not Button button || button.Tag is not string tag)
-                return;
-
-            _committing = true;
-            var enabled = IsEnabled;
-            IsEnabled = false;
-            bool committed;
-            try
+            var tag = button.Tag as string;
+            if (tag is null || !TryCommit(tag))
             {
-                committed = await TryCommitAsync(tag);
-            }
-            finally
-            {
-                _committing = false;
-                IsEnabled = enabled;
-            }
-            if (!committed || _closed)
                 return;
+            }
 
             ResultTag = tag;
             _closeConfirmed = !IsDismissable || !_dismissButtons.Contains(button);
             Close();
         }
-        catch (Exception ex)
-        {
-            LogFailure?.Invoke("Failed to commit dialog", ex);
-        }
     }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
-        try
+        if (!IsDismissable && !_closeConfirmed && e.CloseReason == WindowCloseReason.WindowClosing)
         {
-            if (_committing && e.CloseReason == WindowCloseReason.WindowClosing)
-            {
-                e.Cancel = true;
-                return;
-            }
-
-            if (!IsDismissable && !_closeConfirmed && e.CloseReason == WindowCloseReason.WindowClosing)
-            {
-                e.Cancel = true;
-                return;
-            }
-
-            if (!ShouldAskBeforeClosing(e.CloseReason, _closeConfirmed, HasUnsavedChanges))
-                return;
-
             e.Cancel = true;
-            if (await AskBeforeDiscardingAsync() && !_closed)
-            {
-                _closeConfirmed = true;
-                Close();
-            }
+            return;
         }
-        catch (Exception ex)
+
+        if (!ShouldAskBeforeClosing(e.CloseReason, _closeConfirmed, HasUnsavedChanges))
         {
-            e.Cancel = true;
-            _closeConfirmed = false;
-            LogFailure?.Invoke("Failed to ask before discarding dialog changes", ex);
+            return;
+        }
+
+        e.Cancel = true;
+        if (await AskBeforeDiscardingAsync())
+        {
+            _closeConfirmed = true;
+            Close();
         }
     }
-
 }
 
 /// <summary>How a dialog footer button is styled and treated.</summary>

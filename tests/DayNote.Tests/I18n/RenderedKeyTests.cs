@@ -101,7 +101,7 @@ public class RenderedKeyTests : WindowTest
     public void the_settings_dialog_shows_no_key()
     {
         // With a failed save's sentence on screen.
-        var dialog = Show(new SettingsDialog(new AppConfig { UiFontFamily = "Menlo" }, _ => Task.FromResult(false), askBeforeDiscarding: () => Task.FromResult(true)));
+        var dialog = Show(new SettingsDialog(new AppConfig { UiFontFamily = "Menlo" }, _ => false, askBeforeDiscarding: () => Task.FromResult(true)));
         var save = dialog.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
         dialog.GetVisualDescendants().OfType<TextBox>().Single(box => box.Text == "Menlo").Text = "Inter";
         Dispatcher.UIThread.RunJobs();

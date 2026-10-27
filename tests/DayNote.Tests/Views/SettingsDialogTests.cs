@@ -24,7 +24,7 @@ public sealed class SettingsDialogTests
     public void A_blank_font_keeps_its_validation_reason_visible_when_another_style_is_selected()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(config, _ => true);
         var family = Named<TextBox>(dialog, "TextStyleFontFamily");
         var list = Named<ListBox>(dialog, "TextStylesList");
         var validation = Named<TextBlock>(dialog, "SettingsValidationError");
@@ -59,7 +59,7 @@ public sealed class SettingsDialogTests
         var config = new AppConfig();
         config.TextStyles[0].FontSize = 24;
         AppConfig? saved = null;
-        var dialog = new SettingsDialog(config, candidate => { saved = candidate; return Task.FromResult(true); });
+        var dialog = new SettingsDialog(config, candidate => { saved = candidate; return true; });
         Named<Button>(dialog, "ResetTextStylesButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.Equal(15, config.TextStyles[0].FontSize);
         var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
@@ -71,7 +71,7 @@ public sealed class SettingsDialogTests
     [AvaloniaFact]
     public void Reset_text_styles_with_nothing_to_reset_leaves_save_disabled()
     {
-        var dialog = new SettingsDialog(new AppConfig(), _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(new AppConfig(), _ => true);
         Named<Button>(dialog, "ResetTextStylesButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
         Assert.False(save.IsEnabled);
@@ -81,7 +81,7 @@ public sealed class SettingsDialogTests
     public void Font_families_are_cleaned_as_single_lines()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(config, _ => true);
         dialog.GetLogicalDescendants().OfType<TextBox>()
             .Single(box => box.PlaceholderText == AppConfig.DefaultUiFontFamily).Text = " Iosevka Term ";
         Named<TextBox>(dialog, "TextStyleFontFamily").Text = "Menlo  ";
@@ -97,7 +97,7 @@ public sealed class SettingsDialogTests
         var config = new AppConfig();
         var asked = 0;
         var answer = false;
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true), askBeforeDiscarding: () =>
+        var dialog = new SettingsDialog(config, _ => true, askBeforeDiscarding: () =>
         {
             asked++;
             return Task.FromResult(answer);
@@ -137,12 +137,12 @@ public sealed class SettingsDialogTests
             asked++;
             return Task.FromResult(false);
         };
-        var clean = new SettingsDialog(new AppConfig(), _ => Task.FromResult(true), askBeforeDiscarding: ask);
+        var clean = new SettingsDialog(new AppConfig(), _ => true, askBeforeDiscarding: ask);
         clean.Show();
         Cancel(clean).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
 
-        var saved = new SettingsDialog(new AppConfig(), _ => Task.FromResult(true), askBeforeDiscarding: ask);
+        var saved = new SettingsDialog(new AppConfig(), _ => true, askBeforeDiscarding: ask);
         saved.Show();
         Dispatcher.UIThread.RunJobs();
         Named<Button>(saved, "AddTextStyleButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -174,7 +174,7 @@ public sealed class SettingsDialogTests
         var dialog = new SettingsDialog(new AppConfig(), _ =>
         {
             attempts++;
-            return Task.FromResult(false);
+            return false;
         });
         var font = dialog.GetLogicalDescendants()
             .OfType<TextBox>()
@@ -199,7 +199,7 @@ public sealed class SettingsDialogTests
     {
         var config = new AppConfig();
         Assert.Equal("", config.UiFontFamily);
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(config, _ => true);
         var font = dialog.GetLogicalDescendants()
             .OfType<TextBox>()
             .Single(box => box.PlaceholderText == AppConfig.DefaultUiFontFamily);
@@ -221,7 +221,7 @@ public sealed class SettingsDialogTests
     public void The_time_zone_is_chosen_from_a_list_that_starts_with_system()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(config, _ => true);
         var zones = Named<ComboBox>(dialog, "TimeZoneBox");
         var options = zones.Items.OfType<TimeZoneOption>().ToList();
         var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
@@ -246,7 +246,7 @@ public sealed class SettingsDialogTests
         var dialog = new SettingsDialog(new AppConfig(), _ =>
         {
             attempts++;
-            return Task.FromResult(true);
+            return true;
         });
         var font = dialog.GetLogicalDescendants()
             .OfType<TextBox>()
@@ -263,71 +263,12 @@ public sealed class SettingsDialogTests
     }
 
     [AvaloniaFact]
-    public void A_pending_save_blocks_duplicate_submission_and_discard_until_it_settles()
-    {
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var attempts = 0;
-        var discardQuestions = 0;
-        var dialog = new SettingsDialog(new AppConfig(), _ =>
-        {
-            attempts++;
-            return completion.Task;
-        }, askBeforeDiscarding: () =>
-        {
-            discardQuestions++;
-            return Task.FromResult(true);
-        });
-        dialog.Show();
-        var font = dialog.GetLogicalDescendants().OfType<TextBox>()
-            .Single(box => box.PlaceholderText == AppConfig.DefaultUiFontFamily);
-        font.Text = "Menlo";
-        var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
-        try
-        {
-            save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Cancel(dialog).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            dialog.Close();
-            Assert.Equal(1, attempts);
-            Assert.Equal(0, discardQuestions);
-            Assert.True(dialog.IsVisible);
-            Assert.False(dialog.Applied);
-        }
-        finally
-        {
-            completion.TrySetResult(true);
-            MainWindowQuitTests.PumpUntil(() => !dialog.IsVisible);
-        }
-        Assert.True(dialog.Applied);
-    }
-
-    [AvaloniaFact]
-    public void A_throwing_save_uses_the_inline_error_and_keeps_the_draft()
-    {
-        var failure = new InvalidOperationException("private-save-detail");
-        Exception? logged = null;
-        var dialog = new SettingsDialog(new AppConfig(), _ => Task.FromException<bool>(failure),
-            logSaveFailure: ex => logged = ex);
-        dialog.GetLogicalDescendants().OfType<TextBox>()
-            .Single(box => box.PlaceholderText == AppConfig.DefaultUiFontFamily).Text = "Menlo";
-        dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"))
-            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-
-        Assert.Same(failure, logged);
-        Assert.False(dialog.Applied);
-        Assert.Contains(dialog.GetLogicalDescendants().OfType<TextBlock>(), block =>
-            block.IsVisible && block.Text == English.Of("failure.settingsSave"));
-        Assert.DoesNotContain(dialog.GetLogicalDescendants().OfType<TextBlock>(), block =>
-            block.Text?.Contains(failure.Message, StringComparison.Ordinal) == true);
-    }
-
-    [AvaloniaFact]
     public void Add_appends_a_built_in_style_then_selects_reveals_and_focuses_its_family()
     {
         var config = new AppConfig();
         config.TextStyles[0].FontSize = 31;
         config.TextStyles[0].Bold = true;
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true), askBeforeDiscarding: Discard);
+        var dialog = new SettingsDialog(config, _ => true, askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -353,7 +294,7 @@ public sealed class SettingsDialogTests
     public void The_default_shows_in_the_list_and_set_as_default_moves_it()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true), askBeforeDiscarding: Discard);
+        var dialog = new SettingsDialog(config, _ => true, askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -381,7 +322,7 @@ public sealed class SettingsDialogTests
     {
         var config = new AppConfig();
         var families = config.TextStyles.Select(style => style.FontFamily).ToArray();
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true), askBeforeDiscarding: Discard);
+        var dialog = new SettingsDialog(config, _ => true, askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -403,7 +344,7 @@ public sealed class SettingsDialogTests
     public void A_cleared_number_keeps_the_presets_value_and_shows_it_again()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(config, _ => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var size = dialog.GetLogicalDescendants().OfType<NumericUpDown>().First();
@@ -423,7 +364,7 @@ public sealed class SettingsDialogTests
     public void A_styles_row_says_what_was_typed_even_when_no_such_font_is_installed()
     {
         var config = new AppConfig();
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true), _ => Task.FromResult(true), askBeforeDiscarding: Discard);
+        var dialog = new SettingsDialog(config, _ => true, _ => Task.FromResult(true), askBeforeDiscarding: Discard);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         var list = Named<ListBox>(dialog, "TextStylesList");
@@ -450,7 +391,7 @@ public sealed class SettingsDialogTests
         var config = new AppConfig();
         var asked = new List<string>();
         var answer = false;
-        var dialog = new SettingsDialog(config, _ => Task.FromResult(true), label =>
+        var dialog = new SettingsDialog(config, _ => true, label =>
         {
             asked.Add(label);
             return Task.FromResult(answer);
@@ -483,7 +424,7 @@ public sealed class SettingsDialogTests
     [AvaloniaFact]
     public void A_number_steps_with_a_minus_and_a_plus_in_that_order()
     {
-        var dialog = new SettingsDialog(new AppConfig(), _ => Task.FromResult(true));
+        var dialog = new SettingsDialog(new AppConfig(), _ => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         dialog.UpdateLayout();

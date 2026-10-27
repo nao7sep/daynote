@@ -6,9 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Platform.Storage;
-using DayNote.Core.Configuration;
 using DayNote.I18n;
-using DayNote.Logging;
 using DayNote.Services;
 using Xunit;
 
@@ -16,53 +14,6 @@ namespace DayNote.Tests.Services;
 
 public sealed class DialogServiceTests
 {
-    [AvaloniaFact]
-    public async Task Ordinary_modal_display_failures_are_logged_and_return_dismissed_outcomes()
-    {
-        // Avalonia rejects modal display over an owner that is not visible.
-        var log = new FailureLogger();
-        var service = new DialogService(log) { Owner = new Window() };
-        var saved = false;
-
-        Assert.False(await service.ConfirmAsync(Message.Of("note.deleteTitle"), Message.Of("note.deleteUntitled"), "common.delete"));
-        await service.ShowErrorAsync(Message.Of("failure.startupDataTitle"), Message.Of("failure.settingsSave"));
-        await service.ShowAboutAsync();
-        await service.ShowShortcutsAsync();
-        Assert.False(await service.ShowSettingsAsync(new AppConfig(), _ =>
-        {
-            saved = true;
-            return Task.FromResult(true);
-        }));
-
-        Assert.False(saved);
-        Assert.Equal(5, log.Errors.Count);
-        Assert.All(log.Errors, entry =>
-        {
-            Assert.Equal("Failed to show dialog", entry.Message);
-            Assert.IsType<InvalidOperationException>(entry.Error);
-            Assert.NotEmpty(entry.Error.StackTrace!);
-        });
-    }
-
-    [AvaloniaFact]
-    public async Task Operation_owned_modal_failures_remain_rejected_for_the_caller()
-    {
-        var log = new FailureLogger();
-        var service = new DialogService(log) { Owner = new Window() };
-        var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        try
-        {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => service.AskExternalChangeAsync("Journal"));
-            await Assert.ThrowsAsync<InvalidOperationException>(() => service.AskQuitWithUnsavedBinderAsync("Journal"));
-            await Assert.ThrowsAsync<InvalidOperationException>(() => service.WaitForAttachmentsAsync(settled.Task, TimeSpan.FromHours(1)));
-            Assert.Empty(log.Errors);
-        }
-        finally
-        {
-            settled.TrySetResult();
-        }
-    }
-
     [AvaloniaTheory]
     [InlineData(true)]
     [InlineData(false)]
@@ -128,14 +79,5 @@ public sealed class DialogServiceTests
                     throw new NotSupportedException(targetMethod.Name);
             }
         }
-    }
-
-    private sealed class FailureLogger : IAppLogger
-    {
-        public List<(string Message, Exception Error)> Errors { get; } = [];
-        public void Debug(string message, object? data = null, Exception? error = null) { }
-        public void Info(string message, object? data = null, Exception? error = null) { }
-        public void Warn(string message, object? data = null, Exception? error = null) { }
-        public void Error(string message, object? data = null, Exception? error = null) => Errors.Add((message, error!));
     }
 }

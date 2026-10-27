@@ -85,9 +85,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private string? _attachmentNoteId;
 
     private AppConfig _config = new();
-    private readonly SemaphoreSlim _configWrites = new(1, 1);
-    private Task _stateWrites = Task.CompletedTask;
-    internal Task PendingStateWrites => _stateWrites;
 
     // The zone times are shown in, resolved from the configuration whenever it is applied. Rows and the
     // editor are handed it on every refresh rather than keeping their own copy.
@@ -563,7 +560,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         // The state goes first, while the binder is still open: tearing it down clears the selection,
         // which would otherwise null out CurrentNoteId.
-        await WriteStateForQuitAsync();
+        WriteStateForQuit();
         if (!await SaveBinderForQuitAsync())
         {
             _shuttingDown = false;
@@ -688,26 +685,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    // The quit's one state write, off the UI thread and within its bound. A failure is logged only: the
-    // state is placement and selection, never the user's work.
-    private async Task WriteStateForQuitAsync()
+    // The quit's one state write: the same write as every other state save, so a later one can never be
+    // overtaken by it. A failure is logged only: the state is placement and selection, never the user's work.
+    private void WriteStateForQuit()
     {
-        if (!IsReady)
+        if (IsReady)
         {
-            return;
-        }
-
-        try
-        {
-            await QueueStateWrite().WaitAsync(QuitStateWriteBound, _clock);
-        }
-        catch (TimeoutException)
-        {
-            _log.Warn("State write did not finish within the quit's bound", new { boundMs = QuitStateWriteBound.TotalMilliseconds });
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to save state", error: ex);
+            WriteState();
         }
     }
 
@@ -828,7 +812,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var path = _current.Path;
         if (await CloseCurrentAsync(clearSelection: true))
         {
-            await ForgetBinder(path);
+            ForgetBinder(path);
         }
     }
 
@@ -853,7 +837,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             }
         }
 
-        await ForgetBinder(item.Path);
+        ForgetBinder(item.Path);
     }
 
     [RelayCommand]
@@ -1765,12 +1749,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         var draft = _config.CopySettings();
-        var originalTheme = _config.Theme;
-        if (!await _dialogs.ShowSettingsAsync(draft, async candidate =>
+        if (!await _dialogs.ShowSettingsAsync(draft, candidate =>
             {
                 var next = _config.Copy();
                 next.TakeSettings(candidate);
-                if (!await TrySaveConfig(next))
+                if (!TrySaveConfig(next))
                 {
                     return false;
                 }
@@ -1782,7 +1765,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var themeChanged = _config.Theme != originalTheme;
+        var themeChanged = _config.Theme != draft.Theme;
+        _config.TakeSettings(draft);
         ApplyConfig();
         if (themeChanged)
         {
@@ -1816,40 +1800,31 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private async Task SaveNow() => await SaveCurrentAsync();
 
     [RelayCommand]
-    private async Task CycleTextStyle()
+    private void CycleTextStyle()
     {
         if (_config.TextStyles.Count == 0)
         {
             return;
         }
 
-        static void AdvanceStyle(AppConfig next)
+        var next = _config.Copy();
+        var index = next.TextStyles.IndexOf(next.ResolveDefaultStyle()!);
+        var nextIndex = (index + 1) % next.TextStyles.Count;
+        for (var i = 0; i < next.TextStyles.Count; i++)
         {
-            if (next.TextStyles.Count == 0)
-                return;
-            var index = next.TextStyles.IndexOf(next.ResolveDefaultStyle()!);
-            var nextIndex = (index + 1) % next.TextStyles.Count;
-            for (var i = 0; i < next.TextStyles.Count; i++)
-                next.TextStyles[i].IsDefault = i == nextIndex;
+            next.TextStyles[i].IsDefault = i == nextIndex;
         }
 
-        // Each queued cycle advances the last successfully saved style. While settings are unavailable,
-        // the same change stays in memory for this session without touching the unreadable file.
-        if (IsReady)
+        // Saved before it is adopted, so a style that did not reach the settings file is not shown as set.
+        // While the settings could not be loaded, nothing is saved and the style holds for this session.
+        if (IsReady && !TrySaveConfig(next, "failure.textStyleSave"))
         {
-            if (!await TrySaveConfig(AdvanceStyle, "failure.textStyleSave"))
-                return;
-        }
-        else
-        {
-            var next = _config.Copy();
-            AdvanceStyle(next);
-            _config = next;
+            return;
         }
 
+        _config = next;
         ApplyTextStyle();
-        var selectedIndex = _config.TextStyles.IndexOf(_config.ResolveDefaultStyle()!);
-        var label = TextStyleLabels.For(_config.TextStyles, Localizer.T("settings.noFontFamily"), Localizer.Current.Culture)[selectedIndex];
+        var label = TextStyleLabels.For(_config.TextStyles, Localizer.T("settings.noFontFamily"), Localizer.Current.Culture)[nextIndex];
         _log.Info("Cycled text style", new { style = label });
 
         _textStyleStatus = Message.Of("textStyle.applied", ("style", label));
@@ -1987,7 +1962,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             row.IsMissing = false;
         AdoptLoaded(loaded, selectNoteId);
 
-        await AddBinder(loaded.Path);
+        AddBinder(loaded.Path);
         if (_shuttingDown || generation != _openGeneration || !ReferenceEquals(_current?.Binder, loaded.Binder))
             return;
         _state.CurrentBinderPath = loaded.Path;
@@ -2495,7 +2470,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// in the .daynote file), so this just updates that config entry and persists. A blank or unchanged
     /// title is ignored. Called by the view on blur / Enter.
     /// </summary>
-    public async Task ApplyBinderRename(BinderListItemViewModel item, string rawTitle)
+    public void ApplyBinderRename(BinderListItemViewModel item, string rawTitle)
     {
         if (!item.IsEditing)
         {
@@ -2510,19 +2485,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         var path = item.Path;
-        var renamed = false;
-        if (!await TrySaveConfig(next =>
-            {
-                var entry = next.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path));
-                if (entry is null)
-                    return; // A queued forget may already have removed this row.
-                entry.Title = newTitle;
-                renamed = true;
-            }, "failure.binderRenameSave") || !renamed)
+        var next = _config.Copy();
+        var entry = next.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path));
+        if (entry is null)
+        {
+            return; // not a known binder (shouldn't happen for a visible row)
+        }
+
+        entry.Title = newTitle;
+        if (!TrySaveConfig(next, "failure.binderRenameSave"))
         {
             return;
         }
 
+        _config = next;
         item.Title = newTitle;
         foreach (var row in _allBinders.Where(row => PathKey.Equal(row.Path, path)))
             row.Title = newTitle;
@@ -2667,24 +2643,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     /// <summary>Persists the master binder order to app config once; a no-op when it is unchanged.</summary>
-    public async Task CommitBinderOrder()
+    public void CommitBinderOrder()
     {
         var order = _allBinders.Select(item => item.Path).ToList();
-        if (!await TrySaveConfig(next =>
-            {
-                var reordered = order
-                    .Select(path => next.Binders.Find(entry => PathKey.Equal(entry.Path, path)))
-                    .OfType<KnownBinder>()
-                    .ToList();
-                reordered.AddRange(next.Binders.Except(reordered));
-                next.Binders = reordered;
-            }, "failure.binderOrderSave"))
+        if (_config.Binders.Select(entry => entry.Path).SequenceEqual(order))
+        {
+            return;
+        }
+
+        var next = _config.Copy();
+        var reordered = _allBinders
+            .Select(item => next.Binders.Find(entry => PathKey.Equal(entry.Path, item.Path)))
+            .OfType<KnownBinder>()
+            .ToList();
+        reordered.AddRange(next.Binders.Except(reordered));
+        next.Binders = reordered;
+        if (!TrySaveConfig(next, "failure.binderOrderSave"))
         {
             // The rows go back to the order the settings file still holds.
             RebuildBinders();
             return;
         }
 
+        _config = next;
         _log.Info("Reordered binders", new { count = order.Count });
     }
 
@@ -2755,41 +2736,43 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // Records a binder as known. An already-known binder keeps its place (the list is a stable managed
     // set, not a reshuffling MRU); a new one is added at the top, titled with its file name initially.
     // No cap — the user prunes explicitly via the row ✕, so a known binder never silently disappears.
-    private async Task AddBinder(string path)
+    private void AddBinder(string path)
     {
         var full = Path.GetFullPath(path);
-        var added = false;
-        // Resolve membership after preceding writes settle, so another add cannot be duplicated.
+        if (_config.Binders.Any(b => SameBinderPath(b.Path, full)))
+        {
+            // Already known: don't churn the list (which is this ListBox's ItemsSource); just refresh
+            // which row is marked current.
+            ApplyBinderFilter();
+            return;
+        }
+
+        var next = _config.Copy();
+        next.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
         // The binder stays open either way; only its place in the list depends on the save.
-        if (!await TrySaveConfig(next =>
-            {
-                if (!next.Binders.Any(b => SameBinderPath(b.Path, full)))
-                {
-                    next.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
-                    added = true;
-                }
-            }, "failure.binderAddSave", OperationResultKind.Warning))
+        if (!TrySaveConfig(next, "failure.binderAddSave", OperationResultKind.Warning))
         {
             ApplyBinderFilter();
             return;
         }
 
-        if (added)
-            RebuildBinders();
-        else
-            ApplyBinderFilter();
+        _config = next;
+        RebuildBinders();
     }
 
     // Removes a binder from the known list and persists. Caller closes it first if it is the open one.
-    private async Task ForgetBinder(string path)
+    private void ForgetBinder(string path)
     {
-        if (!await TrySaveConfig(next =>
-            {
-                next.Binders.RemoveAll(b => PathKey.Equal(b.Path, path));
-            }, "failure.binderForgetSave"))
+        var next = _config.Copy();
+        if (next.Binders.RemoveAll(b => PathKey.Equal(b.Path, path)) > 0)
         {
-            RebuildBinders();
-            return;
+            if (!TrySaveConfig(next, "failure.binderForgetSave"))
+            {
+                RebuildBinders();
+                return;
+            }
+
+            _config = next;
         }
 
         RebuildBinders();
@@ -3034,13 +3017,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// command's own consequence, <paramref name="failureKey"/>, is shown and false is returned, so the
     /// command keeps the configuration it had.
     /// </summary>
-    private async Task<bool> TrySaveConfig(Action<AppConfig> mutate, string failureKey, OperationResultKind kind = OperationResultKind.Error)
+    private bool TrySaveConfig(AppConfig config, string failureKey, OperationResultKind kind = OperationResultKind.Error)
     {
-        if (await SaveConfig(current =>
-            {
-                mutate(current);
-                return current;
-            }, skipUnchanged: true))
+        if (TrySaveConfig(config))
         {
             return true;
         }
@@ -3049,43 +3028,24 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         return false;
     }
 
-    private Task<bool> TrySaveConfig(AppConfig config)
+    /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
+    /// <remarks>
+    /// Written on the UI thread, as the state is (<see cref="PersistState"/>): both are small files in
+    /// DayNote's own local folder, written on a user's action, and the callers act on the outcome at once,
+    /// Settings included. Moving them off the thread would make those callers asynchronous for no slow case
+    /// seen in practice; a binder's folder, which can be on any volume, never goes through here.
+    /// </remarks>
+    private bool TrySaveConfig(AppConfig config)
     {
-        // Settings submits whole changed sets. Capture those sets before waiting, preserving any
-        // unrelated sets that earlier writes adopt while this submission is queued.
-        var changedKeys = ConfigSets.ChangedKeys(config, _config);
-        var submitted = JsonSerializer.SerializeToElement(config, DayNoteJson.Options);
-        return SaveConfig(latest =>
-        {
-            var current = JsonSerializer.SerializeToElement(latest, DayNoteJson.Options);
-            var values = current.EnumerateObject().ToDictionary(property => property.Name, property => property.Value);
-            foreach (var key in changedKeys)
-                values[key] = submitted.GetProperty(key);
-            return JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(values), DayNoteJson.Options)!;
-        });
-    }
-
-    /// <summary>Runs a mutation against the latest saved config and adopts it only after its write succeeds.</summary>
-    private async Task<bool> SaveConfig(Func<AppConfig, AppConfig> mutate, bool skipUnchanged = false)
-    {
-        await _configWrites.WaitAsync();
         try
         {
-            var next = mutate(_config.Copy());
-            if (skipUnchanged && ConfigSets.ChangedKeys(next, _config).Count == 0)
-                return true;
-            await Task.Run(() => _configStore.Save(next));
-            _config = next;
+            _configStore.Save(config);
             return true;
         }
         catch (Exception ex)
         {
             _log.Error("Failed to save configuration", error: ex);
             return false;
-        }
-        finally
-        {
-            _configWrites.Release();
         }
     }
 
@@ -3185,25 +3145,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        QueueStateWrite();
+        WriteState();
     }
 
-    private Task QueueStateWrite()
+    private void WriteState()
     {
-        var state = CaptureState().Copy();
-        var previous = _stateWrites;
-        return _stateWrites = Task.Run(async () =>
+        try
         {
-            await previous;
-            try
-            {
-                _stateStore.Save(state);
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Failed to save state", error: ex);
-            }
-        });
+            _stateStore.Save(CaptureState());
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to save state", error: ex);
+        }
     }
 
     private AppState CaptureState()

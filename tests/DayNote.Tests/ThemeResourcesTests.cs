@@ -1,4 +1,3 @@
-using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -241,7 +240,7 @@ public sealed class ThemeResourcesTests
         var dialog = new SettingsDialog(new AppConfig { Theme = ThemePreference.Dark }, candidate =>
         {
             saved = candidate;
-            return Task.FromResult(true);
+            return true;
         });
         var radios = dialog.GetLogicalDescendants().OfType<RadioButton>().ToList();
         // System names the appearance the headless platform reports, which is light.

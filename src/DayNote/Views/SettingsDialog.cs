@@ -53,8 +53,7 @@ public sealed class SettingsDialog : DialogBase
     private readonly Button _saveButton;
     private readonly TextBlock _saveError;
     private readonly TextBlock _validationError;
-    private readonly Func<AppConfig, Task<bool>> _trySave;
-    private readonly Action<Exception>? _logSaveFailure;
+    private readonly Func<AppConfig, bool> _trySave;
     private readonly Func<string, Task<bool>> _askBeforeRemoving;
     private readonly Func<Task<bool>>? _askBeforeDiscarding;
     private bool _loadingStyleEditor;
@@ -66,14 +65,12 @@ public sealed class SettingsDialog : DialogBase
     /// <param name="askBeforeDiscarding">Asks whether unsaved changes may go, in place of the stacked dialog.</param>
     public SettingsDialog(
         AppConfig config,
-        Func<AppConfig, Task<bool>> trySave,
+        Func<AppConfig, bool> trySave,
         Func<string, Task<bool>>? askBeforeRemoving = null,
-        Func<Task<bool>>? askBeforeDiscarding = null,
-        Action<Exception>? logSaveFailure = null)
+        Func<Task<bool>>? askBeforeDiscarding = null)
     {
         _config = config;
         _trySave = trySave;
-        _logSaveFailure = logSaveFailure;
         _askBeforeRemoving = askBeforeRemoving ?? AskBeforeRemovingAsync;
         _askBeforeDiscarding = askBeforeDiscarding;
         Localized.SetTitle(this, "settings.title");
@@ -323,7 +320,7 @@ public sealed class SettingsDialog : DialogBase
     protected override Task<bool> AskBeforeDiscardingAsync() =>
         _askBeforeDiscarding?.Invoke() ?? base.AskBeforeDiscardingAsync();
 
-    protected override async Task<bool> TryCommitAsync(string tag)
+    protected override bool TryCommit(string tag)
     {
         if (tag != "ok")
         {
@@ -332,14 +329,9 @@ public sealed class SettingsDialog : DialogBase
 
         _saveError.IsVisible = false;
         _saveError.Text = string.Empty;
-        try
+        if (_trySave(_config))
         {
-            if (await _trySave(_config.Copy()))
-                return true;
-        }
-        catch (Exception ex)
-        {
-            _logSaveFailure?.Invoke(ex);
+            return true;
         }
 
         _saveError.Text = Localizer.T("failure.settingsSave");

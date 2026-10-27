@@ -698,137 +698,6 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Overlapping_config_submissions_preserve_unrelated_sets_and_same_set_order()
-    {
-        var vm = await OpenNewBinderAsync();
-        var row = Assert.Single(vm.Binders);
-        var writes = (SemaphoreSlim)typeof(MainWindowViewModel)
-            .GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
-        await writes.WaitAsync();
-        Task first;
-        Task settings;
-        Task last;
-        try
-        {
-            row.IsEditing = true;
-            first = vm.ApplyBinderRename(row, "First title");
-            _commandOperations.Add(first);
-            _dialogs.SettingsApplied = true;
-            _dialogs.SettingsEdit = config => config.Theme = ThemePreference.Dark;
-            settings = vm.OpenSettingsCommand.ExecuteAsync(null);
-            row.IsEditing = true;
-            last = vm.ApplyBinderRename(row, "Last title");
-            _commandOperations.Add(last);
-            Assert.False(first.IsCompleted);
-            Assert.False(settings.IsCompleted);
-            Assert.False(last.IsCompleted);
-        }
-        finally
-        {
-            writes.Release();
-        }
-
-        await Task.WhenAll(first, settings, last);
-        var saved = new ConfigStore(ConfigPath, _ => { }).Load();
-        Assert.Equal(ThemePreference.Dark, saved.Theme);
-        Assert.Equal("Last title", Assert.Single(saved.Binders).Title);
-        Assert.Equal("Last title", row.Title);
-        Assert.Equal(ThemePreference.Dark, vm.Theme);
-        await vm.ShutdownAsync();
-    }
-
-    [AvaloniaFact]
-    public async Task Overlapping_binder_renames_preserve_both_rows()
-    {
-        var vm = await OpenNewBinderAsync();
-        _dialogs.BinderToCreate = Path.Combine(_home, "second.daynote");
-        await vm.NewBinderCommand.ExecuteAsync(null);
-        var rows = vm.Binders.ToArray();
-        var writes = (SemaphoreSlim)typeof(MainWindowViewModel)
-            .GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
-        await writes.WaitAsync();
-        Task first;
-        Task second;
-        try
-        {
-            rows[0].IsEditing = true;
-            first = vm.ApplyBinderRename(rows[0], "First renamed");
-            _commandOperations.Add(first);
-            rows[1].IsEditing = true;
-            second = vm.ApplyBinderRename(rows[1], "Second renamed");
-            _commandOperations.Add(second);
-            Assert.False(first.IsCompleted);
-            Assert.False(second.IsCompleted);
-        }
-        finally { writes.Release(); }
-
-        await Task.WhenAll(first, second);
-        var saved = new ConfigStore(ConfigPath, _ => { }).Load();
-        Assert.Equal("First renamed", saved.Binders.Single(b => b.Path == rows[0].Path).Title);
-        Assert.Equal("Second renamed", saved.Binders.Single(b => b.Path == rows[1].Path).Title);
-        Assert.Equal("First renamed", rows[0].Title);
-        Assert.Equal("Second renamed", rows[1].Title);
-        await vm.ShutdownAsync();
-    }
-
-    [AvaloniaFact]
-    public async Task A_queued_rename_does_not_reintroduce_a_forgotten_binder()
-    {
-        var vm = await OpenNewBinderAsync();
-        var forgotten = Assert.Single(vm.Binders);
-        _dialogs.BinderToCreate = Path.Combine(_home, "second.daynote");
-        await vm.NewBinderCommand.ExecuteAsync(null);
-        var retained = vm.Binders.Single(row => row.Path != forgotten.Path);
-        var writes = (SemaphoreSlim)typeof(MainWindowViewModel)
-            .GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
-        await writes.WaitAsync();
-        Task forgetting;
-        Task renaming;
-        try
-        {
-            forgetting = vm.RemoveBinderCommand.ExecuteAsync(forgotten);
-            forgotten.IsEditing = true;
-            renaming = vm.ApplyBinderRename(forgotten, "Too late");
-            _commandOperations.Add(renaming);
-            Assert.False(forgetting.IsCompleted);
-            Assert.False(renaming.IsCompleted);
-        }
-        finally { writes.Release(); }
-
-        await Task.WhenAll(forgetting, renaming);
-        var saved = new ConfigStore(ConfigPath, _ => { }).Load();
-        Assert.Equal(retained.Path, Assert.Single(saved.Binders).Path);
-        Assert.Equal(retained.Path, Assert.Single(vm.Binders).Path);
-        Assert.NotEqual("Too late", forgotten.Title);
-        await vm.ShutdownAsync();
-    }
-
-    [AvaloniaFact]
-    public async Task Queued_text_style_cycles_each_advance_the_saved_default()
-    {
-        var vm = NewViewModel();
-        var writes = (SemaphoreSlim)typeof(MainWindowViewModel)
-            .GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
-        await writes.WaitAsync();
-        Task first;
-        Task second;
-        try
-        {
-            first = vm.CycleTextStyleCommand.ExecuteAsync(null);
-            second = vm.CycleTextStyleCommand.ExecuteAsync(null);
-            Assert.False(first.IsCompleted);
-            Assert.False(second.IsCompleted);
-        }
-        finally { writes.Release(); }
-
-        await Task.WhenAll(first, second);
-        var saved = new ConfigStore(ConfigPath, _ => { }).Load();
-        Assert.Equal(new[] { true, false }, saved.TextStyles.Select(style => style.IsDefault));
-        Assert.Equal("Text style: Menlo", vm.TextStyleStatusText);
-        await vm.ShutdownAsync();
-    }
-
-    [AvaloniaFact]
     public async Task A_delayed_startup_probe_cannot_replace_a_binder_opened_by_the_user()
     {
         var initial = await OpenNewBinderAsync();
@@ -858,47 +727,18 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task State_submissions_wait_in_order_and_keep_their_captured_values()
-    {
-        var vm = NewViewModel();
-        await vm.InitializeAsync();
-        var previous = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        typeof(MainWindowViewModel).GetField("_stateWrites", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(vm, previous.Task);
-        try
-        {
-            vm.SaveRecordsListWidth(410);
-            vm.SaveRecordsListWidth(520);
-            vm.CaptureWindowPlacement(40, 50, 700, 500, false);
-            Assert.False(vm.PendingStateWrites.IsCompleted);
-            Assert.False(File.Exists(StatePath));
-        }
-        finally
-        {
-            previous.SetResult();
-        }
-
-        await vm.PendingStateWrites;
-        var saved = new JsonStore<AppState>(StatePath, FormatVersions.State).Load()!;
-        Assert.Equal(520, saved.RecordsListWidth);
-        Assert.Null(saved.WindowPositionX);
-        await vm.ShutdownAsync();
-    }
-
-    [AvaloniaFact]
     public async Task Binder_titles_are_config_and_deleting_config_does_not_reopen_a_stale_selection()
     {
         var vm = await OpenNewBinderAsync();
         var row = Assert.Single(vm.Binders);
         row.IsEditing = true;
-        await vm.ApplyBinderRename(row, "My binder");
+        vm.ApplyBinderRename(row, "My binder");
         var configFile = Path.Combine(_home, "config.json");
         using (var saved = JsonDocument.Parse(File.ReadAllText(configFile)))
         {
             Assert.Equal(new[] { "formatVersion", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
             Assert.Equal("My binder", saved.RootElement.GetProperty("binders")[0].GetProperty("title").GetString());
         }
-        await vm.PendingStateWrites;
         using (var state = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "state.json"))))
         {
             Assert.False(state.RootElement.TryGetProperty("binders", out _));
@@ -1615,7 +1455,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         var (vm, _, log) = await OpenWithUnsavedEditAsync("saved although the state is not");
         // A folder where state.json belongs: the write cannot replace it.
         var statePath = new AppPaths().StateFile;
-        await vm.PendingStateWrites;
         File.Delete(statePath);
         Directory.CreateDirectory(statePath);
         log.Entries.Clear();
@@ -1632,7 +1471,6 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         var vm = await OpenNewBinderAsync();
         var statePath = new AppPaths().StateFile;
-        await vm.PendingStateWrites;
         var before = File.ReadAllText(statePath);
 
         // The Records window closes after the quit begins; its placement waits for the quit's write.
@@ -2402,7 +2240,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var vm = NewViewModel();
         var configPath = Path.Combine(_home, "config.json");
 
-        await vm.CycleTextStyleCommand.ExecuteAsync(null);
+        vm.CycleTextStyleCommand.Execute(null);
 
         Assert.Equal("Text style: Inter", vm.TextStyleStatusText);
         Assert.Empty(vm.Results);
@@ -2411,7 +2249,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         using var sets = JsonDocument.Parse(File.ReadAllText(configPath));
         Assert.Equal(new[] { "formatVersion", "textStyles" }, sets.RootElement.EnumerateObject().Select(property => property.Name));
 
-        await vm.CycleTextStyleCommand.ExecuteAsync(null);
+        vm.CycleTextStyleCommand.Execute(null);
 
         Assert.Equal("Text style: Menlo", vm.TextStyleStatusText);
         Assert.Empty(vm.Results);
@@ -2453,9 +2291,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(new[] { "alpha", "alpine" }, vm.Binders.Select(binder => binder.Name));
         Assert.Same(moved, list.SelectedItem);
         Assert.True(list.IsKeyboardFocusWithin);
-        var configGate = (SemaphoreSlim)typeof(MainWindowViewModel).GetField("_configWrites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
-        await configGate.WaitAsync(TestContext.Current.CancellationToken);
-        configGate.Release();
         var saved = JsonSerializer.Deserialize<AppConfig>(
             File.ReadAllText(Path.Combine(_home, "config.json")), DayNoteJson.Options)!;
         Assert.Equal(
@@ -2493,11 +2328,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal("Real", realRow.Title);
         Assert.Equal("Alias", aliasRow.Title);
         aliasRow.IsEditing = true;
-        await vm.ApplyBinderRename(aliasRow, "Renamed alias");
+        vm.ApplyBinderRename(aliasRow, "Renamed alias");
         Assert.Equal("Real", realRow.Title);
         Assert.Equal("Renamed alias", aliasRow.Title);
         vm.MoveBinder(aliasRow, realRow);
-        await vm.CommitBinderOrder();
+        vm.CommitBinderOrder();
         var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
         Assert.Equal(new[] { alias, real }, saved.Binders.Select(entry => entry.Path));
         Assert.Equal("Real", saved.Binders.Single(entry => entry.Path == real).Title);
@@ -2611,7 +2446,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var order = vm.BinderOrder();
         var style = vm.EditorFontFamily;
 
-        await vm.CycleTextStyleCommand.ExecuteAsync(null);
+        vm.CycleTextStyleCommand.Execute(null);
         Assert.Equal(style, vm.EditorFontFamily);
         Assert.Equal(string.Empty, vm.TextStyleStatusText);
         Assert.Contains("failure.textStyleSave", English.KeysIn(Assert.Single(vm.Results).Message));
@@ -2619,13 +2454,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         var row = vm.Binders[0];
         var title = row.Title;
         row.IsEditing = true;
-        await vm.ApplyBinderRename(row, "Renamed");
+        vm.ApplyBinderRename(row, "Renamed");
         Assert.Equal(title, row.Title);
         Assert.Contains("failure.binderRenameSave", English.KeysIn(Assert.Single(vm.Results).Message));
 
         var selected = vm.SelectedBinder;
         Assert.True(vm.MoveBinder(order[0], order[1]));
-        await vm.CommitBinderOrder();
+        vm.CommitBinderOrder();
         // The reverted rows are the same rows, so the selection and keyboard target stay on them.
         Assert.Equal(order, vm.BinderOrder());
         Assert.Same(selected, vm.SelectedBinder);
@@ -2667,7 +2502,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(vm.MoveBinder(start[0], start[2]));
         Assert.Equal(new[] { start[1], start[2], start[0] }, vm.BinderOrder());
         Assert.True(vm.RestoreBinderOrder(start));
-        await vm.CommitBinderOrder();
+        vm.CommitBinderOrder();
 
         Assert.Equal(start, vm.BinderOrder());
         Assert.Equal(start, vm.Binders);
@@ -2710,13 +2545,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         Directory.CreateDirectory(configFile);
         var row = vm.Binders.Single(binder => PathKey.Equal(binder.Path, BinderPath));
         row.IsEditing = true;
-        await vm.ApplyBinderRename(row, "Renamed");
+        vm.ApplyBinderRename(row, "Renamed");
         var warning = vm.Results[1];
         Assert.Equal(OperationResultKind.Error, warning.Kind);
 
         // The same unresolved problem again is neither a second card nor a second announcement.
         row.IsEditing = true;
-        await vm.ApplyBinderRename(row, "Renamed");
+        vm.ApplyBinderRename(row, "Renamed");
         Assert.Same(warning, vm.Results[1]);
         Assert.Equal(2, vm.Results.Count);
         Directory.Delete(configFile);
@@ -4748,10 +4583,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         }
         public Task ShowAboutAsync() => Task.CompletedTask;
         public Task ShowShortcutsAsync() => Task.CompletedTask;
-        public async Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, Task<bool>> trySave)
+        public Task<bool> ShowSettingsAsync(AppConfig config, Func<AppConfig, bool> trySave)
         {
             SettingsEdit?.Invoke(config);
-            return SettingsApplied && await trySave(config);
+            return Task.FromResult(SettingsApplied && trySave(config));
         }
         public int ExternalChangeQuestions { get; private set; }
         /// <summary>When set, answers the question instead of <see cref="ExternalChoice"/>, possibly later.</summary>
