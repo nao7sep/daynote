@@ -210,11 +210,7 @@ internal sealed class PopulatedMainWindow : IDisposable
         }
         public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, CancellationToken closed = default) => Task.FromResult(ExternalChangeChoice.KeepMine);
         public Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName) => Task.FromResult(UnsavedQuitChoice.Stay);
-        public async Task<bool> WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter)
-        {
-            await settled;
-            return false;
-        }
+        public Task WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter, Action stop) => settled;
         public string? LastOpenedPath { get; private set; }
 
         public Task OpenPathExternallyAsync(string path)

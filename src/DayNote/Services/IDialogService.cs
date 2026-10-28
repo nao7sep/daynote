@@ -46,10 +46,10 @@ public interface IDialogService
 
     /// <summary>
     /// Shows that attachments are still being added until <paramref name="settled"/> completes, then closes
-    /// itself. After <paramref name="stopOfferedAfter"/> it offers Stop. Returns true when the user stopped
-    /// waiting; false when the work settled or the app or the operating system closed it.
+    /// itself, or until the app or the operating system closes it. After <paramref name="stopOfferedAfter"/>
+    /// it offers Stop, which calls <paramref name="stop"/> once and keeps showing until <paramref name="settled"/>.
     /// </summary>
-    Task<bool> WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter);
+    Task WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter, Action stop);
 
     /// <summary>
     /// Asks, after a quit could not save the binder's edits, whether to retry the save or quit without

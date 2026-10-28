@@ -309,7 +309,9 @@ public class LabelFitTests : WindowTest
         Assert.False(await replace);
 
         var settled = new TaskCompletionSource();
-        var wait = Show(new AttachmentWaitDialog(settled.Task, System.TimeSpan.FromHours(1)));
+        var wait = Show(new AttachmentWaitDialog(settled.Task, System.TimeSpan.FromHours(1), () => { }));
+        var closed = new TaskCompletionSource();
+        wait.Closed += (_, _) => closed.TrySetResult();
         try
         {
             // Timer behavior is covered separately; measure the state after Stop is offered.
@@ -320,8 +322,7 @@ public class LabelFitTests : WindowTest
         finally
         {
             settled.SetResult();
-            wait.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Tag, AttachmentWaitDialog.StopTag))
-                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowTest.RunUntil(closed.Task);
         }
     }
 

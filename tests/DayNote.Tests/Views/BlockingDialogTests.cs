@@ -129,7 +129,7 @@ public sealed class BlockingDialogTests : IDisposable
     {
         var (service, owner) = Service();
         var settled = new TaskCompletionSource();
-        var waiting = service.WaitForAttachmentsAsync(settled.Task, TimeSpan.FromHours(1));
+        var waiting = service.WaitForAttachmentsAsync(settled.Task, TimeSpan.FromHours(1), () => { });
         var dialog = OpenDialog(owner);
 
         // Stop is not offered yet, and nothing else ends the wait.
@@ -140,15 +140,17 @@ public sealed class BlockingDialogTests : IDisposable
         Assert.False(waiting.IsCompleted);
 
         settled.SetResult();
-        Assert.False(await waiting);
+        await waiting;
         Assert.Empty(owner.OwnedWindows);
     }
 
     [AvaloniaFact]
-    public async Task The_attachment_wait_offers_stop_after_its_delay()
+    public async Task The_attachment_wait_offers_stop_after_its_delay_and_stays_until_the_adds_settle()
     {
         var (service, owner) = Service();
-        var waiting = service.WaitForAttachmentsAsync(new TaskCompletionSource().Task, TimeSpan.FromMilliseconds(1));
+        var settled = new TaskCompletionSource();
+        var stops = 0;
+        var waiting = service.WaitForAttachmentsAsync(settled.Task, TimeSpan.FromMilliseconds(1), () => stops++);
         var dialog = OpenDialog(owner);
         var stop = ButtonTagged(dialog, AttachmentWaitDialog.StopTag);
         // The offer can already have appeared while the dialog opened, so the state is read after
@@ -165,7 +167,15 @@ public sealed class BlockingDialogTests : IDisposable
         WindowTest.RunUntil(offered.Task);
         Assert.True(stop.IsVisible);
         stop.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.True(await waiting);
+        Dispatcher.UIThread.RunJobs();
+
+        // Stop is pressed once, and the dialog stays until the files in progress return.
+        Assert.Equal(1, stops);
+        Assert.False(stop.IsEnabled);
+        Assert.False(waiting.IsCompleted);
+        settled.SetResult();
+        await waiting;
+        Assert.Empty(owner.OwnedWindows);
     }
 
     [AvaloniaFact]
@@ -202,7 +212,7 @@ public sealed class BlockingDialogTests : IDisposable
     {
         var (service, owner) = Service();
 
-        Assert.False(await service.WaitForAttachmentsAsync(Task.CompletedTask, TimeSpan.FromHours(1)));
+        await service.WaitForAttachmentsAsync(Task.CompletedTask, TimeSpan.FromHours(1), () => { });
         Assert.Empty(owner.OwnedWindows);
     }
 

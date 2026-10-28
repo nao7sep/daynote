@@ -11,7 +11,7 @@ public sealed class FailedFixtureIsolationTests
 {
     [Theory]
     [InlineData("earlier-open")]
-    [InlineData("published-cleanup")]
+    [InlineData("stopped-add-cleanup")]
     [InlineData("removed-thumbnail")]
     public async Task Failure_unwind_settles_work_before_releasing_the_fixture_root(string scenario)
     {

@@ -140,16 +140,14 @@ public sealed class DialogService : IDialogService
         };
     }
 
-    public async Task<bool> WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter)
+    public async Task WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter, Action stop)
     {
         if (settled.IsCompleted)
         {
-            return false;
+            return;
         }
 
-        var dialog = new AttachmentWaitDialog(settled, stopOfferedAfter);
-        await dialog.ShowBoundedAsync(RequireOwner());
-        return dialog.ResultTag == AttachmentWaitDialog.StopTag;
+        await new AttachmentWaitDialog(settled, stopOfferedAfter, stop).ShowBoundedAsync(RequireOwner());
     }
 
     public async Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName)

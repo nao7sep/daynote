@@ -3937,11 +3937,13 @@ public sealed class MainWindowViewModelTests : IDisposable
                 Assert.True(vm.OpenKnownBinderCommand.ExecutionTask!.IsCompleted);
                 physicallySettled = () => unfinished.IsCompleted;
             }
-            else if (scenario == "published-cleanup")
+            else if (scenario == "stopped-add-cleanup")
             {
-                var stopped = await fixture.StartStoppedImportCleanupAsync();
-                unfinished = stopped.Adding;
-                physicallySettled = () => unfinished.IsCompleted && stopped.Deleted.IsCompleted;
+                // Deleting the note stops the held add; its copy goes in its own turn, before the folder's.
+                var (vm, _, note, _, adding) = await fixture.StartHeldAddAsync();
+                var deleting = vm.DeleteNoteCommand.ExecuteAsync(null);
+                unfinished = Task.WhenAll(adding, deleting);
+                physicallySettled = () => unfinished.IsCompleted && fixture.AssetFiles(note).Length == 0;
             }
             else if (scenario == "removed-thumbnail")
             {
@@ -4009,68 +4011,13 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
 
-    private async Task<(MainWindowViewModel Vm, Task Adding, GatedBinderStore.Hold Cleanup, Task Deleted)>
-        StartStoppedImportCleanupAsync(IAppLogger? log = null)
-    {
-        var copying = new HeldCopy();
-        var deleting = new GatedBinderStore.Hold();
-        var deleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var vm = NewViewModel(log: log, copyFile: (source, destination) =>
-        {
-            if (Path.GetFileName(source) == "second.txt") copying.Copy(source, destination);
-            else AtomicFile.CopyNew(source, destination);
-        }, deleteFile: path =>
-        {
-            if (Path.GetFileName(path) == "first.txt")
-            {
-                deleting.Wait();
-                File.Delete(path);
-                deleted.SetResult();
-            }
-            else File.Delete(path);
-        });
-        _dialogs.BinderToCreate = BinderPath;
-        await vm.NewBinderCommand.ExecuteAsync(null);
-        vm.NewNoteCommand.Execute(null);
-        var first = Path.Combine(_home, "first.txt");
-        var second = Path.Combine(_home, "second.txt");
-        File.WriteAllText(first, "published");
-        File.WriteAllText(second, "held");
-        var adding = AddDroppedFiles(vm, [first, second]);
-        await copying.Entered.Task;
-        _dialogs.AttachmentWaitAnswer = _ => Task.FromResult(true);
-        _dialogs.BinderToCreate = Path.Combine(_home, "next.daynote");
-        var switching = vm.NewBinderCommand.ExecuteAsync(null);
-        _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
-        await switching;
-        await deleting.Entered.Task;
-        copying.Release();
-        await adding;
-        Assert.False(deleted.Task.IsCompleted);
-        return (vm, adding, deleting, deleted.Task);
-    }
-
-    [AvaloniaFact]
-    public async Task Session_end_retains_cleanup_started_by_an_earlier_stopped_import()
-    {
-        var log = new ListLogger();
-        var stopped = await StartStoppedImportCleanupAsync(log);
-        var ending = stopped.Vm.EndSessionAsync();
-        _clock.Advance(MainWindowViewModel.ExitBound);
-        await ending;
-        Assert.Contains(log.Entries, entry => entry.Level == "warn"
-            && entry.Message == "Attachment cleanup did not finish within the quit bound");
-        Assert.False(stopped.Deleted.IsCompleted);
-        stopped.Cleanup.Release();
-        await stopped.Deleted;
-    }
-
     // ----- Attachments being added (developer decision: finished before a switch, close or quit) -----
 
-    private async Task<(MainWindowViewModel Vm, HeldCopy Copy, Note Note, string File, Task Adding)> StartHeldAddAsync()
+    private async Task<(MainWindowViewModel Vm, HeldCopy Copy, Note Note, string File, Task Adding)> StartHeldAddAsync(
+        IAppLogger? log = null)
     {
         var held = new HeldCopy();
-        var vm = NewViewModel(copyFile: held.Copy);
+        var vm = NewViewModel(log: log, copyFile: held.Copy);
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         vm.NewNoteCommand.Execute(null);
@@ -4112,9 +4059,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         await held.Entered.Task;
         var second = AddDroppedFiles(vm, [secondFile]);
 
-        var admission = (SemaphoreSlim)typeof(MainWindowViewModel)
-            .GetField("_importAdmission", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(vm)!;
-        Assert.Equal(0, admission.CurrentCount);
         Assert.False(second.IsCompleted);
         Assert.Equal(1, Volatile.Read(ref copyCalls));
         Assert.Empty(note.Attachments);
@@ -4145,12 +4089,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.AttachmentWaitAnswer = _ => Task.FromResult(true);
         var quitting = vm.QuitAsync();
         _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
-        Assert.True(await quitting);
-        await second;
-        Assert.False(first.IsCompleted);
+        await Until(vm, () => !vm.HasBinder);
 
         held.Release();
-        await first;
+        Assert.True(await quitting);
+        await Task.WhenAll(first, second);
         Assert.Equal(1, held.CopyCalls);
         Assert.Empty(note.Attachments);
         Assert.Empty(AssetFiles(note));
@@ -4296,7 +4239,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Stopping_the_wait_switches_at_once_and_removes_the_copy_when_it_lands()
+    public async Task Stopping_the_wait_switches_once_the_file_in_progress_returns_and_removes_its_copy()
     {
         var (vm, held, note, file, adding) = await StartHeldAddAsync();
         _dialogs.AttachmentWaitAnswer = _ => Task.FromResult(true);
@@ -4305,39 +4248,50 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var switching = vm.NewBinderCommand.ExecuteAsync(null);
         _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
-        await switching;
+        Dispatcher.UIThread.RunJobs();
 
-        // The switch went ahead without the file, and says which file was not added.
-        Assert.False(adding.IsCompleted);
+        // Stopped, but still waiting for the file being copied.
+        Assert.False(switching.IsCompleted);
+        Assert.Equal(1, _dialogs.AttachmentWaits);
+
+        held.Release();
+        await switching;
+        await adding;
+
+        // The switch went ahead without the file, says which file was not added, and its copy is gone.
         Assert.Equal(second, vm.SelectedBinder?.Path);
         var result = Assert.Single(vm.Results);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
         Assert.Contains(Path.GetFileName(file), result.Text, StringComparison.Ordinal);
         Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
-
-        // The copy that lands afterwards is removed, and nothing refers to it.
-        held.Release();
-        await adding;
+        Assert.Empty(note.Attachments);
         Assert.Empty(AssetFiles(note));
         await vm.ShutdownAsync();
     }
 
     [AvaloniaFact]
-    public async Task Stopping_an_attachment_wait_allows_quit_and_removes_a_late_copy()
+    public async Task Stopping_an_attachment_wait_lets_the_quit_end_within_its_deadline_and_the_late_copy_goes()
     {
-        var (vm, held, note, file, adding) = await StartHeldAddAsync();
+        var log = new ListLogger();
+        var (vm, held, note, file, adding) = await StartHeldAddAsync(log);
         _dialogs.AttachmentWaitAnswer = _ => Task.FromResult(true);
 
         var quitting = vm.QuitAsync();
         _clock.Advance(MainWindowViewModel.ImportWaitNoticeDelay);
-        Assert.True(await quitting);
+        await Until(vm, () => !vm.HasBinder);
 
-        Assert.False(adding.IsCompleted);
+        // The binder is saved without the file, and the copy still running does not hold the quit past
+        // its deadline.
         Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes.Single().Attachments);
+        Assert.False(quitting.IsCompleted);
+        _clock.Advance(MainWindowViewModel.ExitBound);
+        Assert.True(await quitting);
+        Assert.Contains(("warn", "Attachment work did not finish within the quit's bound"), log.Entries);
         var result = Assert.Single(vm.Results);
         Assert.Equal(OperationResultKind.Warning, result.Kind);
         Assert.Contains(Path.GetFileName(file), result.Text, StringComparison.Ordinal);
 
+        Assert.False(adding.IsCompleted);
         held.Release();
         await adding;
         Assert.Empty(AssetFiles(note));
@@ -4346,11 +4300,15 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task An_ending_session_does_not_wait_for_an_add_and_its_late_copy_is_removed()
     {
-        var (vm, held, note, _, adding) = await StartHeldAddAsync();
+        var log = new ListLogger();
+        var (vm, held, note, _, adding) = await StartHeldAddAsync(log);
 
-        await vm.EndSessionAsync();
+        var ending = vm.EndSessionAsync();
+        _clock.Advance(MainWindowViewModel.ExitBound);
+        await ending;
 
         Assert.Equal(0, _dialogs.AttachmentWaits);
+        Assert.Contains(("warn", "Attachment work did not finish within the quit's bound"), log.Entries);
         Assert.False(adding.IsCompleted);
         held.Release();
         await adding;
@@ -4620,21 +4578,20 @@ public sealed class MainWindowViewModelTests : IDisposable
         public int AttachmentWaits { get; private set; }
 
         /// <summary>
-        /// How the wait is answered: by default it lasts until the adds settle. A test that stops waiting
-        /// returns true from here, possibly later.
+        /// How the wait is answered: by default it lasts until the adds settle. A test that presses Stop
+        /// returns true from here, possibly later; the wait then lasts until the adds settle, as the dialog's.
         /// </summary>
         public Func<Task, Task<bool>>? AttachmentWaitAnswer { get; set; }
 
-        public async Task<bool> WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter)
+        public async Task WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter, Action stop)
         {
             AttachmentWaits++;
-            if (AttachmentWaitAnswer is { } answer)
+            if (AttachmentWaitAnswer is { } answer && await answer(settled).WaitAsync(_lifetime.Token))
             {
-                return await answer(settled).WaitAsync(_lifetime.Token);
+                stop();
             }
 
             await settled.WaitAsync(_lifetime.Token);
-            return false;
         }
 
         public Task OpenPathExternallyAsync(string path)

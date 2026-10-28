@@ -146,14 +146,14 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // Set once the operating system is ending the session: from then on nothing asks the user anything.
     private bool _sessionEnding;
 
-    // The attachments being added, each until it settles or is given up. A binder switch, close or removal,
-    // and a quit, wait for them, so what the user added ends up in the note; an ending OS session never
-    // waits (developer decision).
+    // The attachments being added, each until its turn ends. A binder switch, close or removal, and a quit,
+    // wait for them, so what the user added ends up in the note; an ending OS session never waits
+    // (developer decision).
     private readonly List<AttachmentImport> _imports = new();
-    private readonly SemaphoreSlim _importAdmission = new(1, 1);
-    // Stopping an import relinquishes its published copies, but their physical deletion still belongs
-    // to this window. A later quit must retain deletions started by an earlier stop or binder switch.
-    private Task _attachmentCleanup = Task.CompletedTask;
+    // The attachment folders' one owner: adds, the removal of copies an add was stopped from attaching, and
+    // attachment and note-folder deletes take turns, each starting once the one before has ended. A quit
+    // waits for the last turn within its deadline.
+    private Task _attachmentWork = Task.CompletedTask;
 
     public MainWindowViewModel(
         AppPaths paths,
@@ -536,8 +536,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private void StartExitDeadline() => _exitStarted = _clock.GetTimestamp();
 
     // A wait for attachments being added says so only once it is long enough to notice, so an ordinary add
-    // never flashes a dialog, and offers to stop after a few seconds, so a drive that stops answering cannot
-    // keep the user waiting for good (developer decision).
+    // never flashes a dialog, and offers to stop after a few seconds; stopping ends the adds once the file in
+    // progress returns, and a drive that never returns it is met by quitting, which stays bounded (developer
+    // decision).
     internal static readonly TimeSpan ImportWaitNoticeDelay = TimeSpan.FromMilliseconds(400);
     internal static readonly TimeSpan ImportStopOfferDelay = TimeSpan.FromSeconds(3);
 
@@ -574,13 +575,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _log.Info("Application shutting down", new { path = _current?.Path });
 
         // Attachments still being added finish first, so the save below carries them; an ending session
-        // gives them up instead, and their copies are removed within the deadline.
+        // stops them instead, and their copies are removed within the deadline.
         if (_sessionEnding)
         {
             StartExitDeadline();
-            _ = GiveUpImports(_imports.ToArray());
+            StopImports(_imports);
         }
-        else if (!await WaitForImportsAsync())
+        else if (!await WaitForImportsAsync(quitting: true))
         {
             _shuttingDown = false;
             _autosaveTimer.Start();
@@ -619,7 +620,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         // Attachments still being added finish first. A wait whose dialog cannot be shown cancels the quit,
         // and DayNote stays open as it was.
-        if (!await WaitForImportsAsync())
+        if (!await WaitForImportsAsync(quitting: true))
         {
             _shuttingDown = false;
             _autosaveTimer.Start();
@@ -657,7 +658,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     _log.Warn("Quitting with the binder's edits unsaved", new { path = binder.Path });
                     BeginShutdown();
                     StartExitDeadline();
-                    await WaitForAttachmentCleanupAsync();
+                    await WaitForAttachmentWorkAsync();
                     await DrainBackupsForQuitAsync();
                     return true;
                 default:
@@ -665,19 +666,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             }
         }
 
-        await WaitForAttachmentCleanupAsync();
+        await WaitForAttachmentWorkAsync();
         await DrainBackupsForQuitAsync();
         return true;
     }
 
-    // Attachment copies and files still being deleted, within what remains of the deadline. One still
-    // running then ends with the process and may leave an unreferenced file.
-    private async Task WaitForAttachmentCleanupAsync()
+    // The attachment folders' remaining turns, such as a stopped add whose file in progress has not returned
+    // and the removal of its copies, within what remains of the deadline. A turn still running then ends
+    // with the process and may leave an unreferenced file.
+    private async Task WaitForAttachmentWorkAsync()
     {
-        try { await _attachmentCleanup.WaitAsync(ExitRemaining, _clock); }
+        try { await _attachmentWork.WaitAsync(ExitRemaining, _clock); }
         catch (TimeoutException)
         {
-            _log.Warn("Attachment cleanup did not finish within the quit bound");
+            _log.Warn("Attachment work did not finish within the quit's bound");
         }
     }
 
@@ -706,7 +708,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             BeginShutdown();
         }
 
-        await WaitForAttachmentCleanupAsync();
+        await WaitForAttachmentWorkAsync();
     }
 
     // The binder's pending edits, within the quit's deadline. A save still running then carries on and
@@ -964,8 +966,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var binder = _current;
 
         // Files still being added to the note go with it.
-        var adding = _imports.Where(import => ReferenceEquals(import.Note, note)).ToArray();
-        _ = GiveUpImports(adding);
+        StopImports(_imports.Where(import => ReferenceEquals(import.Note, note)));
 
         _current.Binder.Notes.Remove(note);
         _notesChangedAt = _clock.GetUtcNow();
@@ -988,15 +989,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var saved = await SaveCurrentAsync();
         var removalSaved = saved && ReferenceEquals(_current, binder);
 
-        await OwnAttachmentCleanup(FinishRemovalAsync());
-
-        async Task FinishRemovalAsync()
-        {
-            // Retain the entire cleanup, including the wait for a copy already physically in flight.
-            await Task.WhenAll(adding.Select(import => import.Copying));
-            if (removalSaved || ReferenceEquals(_current, binder))
-                await DeleteNoteAssetsAsync(binder.Path, note, removalSaved);
-        }
+        // The folder's turn comes after the stopped adds into it have returned and removed their copies.
+        await InAttachmentTurn(() => removalSaved || ReferenceEquals(_current, binder)
+            ? DeleteNoteAssetsAsync(binder.Path, note, removalSaved)
+            : Task.CompletedTask);
     }
 
     /// <summary>
@@ -1185,23 +1181,28 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var noteId = note.Id;
         _log.Info("Adding attachments", new { noteId, requested = files.Count });
         var import = new AttachmentImport(note, directory, files);
-        var copying = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        import.Copying = copying.Task;
         _imports.Add(import);
-        var admitted = false;
+        import.Done = InAttachmentTurn(() => ImportAsync(import, unavailable));
+        await import.Done;
+    }
+
+    // One add's turn of the attachment folders: it copies the files off the UI thread, then attaches what it
+    // copied, unless it was stopped, in which case it removes its copies and attaches nothing.
+    private async Task ImportAsync(AttachmentImport import, int unavailable)
+    {
+        var note = import.Note;
+        var directory = import.Directory;
+        var noteId = note.Id;
         try
         {
-            await _importAdmission.WaitAsync(import.Stopping);
-            admitted = true;
-            if (import.GivenUp || !IsLiveNote(note))
+            // Stopped while it waited for its turn: nothing is copied.
+            if (import.Stop.IsCancellationRequested || !IsLiveNote(note))
                 return;
             var existingAttachmentNames = note.Attachments.ToArray();
-            var work = Task.Run(() => ImportAttachments(import, existingAttachmentNames));
             AttachmentImportOutcome outcome;
             try
             {
-                outcome = await work;
-                copying.TrySetResult();
+                outcome = await Task.Run(() => ImportAttachments(import, existingAttachmentNames));
             }
             catch (Exception ex)
             {
@@ -1209,7 +1210,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 // Attachment setup is an edge failure, not a reason for a file drop to escape into the
                 // UI event loop and terminate the app.
                 _log.Error("Failed to prepare attachment directory", new { noteId, path = directory }, ex);
-                if (!import.GivenUp && ReferenceEquals(SelectedNote?.Note, note))
+                if (!import.Stop.IsCancellationRequested && ReferenceEquals(SelectedNote?.Note, note))
                 {
                     AttachmentResult = new OperationResultViewModel(
                         OperationResultKind.Error,
@@ -1219,21 +1220,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
             }
 
-
-            // Given up while its files were copied: the binder closed or was reloaded, the note was deleted, or
-            // the user stopped waiting. Its copies are gone or going (GiveUpImports), and nothing is attached.
-            if (import.GivenUp)
+            // Stopped while its files were copied: the binder closed or was reloaded, the note was deleted, or
+            // the user stopped waiting. Nothing is attached, and the copies it made go.
+            if (import.Stop.IsCancellationRequested)
             {
-                _log.Info("Discarding attachment-add result: the add was given up", new { noteId });
+                _log.Info("Discarding attachment-add result: the add was stopped", new { noteId, copied = outcome.AddedNames.Count });
+                await DeleteCopiesAsync(directory, outcome.AddedNames);
                 return;
             }
 
-            // Every path that ends a note or a binder gives up its adds first, so this is not expected; were it
+            // Every path that ends a note or a binder stops its adds first, so this is not expected; were it
             // to happen, the copies have no note to belong to.
             if (!IsLiveNote(note))
             {
                 _log.Warn("Discarding attachment-add result: note is no longer live", new { noteId });
-                _ = DeleteCopiesAsync(directory, outcome.AddedNames);
+                await DeleteCopiesAsync(directory, outcome.AddedNames);
                 return;
             }
 
@@ -1296,17 +1297,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 MarkDirty(note.Id);
             }
         }
-        catch (OperationCanceledException) when (import.Stopping.IsCancellationRequested)
-        {
-            // Stop discards a queued batch without starting another physical operation.
-        }
         finally
         {
-            copying.TrySetResult();
             _imports.Remove(import);
-            import.Settle();
-            if (admitted)
-                _importAdmission.Release();
         }
     }
 
@@ -1356,81 +1349,18 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         IReadOnlyList<string> FailedNames);
 
     /// <summary>
-    /// One add of files to a note. Its copies run on a background thread until they settle, unless the add
-    /// is given up first: then the copies it has published are deleted, every later one is deleted by the
-    /// copying thread as soon as it lands, and nothing is attached.
+    /// One add of files to a note. <see cref="Stop"/> ends it: it copies nothing more once the file in
+    /// progress returns, and its turn removes what it copied.
     /// </summary>
     private sealed class AttachmentImport(Note note, string directory, IReadOnlyList<string> sources)
     {
-        private readonly object _gate = new();
-        private readonly List<string> _published = [];
-        private readonly CancellationTokenSource _stop = new();
-        private readonly TaskCompletionSource _settled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private bool _givenUp;
-
         public Note Note => note;
         public string Directory => directory;
         public IReadOnlyList<string> Sources => sources;
+        public CancellationTokenSource Stop { get; } = new();
 
-        /// <summary>Completes when the add settles or is given up: what a waiting close or quit waits for.</summary>
-        public Task Settled => _settled.Task;
-
-        /// <summary>Completes when the copying thread has finished, never faulting. Only a deletion of the
-        /// note's folder waits for it.</summary>
-        public Task Copying { get; set; } = Task.CompletedTask;
-
-        public CancellationToken Stopping => _stop.Token;
-
-        public bool GivenUp
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    return _givenUp;
-                }
-            }
-        }
-
-        /// <summary>Called by the copying thread once a copy is published. False once the add was given up:
-        /// the copy is then the caller's to delete.</summary>
-        public bool Keep(string name)
-        {
-            lock (_gate)
-            {
-                if (_givenUp)
-                {
-                    return false;
-                }
-
-                _published.Add(name);
-                return true;
-            }
-        }
-
-        /// <summary>Gives the add up and returns the copies it had published, which are now the caller's to
-        /// delete. Empty when it was already given up.</summary>
-        public IReadOnlyList<string> GiveUp()
-        {
-            string[] copies;
-            lock (_gate)
-            {
-                if (_givenUp)
-                {
-                    return [];
-                }
-
-                _givenUp = true;
-                copies = _published.ToArray();
-                _published.Clear();
-            }
-
-            _stop.Cancel();
-            _settled.TrySetResult();
-            return copies;
-        }
-
-        public void Settle() => _settled.TrySetResult();
+        /// <summary>Its turn of the attachment folders: what a waiting close or quit waits for.</summary>
+        public Task Done { get; set; } = Task.CompletedTask;
     }
 
     /// <summary>
@@ -1439,7 +1369,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// parameters and the filesystem, and returns what happened rather than mutating the note directly,
     /// so it is safe to run off the UI thread while the note keeps being edited. Directory creation is
     /// deliberately not wrapped in its own try/catch: that failure is distinct (nothing could be
-    /// attempted at all) and is handled by the caller. Once the add is given up it copies nothing more.
+    /// attempted at all) and is handled by the caller. Once the add is stopped it copies nothing more.
     /// </summary>
     private AttachmentImportOutcome ImportAttachments(AttachmentImport import, IReadOnlyList<string> existingAttachmentNames)
     {
@@ -1453,7 +1383,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         foreach (var existing in existingAttachmentNames)
         {
             var existingPath = Path.Combine(directory, existing);
-            if (import.Stopping.IsCancellationRequested || !File.Exists(existingPath))
+            if (import.Stop.IsCancellationRequested || !File.Exists(existingPath))
             {
                 continue;
             }
@@ -1475,7 +1405,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             .OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var source in import.Sources)
         {
-            if (import.Stopping.IsCancellationRequested)
+            if (import.Stop.IsCancellationRequested)
             {
                 break;
             }
@@ -1483,7 +1413,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             try
             {
                 var hash = ContentHash.Sha256HexFile(source);
-                if (import.Stopping.IsCancellationRequested)
+                if (import.Stop.IsCancellationRequested)
                     break;
                 if (hashes.ContainsKey(hash))
                 {
@@ -1495,11 +1425,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 var copy = Path.Combine(directory, name);
                 _copyFile(source, copy);
                 takenNames.Add(name);
-                if (!import.Keep(name))
-                {
-                    DeleteCopy(directory, name, noteId);
-                    break;
-                }
 
                 // The copy is recorded in the backup history once, as it is added: attachments are files the
                 // user adds, and removing one or deleting its note deletes the file permanently after a
@@ -1521,22 +1446,25 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     /// <summary>
-    /// Waits for the attachments being added to settle before a binder switch, close or removal, or a quit,
-    /// so they end up in the note (developer decision). Once the wait is long enough to notice, a dialog
-    /// shows it, and after a few seconds the user may stop waiting: the adds still running are then given
-    /// up, their copies removed, and the user is told which files were not added.
+    /// Waits for the attachments being added before a binder switch, close or removal, or a quit, so they end
+    /// up in the note (developer decision). Once the wait is long enough to notice, a dialog shows it, and
+    /// after a few seconds the user may stop the adds still running: they copy nothing more once the file in
+    /// progress returns, remove their copies, and the user is told which files were not added. The dialog
+    /// closes when those files return; a quit goes on at once instead, and the files' return is attachment
+    /// work it waits for within its deadline, so a drive that never returns one cannot hold the quit.
     /// </summary>
     /// <returns>False when the wait's dialog could not be shown; the caller then cancels what it was
     /// doing, since nothing tells the user why it is waiting.</returns>
-    private async Task<bool> WaitForImportsAsync()
+    private async Task<bool> WaitForImportsAsync(bool quitting = false)
     {
-        var waiting = _imports.ToArray();
+        // An add already stopped attaches nothing, so it is not waited for here.
+        var waiting = _imports.Where(import => !import.Stop.IsCancellationRequested).ToArray();
         if (waiting.Length == 0)
         {
             return true;
         }
 
-        var settled = Task.WhenAll(waiting.Select(import => import.Settled));
+        var settled = Task.WhenAll(waiting.Select(import => import.Done));
         await Task.WhenAny(settled, Task.Delay(ImportWaitNoticeDelay, _clock));
         if (settled.IsCompleted)
         {
@@ -1544,10 +1472,19 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         _log.Info("Waiting for attachments being added", new { adds = waiting.Length });
-        bool stop;
+        AttachmentImport[] stopped = [];
+        var stopping = new TaskCompletionSource();
+        void Stop()
+        {
+            stopped = waiting.Where(import => !import.Done.IsCompleted).ToArray();
+            StopImports(stopped);
+            stopping.TrySetResult();
+        }
+
         try
         {
-            stop = await _dialogs.WaitForAttachmentsAsync(settled, ImportStopOfferDelay);
+            await _dialogs.WaitForAttachmentsAsync(
+                quitting ? Task.WhenAny(settled, stopping.Task) : settled, ImportStopOfferDelay, Stop);
         }
         catch (Exception ex)
         {
@@ -1555,13 +1492,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return settled.IsCompleted;
         }
 
-        var stopped = stop ? waiting.Where(import => !import.Settled.IsCompleted).ToArray() : [];
         if (stopped.Length == 0)
         {
             return true;
         }
 
-        _ = GiveUpImports(stopped);
         var names = stopped.SelectMany(import => import.Sources).Select(Path.GetFileName).OfType<string>().ToArray();
         _log.Warn("Stopped waiting for attachments being added; they were not attached", new { files = names });
         ShowResult(
@@ -1571,38 +1506,41 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         return true;
     }
 
-    /// <summary>
-    /// Gives up adds that can no longer be attached, deleting the copies they had published off the UI
-    /// thread. Returns the retained cleanup tail; ordinary quit and session end observe it within their deadline.
-    /// </summary>
-    private Task GiveUpImports(IReadOnlyList<AttachmentImport> imports)
+    // Stops adds that can no longer be attached; each one's own turn removes the copies it made.
+    private void StopImports(IEnumerable<AttachmentImport> imports)
     {
-        foreach (var import in imports)
+        foreach (var import in imports.Where(import => !import.Stop.IsCancellationRequested).ToArray())
         {
-            var copies = import.GiveUp();
-            _log.Info("Gave up adding attachments", new { noteId = import.Note.Id, published = copies.Count });
-            if (copies.Count > 0)
-            {
-                _ = DeleteCopiesAsync(import.Directory, copies);
-            }
+            import.Stop.Cancel();
+            _log.Info("Stopped adding attachments", new { noteId = import.Note.Id });
         }
-
-        return _attachmentCleanup;
     }
 
-    private Task DeleteCopiesAsync(string directory, IReadOnlyList<string> names)
+    // Runs a command on the attachment folders once every earlier command has ended. A command reports its
+    // own failure to its caller; the next one runs regardless.
+    private Task InAttachmentTurn(Func<Task> command)
     {
-        var deleting = Task.Run(() =>
+        var turn = After(_attachmentWork, command);
+        _attachmentWork = turn;
+        return turn;
+
+        static async Task After(Task previous, Func<Task> command)
+        {
+            await previous.ConfigureAwait(
+                ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ContinueOnCapturedContext);
+            await command();
+        }
+    }
+
+    private Task DeleteCopiesAsync(string directory, IReadOnlyList<string> names) => names.Count == 0
+        ? Task.CompletedTask
+        : Task.Run(() =>
         {
             foreach (var name in names)
             {
                 DeleteCopy(directory, name, noteId: null);
             }
         });
-        _attachmentCleanup = _attachmentCleanup.IsCompleted
-            ? deleting : Task.WhenAll(_attachmentCleanup, deleting);
-        return deleting;
-    }
 
     // An attachment copy that nothing refers to. A failure leaves an unreferenced file, which is logged.
     private void DeleteCopy(string directory, string name, string? noteId)
@@ -1640,12 +1578,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private static object JoinNames(IReadOnlyList<string> names) => names.Count == 1
         ? QuotedValue.Name(names[0])
         : Message.Of("files.join", ("first", QuotedValue.Name(names[0])), ("rest", JoinNames(names.Skip(1).ToArray())));
-
-    private Task OwnAttachmentCleanup(Task cleanup)
-    {
-        _attachmentCleanup = _attachmentCleanup.IsCompleted ? cleanup : Task.WhenAll(_attachmentCleanup, cleanup);
-        return cleanup;
-    }
 
     [RelayCommand]
     private async Task RemoveAttachment(AttachmentItemViewModel item)
@@ -1699,7 +1631,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // leaves a reopened binder pointing at a deleted file. A binder reloaded or closed meanwhile may
         // still refer to it, so it stays.
         var saved = await SaveCurrentAsync();
-        await OwnAttachmentCleanup(DeleteRemovedFileAsync());
+        await InAttachmentTurn(DeleteRemovedFileAsync);
 
         async Task DeleteRemovedFileAsync()
         {
@@ -2051,8 +1983,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         _autosaveTimer.Stop();
         // Nothing is left to attach them to; an ordinary close waited for them first, so these are adds the
-        // user stopped waiting for, or ones a binder closed without saving cannot take.
-        _ = GiveUpImports(_imports.ToArray());
+        // user stopped, or ones a binder closed without saving cannot take.
+        StopImports(_imports);
         _current = null;
         HasBinder = false;
         _dirty = false;
@@ -2343,7 +2275,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     {
         _binderPathKeys.Published(loaded.Path, loaded.IdentityPath);
         // A reload replaces every note: adds into the notes it replaces are part of the edits it discards.
-        _ = GiveUpImports(_imports.ToArray());
+        StopImports(_imports);
         _current = loaded;
         _baselineHash = loaded.ContentHash;
         _dirty = false;
