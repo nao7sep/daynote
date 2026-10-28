@@ -41,13 +41,13 @@ public interface IRecordsSource
     /// <summary>This launch's session, as every record of it carries.</summary>
     string Session { get; }
 
-    Task<RecordsPage> ReadPageAsync(RecordsQuery query);
+    Task<RecordsPage> ReadPageAsync(RecordsQuery query, CancellationToken cancellationToken = default);
 
     /// <summary>The record, or null when no record has that id.</summary>
-    Task<RecordDetail?> ReadDetailAsync(long id);
+    Task<RecordDetail?> ReadDetailAsync(long id, CancellationToken cancellationToken = default);
 
     /// <summary>Every session that has records, newest first.</summary>
-    Task<IReadOnlyList<string>> ReadSessionsAsync();
+    Task<IReadOnlyList<string>> ReadSessionsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Raised, on the logger's own thread, after each entry the database stored. An entry that went

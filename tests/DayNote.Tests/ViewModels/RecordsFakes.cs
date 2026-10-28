@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DayNote.Logging;
 using DayNote.ViewModels;
@@ -59,7 +60,7 @@ internal sealed class FakeRecordsSource : IRecordsSource
         }
     }
 
-    public Task<RecordsPage> ReadPageAsync(RecordsQuery query)
+    public Task<RecordsPage> ReadPageAsync(RecordsQuery query, CancellationToken cancellationToken = default)
     {
         PageQueries.Add(query);
         if (Hold)
@@ -93,7 +94,7 @@ internal sealed class FakeRecordsSource : IRecordsSource
         return new RecordsPage(matching.Take(PageSize).ToList(), matching.Count > PageSize);
     }
 
-    public Task<RecordDetail?> ReadDetailAsync(long id)
+    public Task<RecordDetail?> ReadDetailAsync(long id, CancellationToken cancellationToken = default)
     {
         DetailReads++;
         if (HeldDetail is { } held)
@@ -106,7 +107,7 @@ internal sealed class FakeRecordsSource : IRecordsSource
             : Task.FromResult(Records.FirstOrDefault(record => record.Id == id));
     }
 
-    public Task<IReadOnlyList<string>> ReadSessionsAsync()
+    public Task<IReadOnlyList<string>> ReadSessionsAsync(CancellationToken cancellationToken = default)
     {
         SessionReads++;
         return Task.FromResult<IReadOnlyList<string>>(

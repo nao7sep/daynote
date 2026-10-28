@@ -91,7 +91,7 @@ public sealed class RecordsReadsTests : IDisposable
         var pages = 0;
         while (true)
         {
-            var page = await _log.ReadPageAsync(All(after));
+            var page = await _log.ReadPageAsync(All(after), TestContext.Current.CancellationToken);
             pages++;
             seen.AddRange(page.Records);
             if (!page.More)
@@ -118,9 +118,9 @@ public sealed class RecordsReadsTests : IDisposable
             (At(3), Later, "warn", "w", null, "{}"),
             (At(4), Later, "error", "e", null, "{}"));
 
-        var attention = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Attention, "", null));
-        var errors = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Error, "", null));
-        var debug = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Debug, "", null));
+        var attention = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Attention, "", null), TestContext.Current.CancellationToken);
+        var errors = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Error, "", null), TestContext.Current.CancellationToken);
+        var debug = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Debug, "", null), TestContext.Current.CancellationToken);
 
         Assert.Equal(["e", "w"], attention.Records.Select(record => record.Message));
         Assert.Equal(["e"], errors.Records.Select(record => record.Message));
@@ -134,8 +134,8 @@ public sealed class RecordsReadsTests : IDisposable
             (At(1), Earlier, "info", "before", null, "{}"),
             (At(2), Later, "info", "after", null, "{}"));
 
-        var page = await _log.ReadPageAsync(new RecordsQuery(Earlier, null, "", null));
-        var sessions = await _log.ReadSessionsAsync();
+        var page = await _log.ReadPageAsync(new RecordsQuery(Earlier, null, "", null), TestContext.Current.CancellationToken);
+        var sessions = await _log.ReadSessionsAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(["before"], page.Records.Select(record => record.Message));
         Assert.Equal([Later, Earlier], sessions);
@@ -150,7 +150,7 @@ public sealed class RecordsReadsTests : IDisposable
             (At(3), Later, "info", "Something else", null, """{"path":"/notes/1000.daynote"}"""));
 
         async Task<string[]> Search(string text) =>
-            (await _log.ReadPageAsync(new RecordsQuery(null, null, text, null))).Records.Select(record => record.Message).ToArray();
+            (await _log.ReadPageAsync(new RecordsQuery(null, null, text, null), TestContext.Current.CancellationToken)).Records.Select(record => record.Message).ToArray();
 
         Assert.Equal(["Binder saved"], await Search("binder"));
         Assert.Equal(["Note opened"], await Search("note_7"));
@@ -163,12 +163,12 @@ public sealed class RecordsReadsTests : IDisposable
     public async Task A_record_reads_whole_and_a_missing_one_reads_as_none()
     {
         Insert((At(5), Later, "warn", "Binder missing", "n1", """{"path":"/x.daynote","noteId":"n1"}"""));
-        var id = (await _log.ReadPageAsync(All())).Records.First(record => record.Message == "Binder missing").Id;
+        var id = (await _log.ReadPageAsync(All(), TestContext.Current.CancellationToken)).Records.First(record => record.Message == "Binder missing").Id;
 
-        var record = await _log.ReadDetailAsync(id);
+        var record = await _log.ReadDetailAsync(id, TestContext.Current.CancellationToken);
 
         Assert.Equal(new RecordDetail(id, At(5), Later, "warn", "Binder missing", "n1", """{"path":"/x.daynote","noteId":"n1"}"""), record);
-        Assert.Null(await _log.ReadDetailAsync(id + 1000));
+        Assert.Null(await _log.ReadDetailAsync(id + 1000, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -177,9 +177,9 @@ public sealed class RecordsReadsTests : IDisposable
         Insert((At(1), Later, "info", "one", null, "{}"));
         var before = Count();
 
-        await _log.ReadPageAsync(All());
-        await _log.ReadSessionsAsync();
-        await _log.ReadDetailAsync(1);
+        await _log.ReadPageAsync(All(), TestContext.Current.CancellationToken);
+        await _log.ReadSessionsAsync(TestContext.Current.CancellationToken);
+        await _log.ReadDetailAsync(1, TestContext.Current.CancellationToken);
         _log.Flush();
 
         Assert.Equal(before, Count());
@@ -190,7 +190,7 @@ public sealed class RecordsReadsTests : IDisposable
     {
         _log.Info("just now");
 
-        var page = await _log.ReadPageAsync(All());
+        var page = await _log.ReadPageAsync(All(), TestContext.Current.CancellationToken);
 
         Assert.Equal("just now", page.Records[0].Message);
     }
@@ -203,7 +203,7 @@ public sealed class RecordsReadsTests : IDisposable
 
         _log.Info("one");
         _log.Warn("two");
-        await _log.ReadPageAsync(All());
+        await _log.ReadPageAsync(All(), TestContext.Current.CancellationToken);
         _log.Flush();
 
         Assert.Equal(2, signals);
@@ -222,7 +222,7 @@ public sealed class RecordsReadsTests : IDisposable
         log.Flush();
 
         Assert.Equal(0, signals);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => log.ReadPageAsync(All()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => log.ReadPageAsync(All(), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -230,6 +230,6 @@ public sealed class RecordsReadsTests : IDisposable
     {
         _log.Dispose();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _log.ReadSessionsAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _log.ReadSessionsAsync(TestContext.Current.CancellationToken));
     }
 }

@@ -26,8 +26,8 @@ public enum RecordDetailState
 /// search; the selected record whole; and new records as they are stored.
 /// </summary>
 /// <remarks>
-/// Every read goes through <see cref="IRecordsSource"/>, off the UI thread and within a bound, and a
-/// result applies only while the filters it was read for are still the newest asked for. A read
+/// Every read goes through <see cref="IRecordsSource"/>, whose one thread runs them one at a time. A new
+/// list query or selection cancels the reads for the old one, and a cancelled read applies nothing. A read
 /// that fails is logged, and that log line is itself a stored record, so live reads stop after a
 /// failure and resume once a read succeeds.
 /// </remarks>
@@ -48,13 +48,13 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
 
     private Filters _filters = new(null, null, string.Empty);
 
-    // Bumped whenever the filters change, so a page read for older filters is dropped.
-    private long _generation;
-    private long _detailRequest;
     private bool _more;
 
-    // The busy claim for the next page (PLAYBOOK, Own the work in flight).
-    private bool _fetchingMore;
+    // Cancelled when what they were read for is no longer asked for: the list's reads with each new list
+    // query, the detail's with each new selection, and every read when the window closes.
+    private CancellationTokenSource _listReads = new();
+    private CancellationTokenSource _detailReads = new();
+    private readonly CancellationTokenSource _windowReads = new();
 
     // New records arrived while the list was scrolled away from the top.
     private bool _newestPending;
@@ -236,8 +236,9 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         }
 
         _disposed = true;
-        _generation++;
-        _detailRequest++;
+        _windowReads.Cancel();
+        _listReads.Cancel();
+        _detailReads.Cancel();
         _source.Stored -= OnSourceStored;
         _host.DisplayZoneChanged -= Retranslate;
         _searchTimer?.Dispose();
@@ -262,7 +263,7 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
 
     partial void OnSelectedRecordChanged(RecordRowViewModel? value)
     {
-        var request = ++_detailRequest;
+        var token = Renew(ref _detailReads);
         if (value is null)
         {
             Detail = null;
@@ -274,7 +275,7 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         {
             Detail = null;
             DetailState = RecordDetailState.Loading;
-            _ = ReadDetailAsync(value.Record.Id, request);
+            _ = ReadDetailAsync(value.Record.Id, token);
         }
 
         // Keyboard or pointer reaching the last row reaches the end of what is loaded.
@@ -301,12 +302,19 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
     private RecordsQuery Query(Filters filters, RecordCursor? after) =>
         new(filters.Session, filters.Level, filters.Search, after);
 
+    private CancellationToken Renew(ref CancellationTokenSource reads)
+    {
+        reads.Cancel();
+        reads.Dispose();
+        reads = CancellationTokenSource.CreateLinkedTokenSource(_windowReads.Token);
+        return reads.Token;
+    }
+
     private async Task ReadFirstPageAsync()
     {
-        var generation = ++_generation;
+        var token = Renew(ref _listReads);
         var filters = _filters;
         var selectedId = SelectedRecord?.Record.Id;
-        _fetchingMore = false;
         _newestPending = false;
         _more = false;
         IsLoadingMore = false;
@@ -317,11 +325,11 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         RecordsPage page;
         try
         {
-            page = await _source.ReadPageAsync(Query(filters, null));
+            page = await _source.ReadPageAsync(Query(filters, null), token);
         }
         catch (Exception ex)
         {
-            if (generation != _generation)
+            if (token.IsCancellationRequested)
             {
                 return;
             }
@@ -331,7 +339,7 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
             return;
         }
 
-        if (generation != _generation)
+        if (token.IsCancellationRequested)
         {
             return;
         }
@@ -356,13 +364,12 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
 
     private async Task LoadMoreAsync(bool retryFailed)
     {
-        if (ListState != RecordsListState.Ready || !_more || _fetchingMore || (MoreFailed && !retryFailed) || _disposed)
+        if (ListState != RecordsListState.Ready || !_more || IsLoadingMore || (MoreFailed && !retryFailed) || _disposed)
         {
             return;
         }
 
-        _fetchingMore = true;
-        var generation = _generation;
+        var token = _listReads.Token;
         var filters = _filters;
         var after = RecordsPaging.CursorAfter(Records.Select(row => row.Record).ToList());
         IsLoadingMore = true;
@@ -371,28 +378,26 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         RecordsPage page;
         try
         {
-            page = await _source.ReadPageAsync(Query(filters, after));
+            page = await _source.ReadPageAsync(Query(filters, after), token);
         }
         catch (Exception ex)
         {
-            if (generation != _generation)
+            if (token.IsCancellationRequested)
             {
                 return;
             }
 
-            _fetchingMore = false;
             ReadFailed("next page", ex);
             IsLoadingMore = false;
             MoreFailed = true;
             return;
         }
 
-        if (generation != _generation)
+        if (token.IsCancellationRequested)
         {
             return;
         }
 
-        _fetchingMore = false;
         _liveSuspended = false;
         foreach (var record in page.Records)
         {
@@ -409,7 +414,7 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
     // stay, and the selected row stays selected.
     private async Task ReadNewestAsync()
     {
-        var generation = _generation;
+        var token = _listReads.Token;
         var filters = _filters;
         var firstShown = Records.FirstOrDefault()?.Record;
         RecordsPage page;
@@ -419,8 +424,8 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
             RecordCursor? after = null;
             while (true)
             {
-                page = await _source.ReadPageAsync(Query(filters, after));
-                if (generation != _generation)
+                page = await _source.ReadPageAsync(Query(filters, after), token);
+                if (token.IsCancellationRequested)
                 {
                     return;
                 }
@@ -438,16 +443,11 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         }
         catch (Exception ex)
         {
-            if (generation == _generation)
+            if (!token.IsCancellationRequested)
             {
                 ReadFailed("newest page", ex);
             }
 
-            return;
-        }
-
-        if (generation != _generation)
-        {
             return;
         }
 
@@ -481,14 +481,15 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
 
     private async Task ReadSessionsAsync()
     {
+        var token = _windowReads.Token;
         IReadOnlyList<string> sessions;
         try
         {
-            sessions = await _source.ReadSessionsAsync();
+            sessions = await _source.ReadSessionsAsync(token);
         }
         catch (Exception ex)
         {
-            if (!_disposed)
+            if (!token.IsCancellationRequested)
             {
                 ReadFailed("launches", ex);
             }
@@ -496,7 +497,7 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
             return;
         }
 
-        if (_disposed)
+        if (token.IsCancellationRequested)
         {
             return;
         }
@@ -513,16 +514,16 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         }
     }
 
-    private async Task ReadDetailAsync(long id, long request)
+    private async Task ReadDetailAsync(long id, CancellationToken token)
     {
         RecordDetail? record;
         try
         {
-            record = await _source.ReadDetailAsync(id);
+            record = await _source.ReadDetailAsync(id, token);
         }
         catch (Exception ex)
         {
-            if (request != _detailRequest)
+            if (token.IsCancellationRequested)
             {
                 return;
             }
@@ -532,7 +533,7 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
             return;
         }
 
-        if (request != _detailRequest)
+        if (token.IsCancellationRequested)
         {
             return;
         }

@@ -48,8 +48,6 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private static readonly TimeSpan ReadWait = TimeSpan.FromSeconds(10);
-
     private readonly BlockingCollection<Action> _queue = new();
     private readonly Thread _owner;
     private readonly SqliteConnection? _connection;
@@ -196,27 +194,29 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
 
     public event Action? Stored;
 
-    public Task<RecordsPage> ReadPageAsync(RecordsQuery query) =>
-        ReadAsync(connection => RecordsReads.Page(connection, query));
+    public Task<RecordsPage> ReadPageAsync(RecordsQuery query, CancellationToken cancellationToken = default) =>
+        ReadAsync(connection => RecordsReads.Page(connection, query), cancellationToken);
 
-    public Task<RecordDetail?> ReadDetailAsync(long id) =>
-        ReadAsync(connection => RecordsReads.Detail(connection, id));
+    public Task<RecordDetail?> ReadDetailAsync(long id, CancellationToken cancellationToken = default) =>
+        ReadAsync(connection => RecordsReads.Detail(connection, id), cancellationToken);
 
-    public Task<IReadOnlyList<string>> ReadSessionsAsync() =>
-        ReadAsync(RecordsReads.Sessions);
+    public Task<IReadOnlyList<string>> ReadSessionsAsync(CancellationToken cancellationToken = default) =>
+        ReadAsync(RecordsReads.Sessions, cancellationToken);
 
     /// <summary>
-    /// Runs <paramref name="read"/> on the owning thread after every entry queued before it, and
-    /// gives up waiting after <see cref="ReadWait"/>. A read logs nothing: each record it wrote would
-    /// signal the next read of an open records window.
+    /// Runs <paramref name="read"/> on the owning thread after every entry queued before it. A read whose
+    /// <paramref name="cancellationToken"/> is cancelled by the time the thread reaches it, because the
+    /// window that asked wants something newer or has closed, is skipped as cancelled. A read logs nothing:
+    /// each record it wrote would signal the next read of an open records window.
     /// </summary>
-    private async Task<T> ReadAsync<T>(Func<SqliteConnection, T> read)
+    private Task<T> ReadAsync<T>(Func<SqliteConnection, T> read, CancellationToken cancellationToken)
     {
         var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         var queued = TryQueue(() =>
         {
-            if (result.Task.IsCompleted)
+            if (cancellationToken.IsCancellationRequested)
             {
+                result.TrySetCanceled(cancellationToken);
                 return;
             }
 
@@ -235,16 +235,7 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
             result.TrySetException(new InvalidOperationException("The records logger is closed."));
         }
 
-        try
-        {
-            return await result.Task.WaitAsync(ReadWait).ConfigureAwait(false);
-        }
-        catch (TimeoutException)
-        {
-            // Abandon an unread request, but let a read already executing retain its owner until it ends.
-            result.TrySetCanceled();
-            throw;
-        }
+        return result.Task;
     }
 
     private void Own()
