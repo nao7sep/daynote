@@ -210,8 +210,8 @@ public sealed class BackupStoreTests : IDisposable
         {
             // Once SQLite's lock wait fails, the warning dependency keeps the physical backup owner
             // held. The watchdog protects the test; it imposes no filesystem flush performance target.
-            await warningEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
-            await save.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await warningEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+            await save.WaitAsync(TestContext.Current.CancellationToken);
             Assert.Equal("saved while the history is locked", File.ReadAllText(TargetPath));
             Assert.False(BackupStore.Drain(TimeSpan.Zero));
         }

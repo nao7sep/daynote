@@ -79,12 +79,11 @@ public class LanguageChangeTests : WindowTest
         var window = Show(empty.Window);
         var header = Text(window, English.Of("binders.pane"));
         var emptyState = empty.ViewModel.BindersEmptyStateText;
-        var closed = false;
-        window.Closed += (_, _) => closed = true;
+        var closed = Closed(window);
         window.Close();
 
         // The quit writes the state off the UI thread before the window goes.
-        Views.MainWindowQuitTests.PumpUntil(() => closed);
+        RunUntil(closed);
 
         using (Localizer.Speaking("ru"))
         {

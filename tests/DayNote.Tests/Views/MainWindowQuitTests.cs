@@ -28,26 +28,13 @@ public sealed class MainWindowQuitTests : WindowTest
         // An edit not yet saved, so the quit's final save runs off the UI thread.
         populated.ViewModel.Editor.Status = NoteStatus.Draft;
         populated.ViewModel.Editor.Body = "One more line before quitting.";
-        var closed = false;
-        main.Closed += (_, _) => closed = true;
+        var closed = Closed(main);
 
         main.Close();
-        Assert.False(closed);
+        Assert.False(closed.IsCompleted);
         main.Close();
-        PumpUntil(() => closed);
+        RunUntil(closed);
 
         Assert.Single(log.Entries, entry => entry.Message == "Application shutting down");
-    }
-
-    internal static void PumpUntil(Func<bool> done)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (!done() && DateTime.UtcNow < deadline)
-        {
-            Dispatcher.UIThread.RunJobs();
-            System.Threading.Thread.Sleep(1);
-        }
-
-        Assert.True(done(), "timed out");
     }
 }

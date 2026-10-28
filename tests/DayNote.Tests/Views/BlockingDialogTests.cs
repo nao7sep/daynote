@@ -151,14 +151,14 @@ public sealed class BlockingDialogTests : IDisposable
         var waiting = service.WaitForAttachmentsAsync(new TaskCompletionSource().Task, TimeSpan.FromMilliseconds(1));
         var dialog = OpenDialog(owner);
         var stop = ButtonTagged(dialog, AttachmentWaitDialog.StopTag);
-
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (!stop.IsVisible && DateTime.UtcNow < deadline)
+        var offered = new TaskCompletionSource();
+        stop.PropertyChanged += (_, e) =>
         {
-            await Task.Delay(10);
-            Dispatcher.UIThread.RunJobs();
-        }
+            if (e.Property == Visual.IsVisibleProperty && stop.IsVisible)
+                offered.TrySetResult();
+        };
 
+        WindowTest.RunUntil(offered.Task);
         Assert.True(stop.IsVisible);
         stop.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.True(await waiting);
@@ -184,7 +184,9 @@ public sealed class BlockingDialogTests : IDisposable
     [AvaloniaFact]
     public void The_session_end_save_loop_ends_when_its_work_finishes_on_another_thread()
     {
-        var work = Task.Run(() => Task.Delay(20));
+        var finish = new TaskCompletionSource();
+        var work = Task.Run(() => finish.Task);
+        Dispatcher.UIThread.Post(() => Task.Run(finish.SetResult));
 
         MainWindow.RunUntilDone(work);
 

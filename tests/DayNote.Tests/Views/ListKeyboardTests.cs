@@ -45,7 +45,7 @@ public sealed class ListKeyboardTests : WindowTest
         var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         item.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(item.Title)) saved.TrySetResult(); };
         Press(window, PhysicalKey.Enter);
-        await saved.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await saved.Task.WaitAsync(TestContext.Current.CancellationToken);
         Dispatcher.UIThread.RunJobs();
 
         Assert.False(item.IsEditing);

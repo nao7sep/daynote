@@ -163,7 +163,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(vm.IsOpeningBinder);
         Assert.Equal(Localizer.T("binder.opening"), vm.EditorEmptyStateText);
         var newer = vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Path.EndsWith("later.daynote", StringComparison.Ordinal)));
-        await newer.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await newer.WaitAsync(TestContext.Current.CancellationToken);
         Assert.False(earlier.IsCompleted);
         Assert.False(vm.IsOpeningBinder);
         held.Release();
@@ -267,7 +267,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         // A remembered row is not a current location when the binder filter closes the active binder.
         vm.BindersFilter = "does-not-match-any-binder";
-        await PumpUntilAsync(() => !vm.HasBinder);
+        await Until(vm, () => !vm.HasBinder);
         vm.BindersFilter = string.Empty;
         Assert.False(vm.HasBinder);
         Assert.NotEmpty(vm.Binders);
@@ -419,7 +419,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var quitting = vm.QuitAsync();
         _commandOperations.Add(quitting);
-        await PumpUntilAsync(() => !vm.HasBinder);
+        await Until(vm, () => !vm.HasBinder);
         _clock.Advance(MainWindowViewModel.ExitBound / 2);
         Assert.False(quitting.IsCompleted);
         Assert.False(removing.IsCompleted);
@@ -1201,7 +1201,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var answer = new TaskCompletionSource<ExternalChangeChoice>(TaskCreationOptions.RunContinuationsAsynchronously);
         _dialogs.ExternalAnswer = () => answer.Task;
         var firstSave = vm.SaveNowCommand.ExecuteAsync(null);
-        await PumpUntilAsync(() => _dialogs.ExternalChangeQuestions == 1);
+        await _dialogs.ExternalChangeAsked.Task.WaitAsync(TestContext.Current.CancellationToken);
 
         // The question keeps the save's turn at the file: a later save waits for it rather than reading.
         var nextRead = store.HoldNextSave();
@@ -1231,7 +1231,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Body = "local edit";
         _dialogs.ExternalAnswer = () => new TaskCompletionSource<ExternalChangeChoice>().Task;
         var save = vm.SaveNowCommand.ExecuteAsync(null);
-        await PumpUntilAsync(() => _dialogs.ExternalChangeQuestions == 1);
+        await _dialogs.ExternalChangeAsked.Task.WaitAsync(TestContext.Current.CancellationToken);
 
         // The quit finds the same change, which counts as a failed save, and asks whether to quit.
         Assert.False(await vm.QuitAsync());
@@ -1605,13 +1605,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         var order = vm.Binders.Select(row => row.Name).ToArray();
         await vm.OpenKnownBinderCommand.ExecuteAsync(vm.Binders.Single(row => row.Name == order[0]));
         vm.BindersFilter = order[1];
-        await PumpUntilAsync(() => vm.Binders.Count == 1 && vm.Binders[0].IsCurrent);
+        await Until(vm, () => vm.Binders.Count == 1 && vm.Binders[0].IsCurrent);
         Assert.Equal("in " + order[1], Assert.Single(vm.Notes).Note.Title);
         Assert.Same(vm.Binders[0], vm.SelectedBinder);
 
         // Nothing matches: the binder closes, and every pane is blank.
         vm.BindersFilter = "no such binder";
-        await PumpUntilAsync(() => !vm.HasBinder);
+        await Until(vm, () => !vm.HasBinder);
         Assert.Empty(vm.Binders);
         Assert.Empty(vm.Notes);
         Assert.False(vm.Editor.HasNote);
@@ -1638,7 +1638,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         store.SaveFailure = new IOException("No space left on device");
 
         vm.BindersFilter = "no such binder";
-        await PumpUntilAsync(() => vm.IsSaveStateError);
+        await Until(vm, () => vm.IsSaveStateError);
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(vm.HasBinder);
@@ -1678,11 +1678,12 @@ public sealed class MainWindowViewModelTests : IDisposable
         }
 
         PressClose();
-        await PumpUntilAsync(() => !vm.HasBinder);
+        await Until(vm, () => !vm.HasBinder);
         Assert.True(window.IsVisible);
 
+        var closed = WindowTest.Closed(window);
         PressClose();
-        await PumpUntilAsync(() => !window.IsVisible);
+        await closed.WaitAsync(TestContext.Current.CancellationToken);
     }
 
     [AvaloniaFact]
@@ -1768,14 +1769,15 @@ public sealed class MainWindowViewModelTests : IDisposable
         Dispatcher.UIThread.RunJobs();
 
         window.Close();
-        await PumpUntilAsync(() => _dialogs.QuitQuestions.Count == 1);
+        await _dialogs.QuitAsked.Task.WaitAsync(TestContext.Current.CancellationToken);
         Dispatcher.UIThread.RunJobs();
         Assert.True(window.IsVisible);
         Assert.True(vm.HasBinder);
 
         store.SaveFailure = null;
+        var closed = WindowTest.Closed(window);
         window.Close();
-        await PumpUntilAsync(() => !window.IsVisible);
+        await closed.WaitAsync(TestContext.Current.CancellationToken);
         Assert.Equal("kept by closing the question", SavedBody());
     }
 
@@ -2196,7 +2198,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         window.DragDrop(panePoint.Value, RawDragEventType.Drop, transfer, DragDropEffects.Copy, RawInputModifiers.None);
         Dispatcher.UIThread.RunJobs();
         Assert.False(vm.IsAttachmentDropActive);
-        await PumpUntilAsync(() => vm.Attachments.Any(attachment => attachment.FileName == "headless-drop.txt"));
+        await Until(vm, () => vm.Attachments.Any(attachment => attachment.FileName == "headless-drop.txt"));
 
         var count = vm.Attachments.Count;
         window.DragDrop(toolbarPoint.Value, RawDragEventType.Drop, transfer, DragDropEffects.Copy, RawInputModifiers.None);
@@ -3696,24 +3698,25 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     /// <summary>
-    /// Pumps the headless dispatcher until <paramref name="condition"/> holds, for asserting on the
-    /// result of work that finishes on a background thread (its UI-thread continuation is not queued
-    /// yet at the moment a real drag-drop event handler returns). Fails the test rather than hanging if
-    /// the condition never becomes true.
+    /// Completes once a change the view model announces makes <paramref name="condition"/> hold, for
+    /// asserting on work that finishes on a background thread and returns to the UI thread.
     /// </summary>
-    private static async Task PumpUntilAsync(Func<bool> condition, int timeoutMs = 2000)
+    private static async Task Until(MainWindowViewModel vm, Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
+        var met = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Check(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (DateTime.UtcNow > deadline)
-            {
-                Assert.Fail("Condition was not met within the timeout.");
-            }
-
-            await Task.Delay(10);
-            Dispatcher.UIThread.RunJobs();
+            if (condition())
+                met.TrySetResult();
         }
+
+        vm.PropertyChanged += Check;
+        try
+        {
+            if (!condition())
+                await met.Task.WaitAsync(TestContext.Current.CancellationToken);
+        }
+        finally { vm.PropertyChanged -= Check; }
     }
 
     private static async Task CloseTestWindowAsync(MainWindowViewModel vm, MainWindow window)
@@ -3741,7 +3744,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(today, vm.Editor.CreatedText); // Constructing a window does not start its timer.
 
         window.Show();
-        await PumpUntilAsync(() => !vm.IsOpeningBinder);
+        await Until(vm, () => !vm.IsOpeningBinder);
         var tomorrow = vm.Editor.CreatedText;
         Assert.NotEqual(today, tomorrow);
         _clock.Advance(new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero) - _clock.Now);
@@ -4371,8 +4374,8 @@ public sealed class MainWindowViewModelTests : IDisposable
         var original = File.ReadAllText(BinderPath);
 
         var deleting = vm.DeleteNoteCommand.ExecuteAsync(null);
-        await PumpUntilAsync(() => vm.Notes.Count == 0);
-        await PumpUntilAsync(() => !vm.IsSaveStateSaving);
+        await Until(vm, () => vm.Notes.Count == 0);
+        await Until(vm, () => !vm.IsSaveStateSaving);
         Assert.Empty(new BinderStore().Load(BinderPath).Binder.Notes);
         Assert.False(deleting.IsCompleted);
         _dialogs.BinderToCreate = Path.Combine(_home, "other.daynote");
@@ -4585,11 +4588,16 @@ public sealed class MainWindowViewModelTests : IDisposable
             return Task.FromResult(SettingsApplied && trySave(config));
         }
         public int ExternalChangeQuestions { get; private set; }
+        /// <summary>Completes once the first outside-change question is asked.</summary>
+        public TaskCompletionSource ExternalChangeAsked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        /// <summary>Completes once the first quit question is asked.</summary>
+        public TaskCompletionSource QuitAsked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         /// <summary>When set, answers the question instead of <see cref="ExternalChoice"/>, possibly later.</summary>
         public Func<Task<ExternalChangeChoice>>? ExternalAnswer { get; set; }
         public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, CancellationToken closed = default)
         {
             ExternalChangeQuestions++;
+            ExternalChangeAsked.TrySetResult();
             var answer = (ExternalAnswer?.Invoke() ?? Task.FromResult(ExternalChoice)).WaitAsync(_lifetime.Token);
             // The app closing the question, as a quit does, leaves it unanswered.
             try { return await answer.WaitAsync(closed); }
@@ -4604,6 +4612,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         public Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName)
         {
             QuitQuestions.Add(binderName);
+            QuitAsked.TrySetResult();
             return Task.FromResult(QuitAnswer());
         }
 

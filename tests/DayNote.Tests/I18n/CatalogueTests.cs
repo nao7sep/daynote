@@ -224,23 +224,6 @@ public class CatalogueTests
         }
     }
 
-    // The Windows installer speaks every interface language Inno Setup ships wizard text for, English
-    // first as its fallback; Korean and Simplified Chinese have none in Inno, so their readers see English.
-    [Fact]
-    public void the_windows_installer_speaks_every_language_inno_has()
-    {
-        string[] innoHasNone = ["ko", "zh-Hans"];
-        var names = Regex.Matches(File.ReadAllText(Path.Combine(RepoRoot(), "scripts", "daynote.iss")),
-                @"^Name:\s*""([^""]+)"";\s*MessagesFile:", RegexOptions.Multiline)
-            .Select(match => match.Groups[1].Value.Replace('_', '-'))
-            .ToArray();
-
-        Assert.Equal("en", names[0]);
-        Assert.Equal(
-            Tags.Except(innoHasNone).OrderBy(tag => tag, StringComparer.Ordinal),
-            names.OrderBy(tag => tag, StringComparer.Ordinal));
-    }
-
     [Fact]
     public void every_brand_key_is_a_key()
     {

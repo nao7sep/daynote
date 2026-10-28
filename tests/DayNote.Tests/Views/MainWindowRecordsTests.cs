@@ -72,10 +72,9 @@ public sealed class MainWindowRecordsTests : WindowTest
         var records = main.RecordsWindow!;
         Dispatcher.UIThread.RunJobs();
 
-        var closed = false;
-        main.Closed += (_, _) => closed = true;
+        var closed = Closed(main);
         main.Close();
-        MainWindowQuitTests.PumpUntil(() => closed);
+        RunUntil(closed);
 
         Assert.False(records.IsVisible);
         Assert.Null(main.RecordsWindow);
@@ -93,13 +92,12 @@ public sealed class MainWindowRecordsTests : WindowTest
         await populated.FillAsync();
         populated.ViewModel.Editor.Status = DayNote.Core.Models.NoteStatus.Draft;
         populated.ViewModel.Editor.Body = "Saved on the way out.";
-        var closed = false;
-        main.Closed += (_, _) => closed = true;
+        var closed = Closed(main);
 
         main.Close();
         main.OpenRecordsWindow();
 
         Assert.Null(main.RecordsWindow);
-        MainWindowQuitTests.PumpUntil(() => closed);
+        RunUntil(closed);
     }
 }

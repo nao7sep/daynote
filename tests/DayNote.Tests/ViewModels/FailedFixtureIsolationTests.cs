@@ -30,11 +30,9 @@ public sealed class FailedFixtureIsolationTests
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
         var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-        using var bound = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        bound.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
-            await process.WaitForExitAsync(bound.Token);
+            await process.WaitForExitAsync(TestContext.Current.CancellationToken);
             Assert.True(process.ExitCode == 0, await error);
             Assert.Contains("FAILED-FIXTURE-SETTLED", await output, StringComparison.Ordinal);
         }

@@ -150,34 +150,16 @@ internal sealed class PopulatedMainWindow : IDisposable
         // The save's continuation runs on the UI thread, so the thread is pumped rather than blocked.
         try
         {
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
             if (Window.IsVisible)
             {
-                var closed = false;
-                Window.Closed += (_, _) => closed = true;
+                var closed = WindowTest.Closed(Window);
                 Window.Close();
-                while (!closed && DateTime.UtcNow < deadline)
-                {
-                    Dispatcher.UIThread.RunJobs();
-                    System.Threading.Thread.Sleep(1);
-                }
-                if (!closed)
-                {
-                    throw new TimeoutException("The fixture window did not finish closing.");
-                }
+                WindowTest.RunUntil(closed);
             }
             else
             {
                 var shutdown = ViewModel.ShutdownAsync();
-                while (!shutdown.IsCompleted && DateTime.UtcNow < deadline)
-                {
-                    Dispatcher.UIThread.RunJobs();
-                    System.Threading.Thread.Sleep(1);
-                }
-                if (!shutdown.IsCompleted)
-                {
-                    throw new TimeoutException("The fixture view model did not finish shutting down.");
-                }
+                WindowTest.RunUntil(shutdown);
                 if (!shutdown.GetAwaiter().GetResult())
                 {
                     throw new InvalidOperationException("The fixture view model could not save before shutdown.");

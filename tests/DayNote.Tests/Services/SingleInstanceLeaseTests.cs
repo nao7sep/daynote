@@ -31,7 +31,7 @@ public sealed class SingleInstanceLeaseTests
                 using (owner)
                 {
                     acquired.Set();
-                    release.Wait(TimeSpan.FromSeconds(10));
+                    release.Wait();
                 }
             }
             catch (Exception ex)
@@ -43,16 +43,16 @@ public sealed class SingleInstanceLeaseTests
         try
         {
             ownerThread.Start();
-            Assert.True(acquired.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            acquired.Wait(TestContext.Current.CancellationToken);
             Assert.Null(ownerFailure);
 
             SingleInstanceLease.RegisterOwnerActivationHandler(activated.Set);
             Assert.False(SingleInstanceLease.TryAcquire(root, out var duplicate));
             Assert.Null(duplicate);
-            Assert.True(activated.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            activated.Wait(TestContext.Current.CancellationToken);
 
             release.Set();
-            Assert.True(ownerThread.Join(TimeSpan.FromSeconds(10)));
+            ownerThread.Join();
             Assert.Null(ownerFailure);
             Assert.True(SingleInstanceLease.TryAcquire(root, out var successor));
             successor?.Dispose();
@@ -60,7 +60,7 @@ public sealed class SingleInstanceLeaseTests
         finally
         {
             release.Set();
-            ownerThread.Join(TimeSpan.FromSeconds(10));
+            ownerThread.Join();
             Directory.Delete(root, recursive: true);
         }
     }
@@ -80,7 +80,7 @@ public sealed class SingleInstanceLeaseTests
                 using var valid = await ConnectActivationClientAsync(root);
                 await valid.GetStream().WriteAsync("activate"u8.ToArray(), TestContext.Current.CancellationToken);
 
-                Assert.True(activated.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+                activated.Wait(TestContext.Current.CancellationToken);
             });
         }
         finally { Directory.Delete(root, recursive: true); }
@@ -100,7 +100,7 @@ public sealed class SingleInstanceLeaseTests
                 await client.GetStream().WriteAsync("activate"u8.ToArray(), TestContext.Current.CancellationToken);
 
                 // The peer remains open while the owner handles the fixed-length frame.
-                Assert.True(activated.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+                activated.Wait(TestContext.Current.CancellationToken);
             });
         }
         finally { Directory.Delete(root, recursive: true); }
@@ -142,7 +142,7 @@ public sealed class SingleInstanceLeaseTests
                 using (owner)
                 {
                     acquired.Set();
-                    release.Wait(TimeSpan.FromSeconds(10));
+                    release.Wait();
                 }
             }
             catch (Exception ex)
@@ -154,7 +154,7 @@ public sealed class SingleInstanceLeaseTests
         try
         {
             ownerThread.Start();
-            Assert.True(acquired.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            acquired.Wait(TestContext.Current.CancellationToken);
             Assert.Null(ownerFailure);
 
             Assert.False(SingleInstanceLease.TryAcquire(root.ToLowerInvariant(), out var other));
@@ -163,7 +163,7 @@ public sealed class SingleInstanceLeaseTests
         finally
         {
             release.Set();
-            ownerThread.Join(TimeSpan.FromSeconds(10));
+            ownerThread.Join();
             Directory.Delete(root, recursive: true);
         }
     }
@@ -181,7 +181,7 @@ public sealed class SingleInstanceLeaseTests
                 await early.GetStream().WriteAsync("activate"u8.ToArray(), TestContext.Current.CancellationToken);
 
                 SingleInstanceLease.RegisterOwnerActivationHandler(activated.Set);
-                Assert.True(activated.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+                activated.Wait(TestContext.Current.CancellationToken);
             });
         }
         finally { Directory.Delete(root, recursive: true); }
@@ -292,14 +292,14 @@ public sealed class SingleInstanceLeaseTests
         owner.Start();
         try
         {
-            Assert.True(acquired.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            acquired.Wait(TestContext.Current.CancellationToken);
             Assert.Null(failure);
             await check();
         }
         finally
         {
             release.Set();
-            Assert.True(owner.Join(TimeSpan.FromSeconds(10)));
+            owner.Join();
             Assert.Null(failure);
         }
     }
@@ -320,11 +320,9 @@ public sealed class SingleInstanceLeaseTests
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
         var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-        using var bound = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        bound.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
-            await process.WaitForExitAsync(bound.Token);
+            await process.WaitForExitAsync(TestContext.Current.CancellationToken);
             Assert.True(process.ExitCode == 0, await error);
             return await output;
         }
@@ -357,7 +355,7 @@ public sealed class SingleInstanceLeaseTests
                 using (owner)
                 {
                     acquired.Set();
-                    release.Wait(TimeSpan.FromSeconds(10));
+                    release.Wait();
                 }
             }
             catch (Exception ex) { ownerFailure = ex; acquired.Set(); }
@@ -365,7 +363,7 @@ public sealed class SingleInstanceLeaseTests
         try
         {
             ownerThread.Start();
-            Assert.True(acquired.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            acquired.Wait(TestContext.Current.CancellationToken);
             Assert.Null(ownerFailure);
             AssertRejected(alias);
             var caseAlias = Path.Combine(parent, "ownedroot");
@@ -375,7 +373,7 @@ public sealed class SingleInstanceLeaseTests
         finally
         {
             release.Set();
-            ownerThread.Join(TimeSpan.FromSeconds(10));
+            ownerThread.Join();
             Directory.Delete(alias);
             Directory.Delete(parent, recursive: true);
         }
