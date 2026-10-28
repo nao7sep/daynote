@@ -11,38 +11,6 @@ using System.Threading;
 
 namespace DayNote.Services;
 
-internal sealed class ActivationRequestRouter
-{
-    private readonly object _gate = new();
-    private Action? _handler;
-    private bool _pending;
-
-    public void Register(Action handler)
-    {
-        var invoke = false;
-        lock (_gate)
-        {
-            _handler = handler;
-            invoke = _pending;
-            _pending = false;
-        }
-        if (invoke)
-            handler();
-    }
-
-    public void Request()
-    {
-        Action? handler;
-        lock (_gate)
-        {
-            handler = _handler;
-            if (handler is null)
-                _pending = true;
-        }
-        handler?.Invoke();
-    }
-}
-
 /// <summary>
 /// Owns one DayNote storage root and routes a second launch to the owner's window.
 /// This prevents independent autosave loops from replacing the same binder snapshot.
@@ -52,35 +20,29 @@ internal sealed class SingleInstanceLease : IDisposable
     private const string LeaseFileName = "instance.lock";
     private const string EndpointFileName = "instance.endpoint";
     private static readonly TimeSpan NotifyTimeout = TimeSpan.FromSeconds(2);
-    private static readonly object CurrentGate = new();
     private static SingleInstanceLease? _current;
 
     private FileStream? _ownership;
-    private Mutex? _legacyMutex;
-    private readonly Action? _beforeFileClose;
-    private Task _closing = Task.CompletedTask;
-    internal Task Closing => _closing;
+    private readonly Mutex _legacyMutex;
     private readonly TcpListener _listener;
-    private readonly Thread _listenerThread;
-    private readonly ActivationRequestRouter _activationRouter = new();
-    private volatile bool _disposed;
+    private readonly CancellationTokenSource _stopping = new();
+    private Thread? _listenerThread;
+    private Action? _activate;
 
-    private SingleInstanceLease(FileStream ownership, Mutex legacyMutex, TcpListener listener, Action? beforeFileClose)
+    private SingleInstanceLease(FileStream ownership, Mutex legacyMutex, TcpListener listener)
     {
         _ownership = ownership;
         _legacyMutex = legacyMutex;
-        _beforeFileClose = beforeFileClose;
         _listener = listener;
-        _listenerThread = new Thread(ListenForActivation)
-        {
-            IsBackground = true,
-            Name = "DayNote activation",
-        };
-        _listenerThread.Start();
     }
 
+    /// <summary>
+    /// Claims <paramref name="root"/> for this process, or, when another DayNote holds it, asks that one to
+    /// bring its window forward and returns false. The claim is held on the calling thread, which the
+    /// legacy mutex requires, until <see cref="Dispose(TimeSpan)"/> on that same thread.
+    /// </summary>
     public static bool TryAcquire(string root, out SingleInstanceLease? lease,
-        Func<FileStream, int>? lockUnix = null, Action? beforeFileClose = null)
+        Func<FileStream, int>? lockUnix = null)
     {
         var endpointPath = Path.Combine(root, EndpointFileName);
         // Retain the previous protocol while an older build can still be running. The stable file
@@ -144,14 +106,15 @@ internal sealed class SingleInstanceLease : IDisposable
                 }
                 throw new IOException("Could not reserve the storage folder.", new Win32Exception(lockingError));
             }
+            // Listening from here on: a second launch that connects before the window registers its
+            // handler waits in the listener's backlog until then.
             listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             PublishEndpoint(endpointPath, port);
 
-            lease = new SingleInstanceLease(ownership, legacyMutex, listener, beforeFileClose);
-            lock (CurrentGate)
-                _current = lease;
+            lease = new SingleInstanceLease(ownership, legacyMutex, listener);
+            _current = lease;
             return true;
         }
         catch
@@ -189,12 +152,21 @@ internal sealed class SingleInstanceLease : IDisposable
     [DllImport("libc", EntryPoint = "flock", SetLastError = true)]
     private static extern int Flock(int descriptor, int operation);
 
+    /// <summary>
+    /// Gives the claim its window's activation and starts accepting second launches, once; activations that
+    /// arrived earlier are waiting for it.
+    /// </summary>
     public static void RegisterOwnerActivationHandler(Action handler)
     {
-        SingleInstanceLease? current;
-        lock (CurrentGate)
-            current = _current;
-        current?._activationRouter.Register(handler);
+        if (_current is not { } current || current._listenerThread is not null)
+            return;
+        current._activate = handler;
+        current._listenerThread = new Thread(current.ListenForActivation)
+        {
+            IsBackground = true,
+            Name = "DayNote activation",
+        };
+        current._listenerThread.Start();
     }
 
     private static void PublishEndpoint(string path, int port)
@@ -236,7 +208,8 @@ internal sealed class SingleInstanceLease : IDisposable
 
     private void ListenForActivation()
     {
-        while (!_disposed)
+        var stopping = _stopping.Token;
+        while (!stopping.IsCancellationRequested)
         {
             try
             {
@@ -250,66 +223,47 @@ internal sealed class SingleInstanceLease : IDisposable
                 // through GetResult directly; Task supplies the blocking wait on this owner thread.
                 stream.ReadExactlyAsync(request, deadline.Token).AsTask().GetAwaiter().GetResult();
                 if (request.AsSpan().SequenceEqual("activate"u8))
-                    _activationRouter.Request();
+                    _activate!();
             }
             catch (Exception error) when (error is OperationCanceledException or TimeoutException
-                or IOException or SocketException or ObjectDisposedException)
+                or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
             {
                 // A partial request, deadline, or loopback failure ends only this connection.
-                if (_disposed)
+                if (stopping.IsCancellationRequested)
                     return;
             }
         }
     }
 
-    public void Dispose() => Dispose(TimeSpan.FromSeconds(2));
+    public void Dispose() => Dispose(Timeout.InfiniteTimeSpan);
 
-    /// <summary>Shares <paramref name="closeBound"/> between listener exit and physical file close.</summary>
-    public void Dispose(TimeSpan closeBound)
+    /// <summary>
+    /// Releases the claim on the thread that took it. The listener stops at once, and a second launch it is
+    /// still reading is waited for within <paramref name="remaining"/>, what is left of the exit's deadline;
+    /// the listener's own one-second read deadline bounds that wait too.
+    /// </summary>
+    public void Dispose(TimeSpan remaining)
     {
-        if (_disposed)
-        {
-            ReleaseLegacyAfterClose();
+        if (_ownership is not { } ownership)
             return;
-        }
-        _disposed = true;
-        var elapsed = Stopwatch.StartNew();
+        _ownership = null;
+        if (ReferenceEquals(_current, this))
+            _current = null;
 
-        lock (CurrentGate)
+        try
         {
-            if (ReferenceEquals(_current, this))
-                _current = null;
+            _stopping.Cancel();
+            _listener.Stop();
+            _listenerThread?.Join(remaining);
         }
-
-        _listener.Stop();
-        var ownership = Interlocked.Exchange(ref _ownership, null);
-        _closing = Task.Run(() =>
+        finally
         {
-            try { _beforeFileClose?.Invoke(); }
+            try { ownership.Dispose(); }
             finally
             {
-                ownership?.Dispose();
-                GC.KeepAlive(this); // Retain unfinished close work and the compatibility handle after the bound.
+                _legacyMutex.ReleaseMutex();
+                _legacyMutex.Dispose();
             }
-        });
-        _ = _closing.ContinueWith(task => Debug.WriteLine(task.Exception),
-            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-        _listenerThread.Join(closeBound);
-        var remaining = closeBound - elapsed.Elapsed;
-        if (!_closing.IsCompleted && remaining > TimeSpan.Zero)
-            ((IAsyncResult)_closing).AsyncWaitHandle.WaitOne(remaining);
-        ReleaseLegacyAfterClose();
-    }
-
-    private void ReleaseLegacyAfterClose()
-    {
-        if (!_closing.IsCompleted)
-            return;
-        var mutex = Interlocked.Exchange(ref _legacyMutex, null);
-        if (mutex is null)
-            return;
-        mutex.ReleaseMutex();
-        mutex.Dispose();
+        }
     }
 }

@@ -420,7 +420,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var quitting = vm.QuitAsync();
         _commandOperations.Add(quitting);
         await PumpUntilAsync(() => !vm.HasBinder);
-        _clock.Advance(MainWindowViewModel.QuitStateWriteBound / 2);
+        _clock.Advance(MainWindowViewModel.ExitBound / 2);
         Assert.False(quitting.IsCompleted);
         Assert.False(removing.IsCompleted);
         deleting.Release();
@@ -1190,7 +1190,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Queued_saves_share_the_conflict_answer_until_reload_is_adopted()
+    public async Task A_save_queued_behind_the_conflict_question_finds_the_reload_adopted()
     {
         var store = new GatedBinderStore();
         var vm = await OpenNewBinderAsync(store);
@@ -1200,26 +1200,47 @@ public sealed class MainWindowViewModelTests : IDisposable
         vm.Editor.Body = "local edit";
         var answer = new TaskCompletionSource<ExternalChangeChoice>(TaskCreationOptions.RunContinuationsAsynchronously);
         _dialogs.ExternalAnswer = () => answer.Task;
-        var firstRead = store.HoldNextSave();
         var firstSave = vm.SaveNowCommand.ExecuteAsync(null);
-        await firstRead.Entered.Task;
+        await PumpUntilAsync(() => _dialogs.ExternalChangeQuestions == 1);
+
+        // The question keeps the save's turn at the file: a later save waits for it rather than reading.
         var nextRead = store.HoldNextSave();
         var secondSave = vm.SaveNowCommand.ExecuteAsync(null);
-        firstRead.Release();
-        await PumpUntilAsync(() => _dialogs.ExternalChangeQuestions == 1);
-        await nextRead.Entered.Task;
-        var reload = store.HoldNextLoad();
-        answer.SetResult(ExternalChangeChoice.ReloadFromDisk);
         Dispatcher.UIThread.RunJobs();
-        nextRead.Release();
-        await reload.Entered.Task;
-        reload.Release();
+        Assert.False(nextRead.Entered.Task.IsCompleted);
+        answer.SetResult(ExternalChangeChoice.ReloadFromDisk);
         await Task.WhenAll(firstSave, secondSave);
 
         Assert.Equal(1, _dialogs.ExternalChangeQuestions);
+        Assert.False(nextRead.Entered.Task.IsCompleted);
         Assert.Equal("Changed outside", vm.Editor.Title);
         Assert.Equal(string.Empty, vm.Editor.Body);
         Assert.Equal(English.Of("save.saved"), vm.SaveStateText);
+        nextRead.Release();
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_quit_closes_an_open_conflict_question_unanswered_and_takes_its_turn()
+    {
+        var vm = await OpenNewBinderAsync();
+        vm.NewNoteCommand.Execute(null);
+        await vm.SaveNowCommand.ExecuteAsync(null);
+        ChangeOutside("Changed outside");
+        var outside = File.ReadAllBytes(BinderPath);
+        vm.Editor.Body = "local edit";
+        _dialogs.ExternalAnswer = () => new TaskCompletionSource<ExternalChangeChoice>().Task;
+        var save = vm.SaveNowCommand.ExecuteAsync(null);
+        await PumpUntilAsync(() => _dialogs.ExternalChangeQuestions == 1);
+
+        // The quit finds the same change, which counts as a failed save, and asks whether to quit.
+        Assert.False(await vm.QuitAsync());
+        await save;
+
+        Assert.Single(_dialogs.QuitQuestions);
+        Assert.Equal(outside, File.ReadAllBytes(BinderPath));
+        Assert.True(vm.HasBinder);
+        _dialogs.ExternalAnswer = null;
         await vm.ShutdownAsync();
     }
 
@@ -1372,7 +1393,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var quit = vm.QuitAsync();
         await stalled.Entered.Task;
-        _clock.Advance(MainWindowViewModel.QuitBinderSaveBound - TimeSpan.FromTicks(1));
+        _clock.Advance(MainWindowViewModel.ExitBound - TimeSpan.FromTicks(1));
         Dispatcher.UIThread.RunJobs();
         Assert.False(quit.IsCompleted);
         Assert.Empty(_dialogs.QuitQuestions);
@@ -1406,7 +1427,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var ending = vm.EndSessionAsync();
         await stalled.Entered.Task;
-        _clock.Advance(MainWindowViewModel.QuitBinderSaveBound);
+        _clock.Advance(MainWindowViewModel.ExitBound);
         await ending;
 
         Assert.Empty(_dialogs.QuitQuestions);
@@ -1772,7 +1793,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Dispatcher.UIThread.Post(async () =>
         {
             await stalled.Entered.Task;
-            _clock.Advance(MainWindowViewModel.QuitBinderSaveBound);
+            _clock.Advance(MainWindowViewModel.ExitBound);
         });
         CloseAs(window, WindowCloseReason.OSShutdown);
 
@@ -4032,10 +4053,10 @@ public sealed class MainWindowViewModelTests : IDisposable
         var log = new ListLogger();
         var stopped = await StartStoppedImportCleanupAsync(log);
         var ending = stopped.Vm.EndSessionAsync();
-        _clock.Advance(MainWindowViewModel.QuitStateWriteBound);
+        _clock.Advance(MainWindowViewModel.ExitBound);
         await ending;
         Assert.Contains(log.Entries, entry => entry.Level == "warn"
-            && entry.Message == "Attachment copies were not all removed within the quit's bound");
+            && entry.Message == "Attachment cleanup did not finish within the quit bound");
         Assert.False(stopped.Deleted.IsCompleted);
         stopped.Cleanup.Release();
         await stopped.Deleted;
@@ -4566,10 +4587,13 @@ public sealed class MainWindowViewModelTests : IDisposable
         public int ExternalChangeQuestions { get; private set; }
         /// <summary>When set, answers the question instead of <see cref="ExternalChoice"/>, possibly later.</summary>
         public Func<Task<ExternalChangeChoice>>? ExternalAnswer { get; set; }
-        public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
+        public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, CancellationToken closed = default)
         {
             ExternalChangeQuestions++;
-            return (ExternalAnswer?.Invoke() ?? Task.FromResult(ExternalChoice)).WaitAsync(_lifetime.Token);
+            var answer = (ExternalAnswer?.Invoke() ?? Task.FromResult(ExternalChoice)).WaitAsync(_lifetime.Token);
+            // The app closing the question, as a quit does, leaves it unanswered.
+            try { return await answer.WaitAsync(closed); }
+            catch (OperationCanceledException) when (closed.IsCancellationRequested) { return ExternalChangeChoice.Unanswered; }
         }
         /// <summary>The binder named by each quit question, in order.</summary>
         public List<string> QuitQuestions { get; } = [];

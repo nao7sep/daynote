@@ -40,9 +40,9 @@ public interface IDialogService
     /// <summary>
     /// Asks how to handle an external modification detected against unsaved edits. Both answers give up a
     /// version, so the question cannot be dismissed and no answer is focused; it closes unanswered only when
-    /// the app or the operating system closes it.
+    /// the app or the operating system closes it, as the app does once <paramref name="closed"/> is cancelled.
     /// </summary>
-    Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName);
+    Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, CancellationToken closed = default);
 
     /// <summary>
     /// Shows that attachments are still being added until <paramref name="settled"/> completes, then closes

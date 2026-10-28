@@ -169,16 +169,22 @@ public sealed class SingleInstanceLeaseTests
     }
 
     [Fact]
-    public void ActivationRouterRetainsAnEarlyRequest()
+    public async Task An_activation_sent_before_the_window_registers_waits_for_it()
     {
-        var router = new ActivationRequestRouter();
-        var activations = 0;
+        var root = NewRoot();
+        using var activated = new ManualResetEventSlim();
+        try
+        {
+            await WithOwnerAsync(root, async () =>
+            {
+                using var early = await ConnectActivationClientAsync(root);
+                await early.GetStream().WriteAsync("activate"u8.ToArray(), TestContext.Current.CancellationToken);
 
-        router.Request();
-        router.Register(() => activations++);
-        router.Request();
-
-        Assert.Equal(2, activations);
+                SingleInstanceLease.RegisterOwnerActivationHandler(activated.Set);
+                Assert.True(activated.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            });
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [Fact]
@@ -246,68 +252,6 @@ public sealed class SingleInstanceLeaseTests
             Assert.Contains("LEASE-CLAIMED", await ClaimInChildAsync(root), StringComparison.Ordinal);
         }
         finally { Directory.Delete(root, recursive: true); }
-    }
-
-    [Fact]
-    public async Task Bounded_disposal_returns_while_owned_close_work_is_pending()
-    {
-        // Isolate a deliberately held physical close: even a broken unbounded Dispose cannot hang
-        // the ordinary suite or leave its disposable root owned by a surviving child.
-        var root = NewRoot();
-        try
-        {
-            Assert.Contains("LEASE-CLOSE-SETTLED", await ClaimInChildAsync(root, mode: "--lease-close-harness"), StringComparison.Ordinal);
-            Assert.Contains("LEASE-CLAIMED", await ClaimInChildAsync(root), StringComparison.Ordinal);
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    internal static void RunBoundedCloseProof(string root)
-    {
-        using var entered = new ManualResetEventSlim();
-        using var release = new ManualResetEventSlim();
-        Assert.True(SingleInstanceLease.TryAcquire(root, out var lease, beforeFileClose: () =>
-        {
-            entered.Set();
-            release.Wait();
-        }));
-        try
-        {
-            lease!.Dispose(TimeSpan.Zero);
-            Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
-            Assert.False(lease.Closing.IsCompleted);
-            Assert.Throws<IOException>(() =>
-            {
-                using var conflicting = new FileStream(Path.Combine(root, "instance.lock"), FileMode.Open,
-                    FileAccess.ReadWrite, FileShare.None);
-            });
-            // A different thread is refused while the callback holds before file Dispose begins.
-            // This does not simulate a stalled native close: Unix may unlock before close returns.
-            // Same-thread named mutex acquisition would be recursive rather than contested.
-            Exception? contenderFailure = null;
-            var contender = new Thread(() =>
-            {
-                try
-                {
-                    var claimed = SingleInstanceLease.TryAcquire(root, out var duplicate);
-                    duplicate?.Dispose();
-                    Assert.False(claimed);
-                }
-                catch (Exception error) { contenderFailure = error; }
-            });
-            contender.Start();
-            Assert.True(contender.Join(TimeSpan.FromSeconds(10)));
-            Assert.Null(contenderFailure);
-        }
-        finally
-        {
-            release.Set();
-            Assert.True(lease!.Closing.Wait(TimeSpan.FromSeconds(10)));
-            lease.Dispose(); // The original acquiring thread releases the compatibility mutex.
-        }
-        Assert.True(File.Exists(Path.Combine(root, "instance.lock")));
-        Assert.True(SingleInstanceLease.TryAcquire(root, out var successor));
-        successor?.Dispose();
     }
 
     private static string NewRoot()

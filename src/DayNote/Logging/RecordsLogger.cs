@@ -48,8 +48,6 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private static readonly TimeSpan FlushWait = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan CloseWait = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ReadWait = TimeSpan.FromSeconds(10);
 
     private readonly BlockingCollection<Action> _queue = new();
@@ -281,10 +279,13 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         }
     }
 
-    /// <summary>Waits, within a bound, until every entry logged so far is written.</summary>
-    public void Flush() => Flush(FlushWait);
+    /// <summary>Waits until every entry logged so far is written.</summary>
+    public void Flush() => Flush(Timeout.InfiniteTimeSpan);
 
-    /// <summary>Waits up to <paramref name="bound"/> until every entry logged so far is written.</summary>
+    /// <summary>
+    /// Waits up to <paramref name="bound"/>, what is left of the exit's deadline, until every entry logged so
+    /// far is written.
+    /// </summary>
     public void Flush(TimeSpan bound)
     {
         if (Thread.CurrentThread == _owner)
@@ -437,16 +438,14 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
         }
     }
 
-    /// <summary>
-    /// Writes what is queued, within a bound, and closes the database. Entries logged afterwards are
-    /// dropped.
-    /// </summary>
-    public void Dispose() => Close(CloseWait);
+    /// <summary>Writes what is queued and closes the database. Entries logged afterwards are dropped.</summary>
+    public void Dispose() => Close(Timeout.InfiniteTimeSpan);
 
     /// <summary>
-    /// Stops taking entries and waits up to <paramref name="bound"/> while the owning thread writes what is
-    /// queued and closes the database. Past the bound the thread carries on, and what it has not written
-    /// ends with the process. Entries logged afterwards are dropped.
+    /// Stops taking entries and waits up to <paramref name="bound"/>, what is left of the exit's deadline,
+    /// while the owning thread writes what is queued and closes the database. Past the bound the thread
+    /// carries on, and what it has not written ends with the process (logging-conventions: a stalled sink
+    /// may lose recent diagnostics at exit). Entries logged afterwards are dropped.
     /// </summary>
     public void Close(TimeSpan bound)
     {

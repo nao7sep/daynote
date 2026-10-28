@@ -407,13 +407,13 @@ public partial class MainWindow : Window
 
         if (SessionEnd.Is(e.CloseReason))
         {
-            // The system waits for this close to answer, so the quit's save runs here to its bounds and
+            // The system waits for this close to answer, so the quit's save runs here to its deadline and
             // the window closes whatever it did. A quit the user started and that is still running ends
             // with it.
             _shutdownComplete = true;
-            Program.SessionEnding = true;
             PrepareQuit(vm);
             RunUntilDone(vm.EndSessionAsync());
+            Program.FixExitDeadline(vm.ExitRemaining);
             base.OnClosing(e);
             return;
         }
@@ -439,6 +439,7 @@ public partial class MainWindow : Window
         if (exit)
         {
             _shutdownComplete = true;
+            Program.FixExitDeadline(vm.ExitRemaining);
             Close();
         }
         else
@@ -467,7 +468,7 @@ public partial class MainWindow : Window
     }
 
     // Keeps the dispatcher running, so the work's own continuations can run, until the work is done. The
-    // work carries its own bounds.
+    // work carries its own deadline.
     internal static void RunUntilDone(Task work)
     {
         if (work.IsCompleted)

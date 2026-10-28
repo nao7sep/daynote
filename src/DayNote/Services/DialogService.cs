@@ -116,7 +116,7 @@ public sealed class DialogService : IDialogService
         return dialog.Applied;
     }
 
-    public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName)
+    public async Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, CancellationToken closed = default)
     {
         var dialog = new MessageDialog(
             Message.Of("binder.changedTitle"),
@@ -130,6 +130,7 @@ public sealed class DialogService : IDialogService
                 new DialogButton("binder.reloadFromDisk", "reload", DialogButtonKind.Destructive),
             },
             dismissable: false);
+        using var closing = closed.Register(dialog.CloseUnanswered);
         await dialog.ShowBoundedAsync(RequireOwner());
         return dialog.ResultTag switch
         {

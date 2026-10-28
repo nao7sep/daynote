@@ -48,6 +48,13 @@ public partial class DialogBase : Window
         Close();
     }
 
+    /// <summary>Closes the dialog with no answer, as the app does when a quit begins while it is open.</summary>
+    internal void CloseUnanswered()
+    {
+        _closeConfirmed = true;
+        Close();
+    }
+
     protected void SetContent(Control content) => DialogContent.Content = content;
 
     protected IReadOnlyDictionary<string, Button> SetButtons(IEnumerable<DialogButton> buttons)

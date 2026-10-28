@@ -34,6 +34,11 @@ internal sealed class ManualClock(DateTimeOffset now) : TimeProvider
 
     public override DateTimeOffset GetUtcNow() => Now;
 
+    // Elapsed time follows the clock too, so a deadline measured on it runs out only as a test moves it.
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+    public override long GetTimestamp() => Now.UtcTicks;
+
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
     {
         var timer = new ManualTimer(this, callback, state);

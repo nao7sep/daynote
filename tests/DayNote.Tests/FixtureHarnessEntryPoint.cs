@@ -2,7 +2,6 @@ using System;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using DayNote.Services;
-using DayNote.Tests.Services;
 using DayNote.Tests.ViewModels;
 
 namespace DayNote.Tests;
@@ -11,21 +10,13 @@ internal static class FixtureHarnessEntryPoint
 {
     public static int Main(string[] args)
     {
-        if (args.Length == 2 && args[0] is "--lease-claim-harness" or "--lease-close-harness")
+        if (args.Length == 2 && args[0] == "--lease-claim-harness")
         {
             try
             {
                 DataRootGuard.Check(args[1]);
-                if (args[0] == "--lease-close-harness")
-                {
-                    SingleInstanceLeaseTests.RunBoundedCloseProof(args[1]);
-                    Console.WriteLine("LEASE-CLOSE-SETTLED");
-                }
-                else
-                {
-                    var claimed = SingleInstanceLease.TryAcquire(args[1], out var lease);
-                    using (lease) Console.WriteLine(claimed ? "LEASE-CLAIMED" : "LEASE-REJECTED");
-                }
+                var claimed = SingleInstanceLease.TryAcquire(args[1], out var lease);
+                using (lease) Console.WriteLine(claimed ? "LEASE-CLAIMED" : "LEASE-REJECTED");
                 return 0;
             }
             catch (Exception error)

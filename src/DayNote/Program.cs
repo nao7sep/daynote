@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Avalonia;
 using DayNote.Core.Backup;
@@ -29,17 +30,26 @@ internal static class Program
     /// </summary>
     internal static (ConfigStore Store, AppConfig? Config, Exception? Error) Settings { get; private set; }
 
-    /// <summary>
-    /// Set once the operating system is ending the session. Everything after the main window closes then
-    /// shares one short bound, so DayNote never holds up a logout, restart or shutdown.
-    /// </summary>
-    internal static volatile bool SessionEnding;
+    // What remains of the exit's one deadline once the main window's quit has closed it, from when it did.
+    // Writing what the quit logged, closing the records database and releasing the single-instance lease
+    // draw on it, so DayNote never holds up a logout, restart or shutdown.
+    private static TimeSpan s_exitLeft;
+    private static long s_exitFixed;
 
-    // The session-end shares of that bound: writing what the quit logged, closing the records database,
-    // and releasing the single-instance lease.
-    private static readonly TimeSpan SessionEndFlushBound = TimeSpan.FromMilliseconds(400);
-    private static readonly TimeSpan SessionEndCloseBound = TimeSpan.FromMilliseconds(400);
-    private static readonly TimeSpan SessionEndLeaseBound = TimeSpan.FromMilliseconds(200);
+    internal static void FixExitDeadline(TimeSpan remaining)
+    {
+        s_exitLeft = remaining;
+        s_exitFixed = Stopwatch.GetTimestamp();
+    }
+
+    // An exit without the window's quit, such as a crash, fixes the deadline as it begins.
+    private static TimeSpan ExitRemaining()
+    {
+        if (s_exitFixed == 0)
+            FixExitDeadline(MainWindowViewModel.ExitBound);
+        var remaining = s_exitLeft - Stopwatch.GetElapsedTime(s_exitFixed);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
 
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
@@ -136,7 +146,6 @@ internal static class Program
             _ = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
             return 1;
         }
-        using var ownedInstance = instanceLease;
 
         // Once the storage root is owned, the logger is the first diagnostic subsystem up and can
         // record every later failure.
@@ -170,20 +179,10 @@ internal static class Program
         try
         {
             // On macOS a logout or shutdown ends the process as soon as the lifetime exits, before the
-            // close below runs, so what the quit logged is written here first, within the logger's bound.
+            // close below runs, so what the quit logged is written here first, within the exit's deadline.
             return BuildAvaloniaApp().StartWithClassicDesktopLifetime(
                 args,
-                lifetime => lifetime.Exit += (_, _) =>
-                {
-                    if (SessionEnding)
-                    {
-                        logger.Flush(SessionEndFlushBound);
-                    }
-                    else
-                    {
-                        logger.Flush();
-                    }
-                });
+                lifetime => lifetime.Exit += (_, _) => logger.Flush(ExitRemaining()));
         }
         catch (Exception ex)
         {
@@ -194,15 +193,8 @@ internal static class Program
         finally
         {
             logger.Info("DayNote shutting down", new { reason = forced ? "forced" : "clean" });
-            if (SessionEnding)
-            {
-                logger.Close(SessionEndCloseBound);
-                ownedInstance?.Dispose(SessionEndLeaseBound);
-            }
-            else
-            {
-                logger.Dispose();
-            }
+            logger.Close(ExitRemaining());
+            instanceLease!.Dispose(ExitRemaining());
         }
     }
 
@@ -226,7 +218,7 @@ internal static class Program
             log.Error("Unhandled exception", new { terminating = e.IsTerminating }, e.ExceptionObject as Exception);
             if (e.IsTerminating)
             {
-                log.Flush();
+                log.Flush(ExitRemaining());
             }
         };
 

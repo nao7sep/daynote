@@ -226,7 +226,7 @@ internal sealed class PopulatedMainWindow : IDisposable
             SettingsEdit(config);
             return Task.FromResult(trySave(config));
         }
-        public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName) => Task.FromResult(ExternalChangeChoice.KeepMine);
+        public Task<ExternalChangeChoice> AskExternalChangeAsync(string binderName, CancellationToken closed = default) => Task.FromResult(ExternalChangeChoice.KeepMine);
         public Task<UnsavedQuitChoice> AskQuitWithUnsavedBinderAsync(string binderName) => Task.FromResult(UnsavedQuitChoice.Stay);
         public async Task<bool> WaitForAttachmentsAsync(Task settled, TimeSpan stopOfferedAfter)
         {
