@@ -3,8 +3,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using DayNote.Services;
@@ -188,19 +186,6 @@ public sealed class SingleInstanceLeaseTests
     }
 
     [Fact]
-    public async Task Previous_build_ownership_excludes_a_new_process_until_release()
-    {
-        var root = NewRoot();
-        try
-        {
-            await WithOwnerAsync(root, async () =>
-                Assert.Contains("LEASE-REJECTED", await ClaimInChildAsync(root), StringComparison.Ordinal), legacy: true);
-            Assert.Contains("LEASE-CLAIMED", await ClaimInChildAsync(root), StringComparison.Ordinal);
-        }
-        finally { Directory.Delete(root, recursive: true); }
-    }
-
-    [Fact]
     public async Task Independent_roots_and_cross_process_handoff_keep_separate_owners()
     {
         var root = NewRoot();
@@ -261,7 +246,7 @@ public sealed class SingleInstanceLeaseTests
         return root;
     }
 
-    private static async Task WithOwnerAsync(string root, Func<Task> check, bool legacy = false)
+    private static async Task WithOwnerAsync(string root, Func<Task> check)
     {
         using var acquired = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
@@ -270,22 +255,8 @@ public sealed class SingleInstanceLeaseTests
         {
             try
             {
-                if (legacy)
-                {
-                    // This is the immutable previous-build protocol, deliberately independent of
-                    // the new implementation so dropping compatibility fails this regression.
-                    var path = Path.GetFullPath(root);
-                    if (OperatingSystem.IsWindows()) path = path.ToUpperInvariant();
-                    using var mutex = new Mutex(false, "DayNote-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(path))));
-                    Assert.True(mutex.WaitOne(TimeSpan.Zero));
-                    try { acquired.Set(); release.Wait(); }
-                    finally { mutex.ReleaseMutex(); }
-                }
-                else
-                {
-                    Assert.True(SingleInstanceLease.TryAcquire(root, out var lease));
-                    using (lease) { acquired.Set(); release.Wait(); }
-                }
+                Assert.True(SingleInstanceLease.TryAcquire(root, out var lease));
+                using (lease) { acquired.Set(); release.Wait(); }
             }
             catch (Exception error) { failure = error; acquired.Set(); }
         });

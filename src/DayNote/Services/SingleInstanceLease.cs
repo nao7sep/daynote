@@ -5,7 +5,6 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -23,50 +22,25 @@ internal sealed class SingleInstanceLease : IDisposable
     private static SingleInstanceLease? _current;
 
     private FileStream? _ownership;
-    private readonly Mutex _legacyMutex;
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _stopping = new();
     private Thread? _listenerThread;
     private Action? _activate;
 
-    private SingleInstanceLease(FileStream ownership, Mutex legacyMutex, TcpListener listener)
+    private SingleInstanceLease(FileStream ownership, TcpListener listener)
     {
         _ownership = ownership;
-        _legacyMutex = legacyMutex;
         _listener = listener;
     }
 
     /// <summary>
     /// Claims <paramref name="root"/> for this process, or, when another DayNote holds it, asks that one to
-    /// bring its window forward and returns false. The claim is held on the calling thread, which the
-    /// legacy mutex requires, until <see cref="Dispose(TimeSpan)"/> on that same thread.
+    /// bring its window forward and returns false. The claim is held until <see cref="Dispose(TimeSpan)"/>.
     /// </summary>
     public static bool TryAcquire(string root, out SingleInstanceLease? lease,
         Func<FileStream, int>? lockUnix = null)
     {
         var endpointPath = Path.Combine(root, EndpointFileName);
-        // Retain the previous protocol while an older build can still be running. The stable file
-        // below supplies current-build alias correctness; this mutex preserves previous-build
-        // exclusion on its original spelling (older Unix builds cannot recognize other aliases).
-        var legacyMutex = new Mutex(false, LegacyMutexName(root));
-        bool legacyOwned;
-        try { legacyOwned = legacyMutex.WaitOne(TimeSpan.Zero); }
-        catch (AbandonedMutexException) { legacyOwned = true; }
-        if (!legacyOwned)
-        {
-            legacyMutex.Dispose();
-            NotifyPrimary(endpointPath);
-            lease = null;
-            return false;
-        }
-        var legacyReleased = false;
-        void ReleaseLegacy()
-        {
-            if (legacyReleased) return;
-            legacyReleased = true;
-            legacyMutex.ReleaseMutex();
-            legacyMutex.Dispose();
-        }
         FileStream ownership;
         try
         {
@@ -77,15 +51,9 @@ internal sealed class SingleInstanceLease : IDisposable
         }
         catch (IOException error) when (IsSharingConflict(error))
         {
-            ReleaseLegacy();
             NotifyPrimary(endpointPath);
             lease = null;
             return false;
-        }
-        catch
-        {
-            ReleaseLegacy();
-            throw;
         }
 
         TcpListener? listener = null;
@@ -99,7 +67,6 @@ internal sealed class SingleInstanceLease : IDisposable
                 if (IsWouldBlock(lockingError))
                 {
                     ownership.Dispose();
-                    ReleaseLegacy();
                     NotifyPrimary(endpointPath);
                     lease = null;
                     return false;
@@ -113,7 +80,7 @@ internal sealed class SingleInstanceLease : IDisposable
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             PublishEndpoint(endpointPath, port);
 
-            lease = new SingleInstanceLease(ownership, legacyMutex, listener);
+            lease = new SingleInstanceLease(ownership, listener);
             _current = lease;
             return true;
         }
@@ -121,7 +88,6 @@ internal sealed class SingleInstanceLease : IDisposable
         {
             listener?.Stop();
             ownership.Dispose();
-            ReleaseLegacy();
             throw;
         }
     }
@@ -140,13 +106,6 @@ internal sealed class SingleInstanceLease : IDisposable
                 return error;
         }
         return 0;
-    }
-
-    private static string LegacyMutexName(string root)
-    {
-        var path = Path.GetFullPath(root);
-        if (OperatingSystem.IsWindows()) path = path.ToUpperInvariant();
-        return "DayNote-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(path)));
     }
 
     [DllImport("libc", EntryPoint = "flock", SetLastError = true)]
@@ -258,12 +217,7 @@ internal sealed class SingleInstanceLease : IDisposable
         }
         finally
         {
-            try { ownership.Dispose(); }
-            finally
-            {
-                _legacyMutex.ReleaseMutex();
-                _legacyMutex.Dispose();
-            }
+            ownership.Dispose();
         }
     }
 }
