@@ -22,6 +22,9 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     private Task<(Bitmap Bitmap, PixelSize Size)> Thumbnail() =>
         AttachmentThumbnails.LoadAsync(_path, _thumbnails, new NullLogger());
 
+    private Task<(Bitmap Bitmap, PixelSize Size)> Load(string path, CancellationToken cancellation) =>
+        AttachmentThumbnails.LoadAsync(path, _thumbnails, new NullLogger(), cancellation);
+
     private void WriteImage(int width, int height, SKEncodedImageFormat format = SKEncodedImageFormat.Png)
     {
         using var image = new SKBitmap(width, height);
@@ -94,7 +97,7 @@ public sealed class AttachmentItemViewModelTests : IDisposable
     public async Task A_missing_file_is_reported_without_a_zero_size()
     {
         File.Delete(_path);
-        using var row = new AttachmentItemViewModel(new Attachment("file.txt", _path), new NullLogger(), _thumbnails);
+        using var row = new AttachmentItemViewModel(new Attachment("file.txt", _path), new NullLogger(), Load);
         await row.ThumbnailTask;
         Assert.False(row.Exists);
         Assert.Equal(OperationResultKind.Warning, row.Result?.Kind);
@@ -178,41 +181,21 @@ public sealed class AttachmentItemViewModelTests : IDisposable
         new(new Attachment("image.png", _path), new NullLogger(), decode);
 
     [AvaloniaFact]
-    public async Task A_cached_thumbnail_bypasses_the_original_decode_admission()
-    {
-        WriteImage(1600, 800);
-        using (var first = (await Thumbnail()).Bitmap) { }
-        await AttachmentThumbnails.DecodeAdmission.WaitAsync();
-        try
-        {
-            var cached = Thumbnail();
-            var (bitmap, dimensions) = await cached.WaitAsync(TimeSpan.FromSeconds(5));
-            using (bitmap) Assert.Equal(new PixelSize(1600, 800), dimensions);
-        }
-        finally { AttachmentThumbnails.DecodeAdmission.Release(); }
-    }
-
-    [AvaloniaFact]
-    public async Task A_canceled_request_does_not_decode_or_keep_a_thumbnail_while_admission_is_held()
+    public async Task A_canceled_request_does_not_decode_or_keep_a_thumbnail()
     {
         WriteImage(1600, 800);
         using var cancellation = new CancellationTokenSource();
-        await AttachmentThumbnails.DecodeAdmission.WaitAsync();
-        try
-        {
-            var queued = AttachmentThumbnails.LoadAsync(_path, _thumbnails, new NullLogger(), cancellation.Token);
-            cancellation.Cancel();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
-            Assert.False(Directory.Exists(_thumbnails));
-        }
-        finally { AttachmentThumbnails.DecodeAdmission.Release(); }
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            AttachmentThumbnails.LoadAsync(_path, _thumbnails, new NullLogger(), cancellation.Token));
+        Assert.False(Directory.Exists(_thumbnails));
     }
 
     [AvaloniaFact]
     public async Task Reopening_an_image_replaces_an_existing_preview_when_its_fingerprint_changes()
     {
         WriteImage(1600, 800);
-        using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), new NullLogger(), _thumbnails);
+        using var row = new AttachmentItemViewModel(new Attachment("image.png", _path), new NullLogger(), Load);
         await row.ThumbnailTask;
         Assert.Contains("1600×800", row.DetailsText);
         WriteImage(800, 1600);

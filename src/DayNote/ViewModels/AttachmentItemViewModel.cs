@@ -21,20 +21,19 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
     private long? _size;
     private PixelSize? _dimensions;
     private bool _disposed;
+    // Cancelled when the row is refreshed, found unavailable or disposed, so the thumbnail asked for
+    // before applies nothing.
     private CancellationTokenSource? _refreshCancellation;
-    private int _thumbnailGeneration;
     private readonly Func<string, CancellationToken, Task<(Bitmap Bitmap, PixelSize Size)>> _decodeThumbnail;
 
     internal Task ThumbnailTask { get; private set; } = Task.CompletedTask;
-
-    public AttachmentItemViewModel(Attachment attachment, IAppLogger log, string thumbnailsDirectory)
-        : this(attachment, log, (path, token) => AttachmentThumbnails.LoadAsync(path, thumbnailsDirectory, log, token)) { }
 
     internal AttachmentItemViewModel(Attachment attachment, IAppLogger log,
         Func<string, Task<(Bitmap Bitmap, PixelSize Size)>> decodeThumbnail)
         : this(attachment, log, (path, _) => decodeThumbnail(path)) { }
 
-    private AttachmentItemViewModel(Attachment attachment, IAppLogger log,
+    /// <param name="decodeThumbnail">Makes the row's thumbnail; the pane passes its own, which makes one at a time.</param>
+    public AttachmentItemViewModel(Attachment attachment, IAppLogger log,
         Func<string, CancellationToken, Task<(Bitmap Bitmap, PixelSize Size)>> decodeThumbnail)
     {
         _decodeThumbnail = decodeThumbnail;
@@ -161,26 +160,20 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
 
         var cancellation = new CancellationTokenSource();
         _refreshCancellation = cancellation;
-        var work = LoadThumbnailAsync(_thumbnailGeneration, cancellation);
+        var work = LoadThumbnailAsync(cancellation);
         // A canceled caller still owns any native or filesystem work already in flight.
         ThumbnailTask = ThumbnailTask.IsCompleted ? work : Task.WhenAll(ThumbnailTask, work);
     }
 
-    private void CancelRefresh()
-    {
-        _thumbnailGeneration++;
-        _refreshCancellation?.Cancel();
-    }
+    private void CancelRefresh() => _refreshCancellation?.Cancel();
 
-    private bool IsCurrent(int generation) => !_disposed && generation == _thumbnailGeneration;
-
-    private async Task LoadThumbnailAsync(int generation, CancellationTokenSource cancellation)
+    private async Task LoadThumbnailAsync(CancellationTokenSource cancellation)
     {
         var token = cancellation.Token;
         try
         {
             var (bitmap, dimensions) = await _decodeThumbnail(FullPath, token);
-            if (!IsCurrent(generation))
+            if (token.IsCancellationRequested)
             {
                 bitmap.Dispose();
                 return;
@@ -196,7 +189,7 @@ public sealed partial class AttachmentItemViewModel : ObservableObject, IDisposa
             // A corrupt or unsupported image is recoverable — the row just shows no preview — but it
             // is unexpected for a file we classified as an image, so it is recorded rather than swallowed.
             _log.Warn("Could not decode attachment thumbnail", new { path = FullPath }, ex);
-            if (IsCurrent(generation))
+            if (!token.IsCancellationRequested)
                 ClearThumbnail();
         }
         finally

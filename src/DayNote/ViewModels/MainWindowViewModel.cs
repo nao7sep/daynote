@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -993,9 +994,6 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             // Retain the entire cleanup, including the wait for a copy already physically in flight.
             await Task.WhenAll(adding.Select(import => import.Copying));
-            if (_current is { } current && SameBinderPath(current.Path, binder.Path)
-                && current.Binder.Notes.Any(candidate => candidate.Id == note.Id))
-                return;
             if (removalSaved || ReferenceEquals(_current, binder))
                 await DeleteNoteAssetsAsync(binder.Path, note, removalSaved);
         }
@@ -1019,8 +1017,8 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
             }
 
-            // Reopening a restored binder can regain this note while the volume check waits. Check
-            // again immediately before admitting deletion, while the UI owns the live binder.
+            // The one check before the delete: reopening a restored binder can regain this note, and its
+            // files then stay.
             if (_current is { } current && SameBinderPath(current.Path, binderPath)
                 && current.Binder.Notes.Any(candidate => candidate.Id == note.Id))
             {
@@ -2784,7 +2782,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             }
             else
             {
-                Attachments.Add(new AttachmentItemViewModel(attachment, _log, _paths.ThumbnailsDirectory));
+                Attachments.Add(new AttachmentItemViewModel(attachment, _log, LoadThumbnailAsync));
             }
         }
 
@@ -2794,6 +2792,24 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         _attachmentNoteId = note.Id;
+    }
+
+    // The attachments pane's one thumbnail owner: rows are prepared and decoded one at a time, in the order
+    // they ask, and a row refreshed or left cancels its own request.
+    private Task _thumbnailTurn = Task.CompletedTask;
+
+    private Task<(Bitmap Bitmap, PixelSize Size)> LoadThumbnailAsync(string path, CancellationToken cancellation)
+    {
+        var load = AfterAsync(_thumbnailTurn);
+        _thumbnailTurn = load;
+        return load;
+
+        async Task<(Bitmap, PixelSize)> AfterAsync(Task previous)
+        {
+            // Completes with the turn before, however that one ended.
+            await Task.WhenAny(previous);
+            return await AttachmentThumbnails.LoadAsync(path, _paths.ThumbnailsDirectory, _log, cancellation);
+        }
     }
 
     private void DisposeAttachments()

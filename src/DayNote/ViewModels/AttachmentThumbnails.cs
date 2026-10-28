@@ -31,40 +31,25 @@ internal static class AttachmentThumbnails
     internal const int FormatVersion = 1;
     private const int Quality = 75;
 
-    // Full native decodes can allocate the source dimensions (PNG/GIF). Only that physical work
-    // occupies this slot; cached previews and header reads remain available while it runs.
-    internal static readonly SemaphoreSlim DecodeAdmission = new(1, 1);
-
-    /// <summary>The thumbnail of <paramref name="path"/> and the image's own dimensions.</summary>
-    internal static async Task<(Bitmap Bitmap, PixelSize Size)> LoadAsync(string path, string directory,
-        IAppLogger log, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// The thumbnail of <paramref name="path"/> and the image's own dimensions, made off the UI thread. The
+    /// attachments pane asks for one row at a time, so one full native decode (PNG/GIF allocate the source
+    /// dimensions) runs at a time.
+    /// </summary>
+    internal static Task<(Bitmap Bitmap, PixelSize Size)> LoadAsync(string path, string directory,
+        IAppLogger log, CancellationToken cancellationToken = default) => Task.Run(() =>
     {
-        var prepared = await Task.Run(() => Prepare(path, directory, log), cancellationToken).ConfigureAwait(false);
-
+        var prepared = Prepare(path, directory, log);
         using var codec = prepared.Codec;
         if (prepared.Cached is { } cached)
             return (cached, prepared.Original);
 
-        // Only the native decode waits for the permit, so cached previews load while it runs.
-        await DecodeAdmission.WaitAsync(cancellationToken).ConfigureAwait(false);
-        return await Task.Run(() =>
-        {
-            SKBitmap made;
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                made = Make(codec, prepared.Original);
-            }
-            finally
-            {
-                DecodeAdmission.Release();
-            }
-            using var owned = made;
-            Keep(made, prepared.Kept, log);
-            return (new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, made.GetPixels(),
-                new PixelSize(made.Width, made.Height), new Vector(96, 96), made.RowBytes), prepared.Original);
-        }).ConfigureAwait(false);
-    }
+        cancellationToken.ThrowIfCancellationRequested();
+        using var made = Make(codec, prepared.Original);
+        Keep(made, prepared.Kept, log);
+        return (new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Premul, made.GetPixels(),
+            new PixelSize(made.Width, made.Height), new Vector(96, 96), made.RowBytes), prepared.Original);
+    }, cancellationToken);
 
     private static (SKCodec Codec, PixelSize Original, string Kept, Bitmap? Cached) Prepare(
         string path, string directory, IAppLogger log)
