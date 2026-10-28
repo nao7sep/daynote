@@ -8,24 +8,18 @@ internal sealed class LocalDateRefresh(
     Action<Action> post) : IDisposable
 {
     private ITimer? _timer;
-    private long _generation;
     private bool _disposed;
 
-    // Reset on the UI thread: activation and zone changes also invalidate an already posted tick.
+    // Reset on the UI thread, on activation and zone changes too. A tick posted just before a reset only
+    // refreshes once more and re-arms the one timer, which is harmless.
     internal void RefreshAndSchedule()
     {
         if (_disposed)
             return;
         _timer?.Dispose();
-        var generation = ++_generation;
         refresh();
-        if (_disposed || generation != _generation)
-            return;
-        _timer = clock.CreateTimer(_ => post(() =>
-        {
-            if (!_disposed && generation == _generation)
-                RefreshAndSchedule();
-        }), null, UntilNextDate(clock.GetUtcNow(), zone()), Timeout.InfiniteTimeSpan);
+        _timer = clock.CreateTimer(_ => post(RefreshAndSchedule), null,
+            UntilNextDate(clock.GetUtcNow(), zone()), Timeout.InfiniteTimeSpan);
     }
 
     internal static TimeSpan UntilNextDate(DateTimeOffset now, TimeZoneInfo zone)
@@ -45,7 +39,6 @@ internal sealed class LocalDateRefresh(
     public void Dispose()
     {
         _disposed = true;
-        ++_generation;
         _timer?.Dispose();
         _timer = null;
     }

@@ -7,21 +7,21 @@ namespace DayNote.Tests.ViewModels;
 public sealed class BinderPathKeysTests
 {
     [Fact]
-    public void Older_registry_and_admission_snapshots_cannot_replace_a_published_name()
+    public void A_lookup_started_before_a_published_name_cannot_replace_it()
     {
         var keys = new BinderPathKeys();
         var path = Path.Combine(Path.GetTempPath(), "binder.daynote");
         var alias = Path.Combine(Path.GetTempPath(), "BINDER.DAYNOTE");
         var oldName = Path.Combine(Path.GetTempPath(), "Binder.daynote");
-        Assert.True(keys.TryAdopt(keys.Revision, [path, alias], [oldName, oldName]));
-        var oldRevision = keys.Revision;
+        keys.Adopt(keys.Lookups, [path, alias], [oldName, oldName]);
+        var older = keys.Lookups;
         keys.Published(path, path);
-        Assert.False(keys.TryAdopt(oldRevision, [path, alias], [oldName, oldName]));
+        keys.Adopt(older, [path, alias], [oldName, oldName]);
         Assert.True(keys.Equal(path, alias));
-        Assert.True(keys.TryAdopt(keys.Revision, [alias], [null]));
+        keys.Adopt(keys.Lookups, [alias], [null]);
         Assert.True(keys.Equal(path, alias));
         Assert.False(keys.Equal(path, oldName));
-        Assert.True(keys.TryAdopt(keys.Revision, [oldName], [path]));
+        keys.Adopt(keys.Lookups, [oldName], [path]);
         Assert.True(keys.Equal(path, oldName));
     }
 }

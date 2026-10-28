@@ -125,14 +125,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // discard that newer edit (it would never be written, and never be flagged as unsaved again).
     private long _dirtyGeneration;
 
-    // Bumped by each user open request before its first wait, including reselecting the current binder. If it
-    // changes before that call returns, a later open has already started — the user moved on to
-    // another binder while this one's file was still being read — and this call's result is discarded
-    // instead of adopting a binder the user is no longer looking at.
-    private long _openGeneration;
+    // The binder open the user asked for last. Each request, including reselecting the current binder,
+    // cancels the one before it, and so does a quit: an open whose token is cancelled — the user moved on to
+    // another binder while this one's file was still being read — adopts nothing and writes nothing.
+    private CancellationTokenSource _open = new();
+
+    private CancellationToken SupersedeOpen()
+    {
+        _open.Cancel();
+        _open.Dispose();
+        _open = new CancellationTokenSource();
+        return _open.Token;
+    }
 
     // Set from the start of a quit until it finishes or gives the app back: nothing new starts, and the
-    // state is written once, by the quit, within its bound.
+    // state is written once, by the quit, within its deadline.
     private bool _shuttingDown;
 
     // Set once the operating system is ending the session: from then on nothing asks the user anything.
@@ -481,7 +488,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
             }
 
-            var generation = ++_openGeneration;
+            var open = SupersedeOpen();
             var reopen = _state.CurrentBinderPath;
             var selectedNote = _state.CurrentNoteId;
             if (!string.IsNullOrEmpty(reopen)
@@ -491,11 +498,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 try
                 {
                     if (await Task.Run(() => _fileExists(reopen)))
-                        await OpenBinderPathAsync(reopen, isNew: false, selectNoteId: selectedNote, requestGeneration: generation);
+                        await OpenBinderPathAsync(reopen, isNew: false, selectNoteId: selectedNote, open: open);
                 }
                 finally
                 {
-                    if (generation == _openGeneration)
+                    if (!open.IsCancellationRequested)
                         IsOpeningBinder = false;
                 }
             }
@@ -548,7 +555,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         _shuttingDown = true;
-        _openGeneration++;
+        _open.Cancel();
         _autosaveTimer.Stop();
         // An open question about an outside change closes unanswered, which writes nothing, so the quit's
         // save can take its turn.
@@ -823,16 +830,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
+    // Concurrent, because a newer open has to start to supersede the one still reading.
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task OpenKnownBinder(BinderListItemViewModel item)
     {
-        if (!IsReady || _shuttingDown)
-            return;
-        // The user's request owns ordering before even its existence check yields.
-        var generation = ++_openGeneration;
         // Attempt the read even when the last availability probe failed: absence, permissions
         // and an unavailable volume have different actionable failures at the read boundary.
-        await OpenBinderPathAsync(item.Path, isNew: false, requestGeneration: generation);
+        await OpenBinderPathAsync(item.Path, isNew: false);
     }
 
     /// <summary>
@@ -1860,29 +1864,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     // ----- Binder open / close / save ----------------------------------------------------------
 
-    private async Task OpenBinderPathAsync(string path, bool isNew, string? selectNoteId = null, long? requestGeneration = null)
+    private async Task OpenBinderPathAsync(string path, bool isNew, string? selectNoteId = null, CancellationToken? open = null)
     {
-        // Nothing opens once a quit has begun, including an open whose own checks were still running.
+        // Nothing opens once a quit has begun; the quit cancels an open already under way.
         if (!IsReady || _shuttingDown)
         {
             return;
         }
 
         // Even reselecting the current binder supersedes an older open still in flight.
-        var generation = requestGeneration ?? ++_openGeneration;
-        if (generation != _openGeneration)
+        var token = open ?? SupersedeOpen();
+        if (token.IsCancellationRequested)
             return;
 
         IsOpeningBinder = true;
-        try { await OpenBinderRequestAsync(path, isNew, selectNoteId, generation); }
+        try { await OpenBinderRequestAsync(path, isNew, selectNoteId, token); }
         finally
         {
-            if (generation == _openGeneration)
+            if (!token.IsCancellationRequested)
                 IsOpeningBinder = false;
         }
     }
 
-    private async Task OpenBinderRequestAsync(string path, bool isNew, string? selectNoteId, long generation)
+    private async Task OpenBinderRequestAsync(string path, bool isNew, string? selectNoteId, CancellationToken open)
     {
         // Re-selecting the binder that is already open (e.g. tapping its row again) is a no-op.
         if (!isNew && _current is not null && PathKey.Equal(_current.Path, path))
@@ -1903,19 +1907,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 .Where(known => string.Equals(PathKey.Normalize(known), full, StringComparison.OrdinalIgnoreCase))
                 .Append(path).Concat(_current is null ? [] : new[] { _current.Path })
                 .Distinct(StringComparer.Ordinal).ToArray();
-            while (true)
-            {
-                var revision = _binderPathKeys.Revision;
-                var keys = await Task.Run(() => Array.ConvertAll(paths,
-                    PathKey.ResolveExisting));
-                if (_shuttingDown || generation != _openGeneration)
-                    return;
-                // A save or reload may have changed stored spelling while this lookup ran.
-                // Retry without holding the save lock across a possibly stalled outside path.
-                if (_binderPathKeys.TryAdopt(revision, paths, keys))
-                    break;
-            }
-            if (!isNew && _current is not null && SameBinderPath(_current.Path, path))
+            var lookup = _binderPathKeys.Lookups;
+            var keys = await Task.Run(() => Array.ConvertAll(paths, PathKey.ResolveExisting));
+            if (open.IsCancellationRequested)
+                return;
+            // A save or reload that changed a stored spelling while this lookup ran keeps its own.
+            _binderPathKeys.Adopt(lookup, paths, keys);
+            if (_current is not null && SameBinderPath(_current.Path, path))
                 return;
         }
 
@@ -1924,11 +1922,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             // Read into a detached value first. A failed open must leave the current binder intact.
             loaded = isNew ? null! : await Task.Run(() => _binderStore.Load(path));
-            if (_shuttingDown || generation != _openGeneration)
+            if (open.IsCancellationRequested)
                 return;
-            if (!await CloseCurrentAsync(clearSelection: false, requestGeneration: generation))
+            if (!await CloseCurrentAsync(clearSelection: false, open))
             {
-                if (_shuttingDown || generation != _openGeneration)
+                if (open.IsCancellationRequested)
                     return;
                 // The current binder's edits couldn't be flushed; keep it open rather than switch away, and
                 // move the highlight back from the row that was clicked to the binder still open.
@@ -1936,7 +1934,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
             }
 
-            if (_shuttingDown || generation != _openGeneration)
+            if (open.IsCancellationRequested)
                 return;
 
             // Detached reads cannot mutate the current binder and must not hold up a newer open.
@@ -1946,7 +1944,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 await _binderFileLock.WaitAsync();
                 try
                 {
-                    if (_shuttingDown || generation != _openGeneration)
+                    if (open.IsCancellationRequested)
                         return;
                     var now = _clock.GetUtcNow();
                     var binder = new Binder { Id = IdGenerator.New(), Created = now, Modified = now };
@@ -1962,7 +1960,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         catch (Exception ex)
         {
             _log.Error("Failed to open binder", new { path }, ex);
-            if (generation == _openGeneration)
+            if (!open.IsCancellationRequested)
             {
                 foreach (var row in _allBinders.Where(row => PathKey.Equal(row.Path, path)))
                     row.IsMissing = true;
@@ -1975,7 +1973,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        if (_shuttingDown || generation != _openGeneration)
+        if (open.IsCancellationRequested)
         {
             // A later open has already started (or finished) while this one's file was being read;
             // that binder is what the user is looking at now, so this stale result is dropped.
@@ -1988,7 +1986,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         AdoptLoaded(loaded, selectNoteId);
 
         AddBinder(loaded.Path);
-        if (_shuttingDown || generation != _openGeneration || !ReferenceEquals(_current?.Binder, loaded.Binder))
+        if (open.IsCancellationRequested || !ReferenceEquals(_current?.Binder, loaded.Binder))
             return;
         _state.CurrentBinderPath = loaded.Path;
         PersistState();
@@ -2007,7 +2005,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     /// dirty, with the autosave still retrying) when the flush failed — so a save error never costs the
     /// user their edits. Callers abort whatever they were doing (forget / switch) on false.
     /// </summary>
-    private async Task<bool> CloseCurrentAsync(bool clearSelection, long? requestGeneration = null)
+    private async Task<bool> CloseCurrentAsync(bool clearSelection, CancellationToken open = default)
     {
         if (_current is null)
         {
@@ -2023,7 +2021,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return false;
         }
 
-        if (requestGeneration is { } waitingRequest && waitingRequest != _openGeneration)
+        if (open.IsCancellationRequested)
             return false;
         if (_current is null)
         {
@@ -2040,7 +2038,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return false;
         }
 
-        if (requestGeneration is { } savingRequest && savingRequest != _openGeneration)
+        if (open.IsCancellationRequested)
         {
             if (!_shuttingDown && _current is not null)
                 _autosaveTimer.Start();
@@ -2567,7 +2565,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             _binderCheckAgain = false;
             var paths = _allBinders.Select(item => item.Path).ToArray();
-            var revision = _binderPathKeys.Revision;
+            var lookup = _binderPathKeys.Lookups;
             var checkedPaths = await Task.Run(() => Array.ConvertAll(paths,
                 path => (Exists: File.Exists(path), Key: PathKey.ResolveExisting(path))));
             if (_shuttingDown)
@@ -2575,7 +2573,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                 return;
             }
 
-            _binderPathKeys.TryAdopt(revision, paths, checkedPaths.Select(result => result.Key).ToArray());
+            _binderPathKeys.Adopt(lookup, paths, checkedPaths.Select(result => result.Key).ToArray());
             var found = new Dictionary<string, bool>(StringComparer.Ordinal);
             for (var i = 0; i < paths.Length; i++)
             {
@@ -2932,13 +2930,12 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        _ = CloseForFilterAsync(++_openGeneration);
+        _ = CloseForFilterAsync(SupersedeOpen());
     }
 
-    private async Task CloseForFilterAsync(long generation)
+    private async Task CloseForFilterAsync(CancellationToken open)
     {
-        if (await CloseCurrentAsync(clearSelection: true, requestGeneration: generation)
-            && !_shuttingDown && generation == _openGeneration)
+        if (await CloseCurrentAsync(clearSelection: true, open) && !open.IsCancellationRequested)
         {
             ApplyBinderFilter();
             OnPropertyChanged(nameof(BindersEmptyStateText));
@@ -2964,7 +2961,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         // nothing is selected or it is already open.
         if (_applyingBinderFilter || value is null)
             return;
-        var generation = ++_openGeneration;
+        var open = SupersedeOpen();
         if (_current is not null && SameBinderPath(_current.Path, value.Path))
             return;
 
@@ -2975,7 +2972,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         var target = value;
         Dispatcher.UIThread.Post(() =>
         {
-            if (_shuttingDown || generation != _openGeneration)
+            if (open.IsCancellationRequested)
                 return;
             if (_current is not null && SameBinderPath(_current.Path, target.Path))
             {

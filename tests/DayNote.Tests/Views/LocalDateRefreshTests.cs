@@ -42,10 +42,8 @@ public sealed class LocalDateRefreshTests
         Assert.Equal(3, calls); // The original UTC midnight timer was disposed.
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_posted_tick_is_ignored_after_disposal_or_an_activation_reset(bool reset)
+    [Fact]
+    public void A_posted_tick_does_nothing_after_disposal()
     {
         var clock = new ManualClock(new DateTimeOffset(2026, 6, 1, 23, 59, 0, TimeSpan.Zero));
         var posted = new Queue<Action>();
@@ -54,16 +52,29 @@ public sealed class LocalDateRefreshTests
         owner.RefreshAndSchedule();
         clock.Advance(TimeSpan.FromMinutes(1));
         Assert.Single(posted);
-        if (reset)
-            owner.RefreshAndSchedule();
-        else
-            owner.Dispose();
-        var expected = calls;
+        owner.Dispose();
 
         posted.Dequeue()();
-        Assert.Equal(expected, calls);
+        Assert.Equal(1, calls);
         clock.Advance(TimeSpan.FromDays(1));
-        Assert.Equal(reset ? 1 : 0, posted.Count);
+        Assert.Empty(posted);
+    }
+
+    [Fact]
+    public void A_tick_posted_before_a_reset_leaves_one_boundary_armed()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 6, 1, 23, 59, 0, TimeSpan.Zero));
+        var posted = new Queue<Action>();
+        var calls = 0;
+        using var owner = new LocalDateRefresh(clock, () => TimeZoneInfo.Utc, () => calls++, posted.Enqueue);
+        owner.RefreshAndSchedule();
+        clock.Advance(TimeSpan.FromMinutes(1));
+        owner.RefreshAndSchedule();
+
+        posted.Dequeue()();
+        Assert.Equal(3, calls);
+        clock.Advance(TimeSpan.FromDays(1));
+        Assert.Single(posted);
     }
 
     [Fact]
