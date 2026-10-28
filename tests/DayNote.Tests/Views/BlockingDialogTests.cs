@@ -151,12 +151,16 @@ public sealed class BlockingDialogTests : IDisposable
         var waiting = service.WaitForAttachmentsAsync(new TaskCompletionSource().Task, TimeSpan.FromMilliseconds(1));
         var dialog = OpenDialog(owner);
         var stop = ButtonTagged(dialog, AttachmentWaitDialog.StopTag);
+        // The offer can already have appeared while the dialog opened, so the state is read after
+        // subscribing as well as on each change.
         var offered = new TaskCompletionSource();
         stop.PropertyChanged += (_, e) =>
         {
             if (e.Property == Visual.IsVisibleProperty && stop.IsVisible)
                 offered.TrySetResult();
         };
+        if (stop.IsVisible)
+            offered.TrySetResult();
 
         WindowTest.RunUntil(offered.Task);
         Assert.True(stop.IsVisible);
