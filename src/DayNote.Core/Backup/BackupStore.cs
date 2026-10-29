@@ -23,9 +23,10 @@ namespace DayNote.Core.Backup;
 /// <para>
 /// Saves hand over the exact bytes they just published, and an added file its path and the hash of what was
 /// copied, and return at once: one owner thread applies the writes in the order they were recorded,
-/// so the primary save never waits on SQLite. A path recorded again before its earlier write is applied
-/// keeps only the newest bytes. Ordinary quit drains the pending writes within a short bound (<see cref="Drain"/>); when the
-/// operating system ends the session they are skipped, and the background thread ends with the process.
+/// so the primary save never waits on SQLite, and each save's write is applied, so an earlier write never
+/// replaces a later one. Ordinary quit drains the pending writes within what remains of the quit's deadline
+/// (<see cref="Drain"/>); when the operating system ends the session they are skipped, and the background
+/// thread ends with the process.
 /// </para>
 /// <para>
 /// A session is one launch, identified by an id generated when the process starts. Each path keeps one row
@@ -61,8 +62,7 @@ public static class BackupStore
 
     // Guards the pending writes, the owner's state and the session.
     private static readonly object Gate = new();
-    private static readonly Dictionary<string, PendingWrite> Pending = new(StringComparer.Ordinal);
-    private static readonly Queue<string> Order = new();
+    private static readonly Queue<PendingWrite> Pending = new();
     private static Thread? _owner;
     private static bool _writing;
     private static string _session = IdGenerator.New();
@@ -78,7 +78,7 @@ public static class BackupStore
 
     // A save's exact bytes, or an added file to read from its published path: Bytes is null and Sha256 is
     // the hash of what was copied there.
-    private sealed record PendingWrite(byte[]? Bytes, string? Sha256, DateTimeOffset WrittenAt, string Session);
+    private sealed record PendingWrite(string Path, byte[]? Bytes, string? Sha256, DateTimeOffset WrittenAt, string Session);
 
     /// <summary>Installs the warn sink the store uses to log a record or open failure once. Called once at
     /// app startup, before any managed save. Optional: with no sink installed, a failure is swallowed
@@ -115,12 +115,7 @@ public static class BackupStore
         var writtenAt = DateTimeOffset.UtcNow;
         lock (Gate)
         {
-            if (!Pending.ContainsKey(absolutePath))
-            {
-                Order.Enqueue(absolutePath);
-            }
-
-            Pending[absolutePath] = new PendingWrite(bytes, sha256, writtenAt, _session);
+            Pending.Enqueue(new PendingWrite(absolutePath, bytes, sha256, writtenAt, _session));
             if (_owner is null)
             {
                 _owner = new Thread(Own) { IsBackground = true, Name = "backups" };
@@ -132,7 +127,8 @@ public static class BackupStore
     }
 
     /// <summary>
-    /// Waits up to <paramref name="bound"/> for every write recorded so far to be applied. Returns false when
+    /// Waits up to <paramref name="bound"/>, what remains of the quit's deadline, for every write recorded so
+    /// far to be applied. Returns false when
     /// the bound passed first; the writes then carry on until the process ends. Ordinary quit calls this; an
     /// ending OS session does not.
     /// </summary>
@@ -141,7 +137,7 @@ public static class BackupStore
         var started = Stopwatch.GetTimestamp();
         lock (Gate)
         {
-            while (Order.Count > 0 || _writing)
+            while (Pending.Count > 0 || _writing)
             {
                 var remaining = bound - Stopwatch.GetElapsedTime(started);
                 if (remaining <= TimeSpan.Zero)
@@ -156,16 +152,15 @@ public static class BackupStore
         }
     }
 
-    // The owner thread: applies pending writes in the order they were first recorded.
+    // The owner thread: applies pending writes in the order they were recorded.
     private static void Own()
     {
         while (true)
         {
-            string path;
             PendingWrite write;
             lock (Gate)
             {
-                while (Order.Count == 0)
+                while (Pending.Count == 0)
                 {
                     _writing = false;
                     Monitor.PulseAll(Gate);
@@ -173,17 +168,16 @@ public static class BackupStore
                 }
 
                 _writing = true;
-                path = Order.Dequeue();
-                write = Pending[path];
-                Pending.Remove(path);
+                write = Pending.Dequeue();
             }
 
-            Write(path, write);
+            Write(write);
         }
     }
 
-    private static void Write(string path, PendingWrite write)
+    private static void Write(PendingWrite write)
     {
+        var path = write.Path;
         try
         {
             // The save has already landed, so the never-breaks-a-save boundary covers opening and path
@@ -297,7 +291,7 @@ public static class BackupStore
 
     /// <summary>
     /// Opens and initializes the store once: checks its format version, creates
-    /// the table if absent, and switches on WAL and a short busy timeout. On any failure it logs one warn and
+    /// the table if absent, and switches on WAL. On any failure it logs one warn and
     /// leaves recording disabled for the session; it never throws.
     /// </summary>
     private static SqliteConnection? EnsureOpen()
@@ -319,9 +313,8 @@ public static class BackupStore
             // through the managed-text atomic write, so it never records itself.
             paths.EnsureCreated();
 
-            // The provider retries busy commands and transactions using its own timeout; keep it at
-            // the same one-second bound as SQLite so its default cannot extend the optional wait.
-            connection = new SqliteConnection($"Data Source={file}") { DefaultTimeout = 1 };
+            // No busy timeout: this is the store's one connection in the app.
+            connection = new SqliteConnection($"Data Source={file}");
             connection.Open();
 
             // Check compatibility before WAL or the schema can change the file. Unsupported history stays
@@ -335,10 +328,6 @@ public static class BackupStore
             using (var pragma = connection.CreateCommand())
             {
                 pragma.CommandText = "PRAGMA journal_mode = WAL;";
-                pragma.ExecuteNonQuery();
-                // Off the save path, a brief wait for the write lock costs nothing; longer contention skips
-                // the write with one warn rather than holding the owner.
-                pragma.CommandText = "PRAGMA busy_timeout = 1000;";
                 pragma.ExecuteNonQuery();
             }
 
@@ -390,7 +379,7 @@ public static class BackupStore
     {
         lock (Gate)
         {
-            while (Order.Count > 0 || _writing)
+            while (Pending.Count > 0 || _writing)
             {
                 Monitor.Wait(Gate);
             }

@@ -198,36 +198,22 @@ public sealed class BackupStoreTests : IDisposable
         other.Open();
         using var held = other.BeginTransaction(deferred: false);
 
-        using var releaseWarning = new ManualResetEventSlim();
-        var warningEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        BackupStore.ConfigureWarn((_, _, _) =>
-        {
-            warningEntered.TrySetResult(true);
-            releaseWarning.Wait();
-        });
         var save = Task.Run(() => AtomicFile.WriteAllText(TargetPath, "saved while the history is locked"), TestContext.Current.CancellationToken);
         try
         {
-            // Once SQLite's lock wait fails, the warning dependency keeps the physical backup owner
-            // held. The watchdog protects the test; it imposes no filesystem flush performance target.
-            await warningEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+            // The backup owner waits on the lock another connection holds; the save does not.
             await save.WaitAsync(TestContext.Current.CancellationToken);
             Assert.Equal("saved while the history is locked", File.ReadAllText(TargetPath));
             Assert.False(BackupStore.Drain(TimeSpan.Zero));
         }
         finally
         {
-            releaseWarning.Set();
             held.Rollback();
-            try
-            {
-                await save;
-            }
-            finally
-            {
-                Assert.True(BackupStore.Drain(TimeSpan.FromSeconds(5)));
-            }
+            await save;
         }
+
+        BackupStore.Close();
+        Assert.Equal("saved while the history is locked", Encoding.UTF8.GetString(LatestRow(TargetPath)!.Content));
     }
 
     [Fact]
