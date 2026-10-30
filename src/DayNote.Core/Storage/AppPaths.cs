@@ -24,6 +24,8 @@ public sealed class AppPaths
     public string Root { get; }
 
     public string ConfigFile => Path.Combine(Root, "config.json");
+    /// <summary>The binders the user has opened, in their order, with their titles.</summary>
+    public string BindersFile => Path.Combine(Root, "binders.json");
     public string StateFile => Path.Combine(Root, "state.json");
     /// <summary>The records database (data-lifecycle conventions), opened by the app's logger.</summary>
     public string RecordsFile => Path.Combine(Root, "records.sqlite3");

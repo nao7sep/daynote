@@ -1,5 +1,4 @@
 using System.Text.Json;
-using DayNote.Core.Storage;
 
 namespace DayNote.Core.Configuration;
 
@@ -10,12 +9,17 @@ public static class ConfigSets
     private static readonly JsonElement BuiltIns = JsonSerializer.SerializeToElement(new AppConfig(), DayNoteJson.Options);
     public static IEnumerable<string> Keys => BuiltIns.EnumerateObject().Select(property => property.Name);
 
-    // Sets the user builds up by hand: the binder list and the text-style presets. One that fails its
-    // check still reads as its built-in, but its stored value is kept on disk until the user changes the
-    // set, since a fallback must not silently replace authored choices (config-sets-conventions). The
-    // other sets are presentation preferences whose built-in is a harmless fallback, normalized by the
-    // next save.
-    private static readonly HashSet<string> Authored = ["binders", "textStyles"];
+    // The set the user builds up by hand: the text-style presets. One that fails its check still reads as
+    // its built-in, but its stored value is kept on disk until the user changes the set, since a fallback
+    // must not silently replace authored choices (config-sets-conventions). The other sets are
+    // presentation preferences whose built-in is a harmless fallback, normalized by the next save.
+    private static readonly HashSet<string> Authored = ["textStyles"];
+
+    /// <summary>
+    /// The binder list config.json held before it had its own file, binders.json. It is retired: read
+    /// once to move it, never kept, so the next save leaves it out.
+    /// </summary>
+    public const string RetiredBindersKey = "binders";
 
     /// <summary>Validates each stored set once, returning its effective values and entries to preserve.</summary>
     public static (AppConfig Config, Dictionary<string, JsonElement> Kept) Load(
@@ -25,6 +29,9 @@ public static class ConfigSets
         var kept = new Dictionary<string, JsonElement>();
         foreach (var (key, value) in stored)
         {
+            if (key == RetiredBindersKey)
+                continue;
+
             if (!BuiltIns.TryGetProperty(key, out _))
             {
                 kept[key] = value.Clone();
@@ -68,7 +75,6 @@ public static class ConfigSets
     // Reading and healing (config-sets-conventions), by the validator Settings applies at Save.
     private static bool IsValid(string key, JsonElement value) => key switch
     {
-        "binders" => HasBinderListShape(value),
         "theme" => IsTheme(value),
         _ => HasShape(value, BuiltIns.GetProperty(key)) && key switch
         {
@@ -79,34 +85,6 @@ public static class ConfigSets
             _ => true,
         },
     };
-
-    private static bool HasBinderListShape(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Array)
-            return false;
-
-        var paths = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var item in value.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object
-                || !item.TryGetProperty("path", out var path) || path.ValueKind != JsonValueKind.String
-                || !item.TryGetProperty("title", out var title) || title.ValueKind != JsonValueKind.String
-                || string.IsNullOrWhiteSpace(path.GetString()))
-                return false;
-
-            try
-            {
-                // Identity checking is lexical: an offline binder remains valid, and its authored
-                // spelling stays untouched. Existing-file aliases belong to the binder load boundary.
-                if (!paths.Add(PathKey.Normalize(path.GetString()!)))
-                    return false;
-            }
-            catch (ArgumentException) { return false; }
-            catch (NotSupportedException) { return false; }
-            catch (PathTooLongException) { return false; }
-        }
-        return true;
-    }
 
     private static bool IsTheme(JsonElement value) => value.ValueKind == JsonValueKind.String
         && ThemePreferenceJsonConverter.TryParse(value.GetString(), out _);

@@ -12,29 +12,16 @@ namespace DayNote.Tests.Configuration;
 public sealed class AppConfigTests
 {
     [Fact]
-    public void Copy_owns_its_binder_entries()
+    public void Copy_owns_its_text_styles()
     {
-        var original = new AppConfig { Binders = new() { new KnownBinder { Path = "binder.daynote", Title = "Original" } } };
+        var original = new AppConfig();
         var draft = original.Copy();
-        draft.Binders[0].Title = "Draft";
-        Assert.Equal("Original", original.Binders[0].Title);
-    }
-
-    [Fact]
-    public void Settings_travel_without_the_binder_list()
-    {
-        var live = new AppConfig { Binders = new() { new KnownBinder { Path = "binder.daynote", Title = "Kept" } } };
-        var draft = live.CopySettings();
         draft.Theme = ThemePreference.Dark;
         draft.TextStyles[0].FontSize = 20;
 
-        live.TakeSettings(draft);
-        draft.TextStyles[0].FontSize = 30;
-
-        Assert.Empty(draft.Binders);
-        Assert.Equal("Kept", Assert.Single(live.Binders).Title);
-        Assert.Equal(ThemePreference.Dark, live.Theme);
-        Assert.Equal(20, live.TextStyles[0].FontSize);
+        Assert.Equal(ThemePreference.System, original.Theme);
+        Assert.Equal(new AppConfig().TextStyles[0].FontSize, original.TextStyles[0].FontSize);
+        Assert.Equal(20, draft.TextStyles[0].FontSize);
     }
 
     [Fact]

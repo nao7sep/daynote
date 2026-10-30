@@ -14,8 +14,8 @@ public static class FailurePresentation
     public static Message StartupStorage() => Message.Of("failure.startupStorage");
 
     /// <summary>
-    /// Why the settings file stopped startup. Every case leaves the file untouched: it may hold the binder
-    /// list and authored text styles, so DayNote never replaces it with defaults (store-recovery-conventions).
+    /// Why the settings file stopped startup. Every case leaves the file untouched: it may hold authored
+    /// text styles, so DayNote never replaces it with defaults (store-recovery-conventions).
     /// </summary>
     public static Message StartupSettings(string configFile, Exception error) => Message.Of(error switch
     {
@@ -23,6 +23,13 @@ public static class FailurePresentation
         InvalidDataException => "failure.startupSettingsMalformed",
         _ => "failure.startupSettings",
     }, ("path", QuotedValue.Path(configFile)));
+
+    /// <summary>
+    /// Why the binder list stopped startup: it could not be read, is not a list this build can read, or a
+    /// newer DayNote wrote it. The file is left untouched, since it is the list the user keeps.
+    /// </summary>
+    public static Message StartupBinders(string bindersFile) =>
+        Message.Of("failure.startupBinders", ("path", QuotedValue.Path(bindersFile)));
 
     public static Message OpenBinder(Exception error, string binderTitle) => error switch
     {

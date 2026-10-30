@@ -5,7 +5,8 @@ namespace DayNote.Core.Configuration;
 /// <summary>
 /// The user's settings, one property per set of <c>config.json</c> (config-sets-conventions), each
 /// initialized to its built-in. The declaration order is the file's key order: the interface language,
-/// app appearance, editor appearance, editing behavior, display, then the binder list.
+/// app appearance, editor appearance, editing behavior, then display. The binder list has its own file,
+/// binders.json (<see cref="DayNote.Core.Storage.BinderListStore"/>).
 /// </summary>
 public sealed class AppConfig
 {
@@ -62,37 +63,18 @@ public sealed class AppConfig
     // (DayNoteTime.SystemZone), which follows the computer's zone at every launch.
     public string TimeZone { get; set; } = DayNoteTime.SystemZone;
 
-    /// <summary>The opened binders and their user-authored display titles.</summary>
-    public List<KnownBinder> Binders { get; set; } = new();
-
     /// <summary>The preset the editor uses: the flagged default, or the first when none is flagged.</summary>
     public EditorTextStyle? ResolveDefaultStyle() =>
         TextStyles.FirstOrDefault(style => style.IsDefault) ?? TextStyles.FirstOrDefault();
 
     /// <summary>Returns a deep copy.</summary>
-    public AppConfig Copy()
+    public AppConfig Copy() => new()
     {
-        var copy = CopySettings();
-        copy.Binders = Binders.Select(binder => new KnownBinder { Path = binder.Path, Title = binder.Title }).ToList();
-        return copy;
-    }
-
-    /// <summary>Returns a deep copy of the sets the Settings dialog edits, without the binder list.</summary>
-    public AppConfig CopySettings()
-    {
-        var copy = new AppConfig();
-        copy.TakeSettings(this);
-        return copy;
-    }
-
-    /// <summary>Takes a deep copy of the sets the Settings dialog edits, keeping this binder list.</summary>
-    public void TakeSettings(AppConfig settings)
-    {
-        Language = settings.Language;
-        UiFontFamily = settings.UiFontFamily;
-        Theme = settings.Theme;
-        TextStyles = settings.TextStyles.Select(style => style.Copy()).ToList();
-        AutosaveDelaySeconds = settings.AutosaveDelaySeconds;
-        TimeZone = settings.TimeZone;
-    }
+        Language = Language,
+        UiFontFamily = UiFontFamily,
+        Theme = Theme,
+        TextStyles = TextStyles.Select(style => style.Copy()).ToList(),
+        AutosaveDelaySeconds = AutosaveDelaySeconds,
+        TimeZone = TimeZone,
+    };
 }

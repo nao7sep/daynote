@@ -13,6 +13,9 @@ public static class FormatVersions
     /// <summary><c>config.json</c> (<c>formatVersion</c>).</summary>
     public const int Config = 1;
 
+    /// <summary><c>binders.json</c> (<c>formatVersion</c>).</summary>
+    public const int Binders = 1;
+
     /// <summary><c>state.json</c> (<c>formatVersion</c>).</summary>
     public const int State = 1;
 

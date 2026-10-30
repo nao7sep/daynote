@@ -70,19 +70,17 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal("Inter", Store.Load().UiFontFamily);
     }
 
-    [Theory]
-    [InlineData("textStyles", "[{\"fontFamily\":\"A\"}]")]
-    [InlineData("binders", "[{\"path\":\"x\"}]")]
-    public void An_invalid_authored_set_and_an_unknown_key_survive_other_saves_unchanged(string key, string value)
+    [Fact]
+    public void An_invalid_authored_set_and_an_unknown_key_survive_other_saves_unchanged()
     {
+        const string key = "textStyles";
+        const string value = "[{\"fontFamily\":\"A\"}]";
         File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"{key}\":{value},\"future\":{{\"a\":[1,2]}}}}");
         var store = Store;
         var config = store.Load();
 
         config.Theme = ThemePreference.Dark;
         store.Save(config);
-        config.Binders.Add(new KnownBinder { Path = "/tmp/other.daynote", Title = "Other" });
-        config.Binders.Clear();
         config.UiFontFamily = "Menlo";
         store.Save(config);
 
@@ -92,79 +90,21 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equal("dark", saved.RootElement.GetProperty("theme").GetString());
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData(" \t ")]
-    [InlineData("bad\0path")]
-    public void An_unusable_binder_path_rejects_the_whole_list_and_survives_an_unrelated_save(string path)
-    {
-        var binders = JsonSerializer.SerializeToElement(new[]
-        {
-            new KnownBinder { Path = Path.Combine(_directory, "valid.daynote"), Title = "Valid" },
-            new KnownBinder { Path = path, Title = "Invalid" },
-        }, DayNoteJson.Options);
-        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"binders\":{binders.GetRawText()}}}");
-        var store = Store;
-
-        var config = store.Load();
-        Assert.Empty(config.Binders);
-        Assert.Equal("binders", Assert.Single(_warnings));
-        config.Theme = ThemePreference.Dark;
-        store.Save(config);
-
-        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.True(JsonElement.DeepEquals(binders, saved.RootElement.GetProperty("binders")));
-        Assert.Equal(ThemePreference.Dark, Store.Load().Theme);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Duplicate_normalized_binder_paths_are_rejected_in_either_order_and_preserved(bool reverse)
-    {
-        var entries = new List<KnownBinder>
-        {
-            new() { Path = Path.Combine(_directory, "same.daynote"), Title = "First" },
-            new() { Path = Path.Combine(_directory, ".", "same.daynote"), Title = "Alias" },
-            new() { Path = Path.Combine(_directory, "other.daynote"), Title = "Other" },
-        };
-        if (reverse)
-            entries.Reverse();
-        var binders = JsonSerializer.SerializeToElement(entries, DayNoteJson.Options);
-        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"binders\":{binders.GetRawText()}}}");
-        var store = Store;
-
-        var config = store.Load();
-        Assert.Empty(config.Binders);
-        Assert.Equal("binders", Assert.Single(_warnings));
-        config.Theme = ThemePreference.Dark;
-        store.Save(config);
-
-        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.True(JsonElement.DeepEquals(binders, saved.RootElement.GetProperty("binders")));
-        Assert.Empty(Store.Load().Binders);
-    }
-
     [Fact]
-    public void Offline_binders_keep_their_literal_paths_and_distinct_case()
+    public void A_binder_list_from_before_binders_json_is_surfaced_once_and_left_out_of_the_next_save()
     {
-        var entries = new List<KnownBinder>
-        {
-            new() { Path = Path.Combine(_directory, "offline", "..", "Binder.daynote"), Title = "Upper" },
-            new() { Path = Path.Combine(_directory, "binder.daynote"), Title = "Lower" },
-        };
-        var binders = JsonSerializer.SerializeToElement(entries, DayNoteJson.Options);
-        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"binders\":{binders.GetRawText()}}}");
+        const string binders = """[{"path":"/tmp/a.daynote","title":"A"}]""";
+        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"theme":"dark","binders":{{binders}}}""");
         var store = Store;
 
         var config = store.Load();
-        Assert.Equal(entries.Select(entry => entry.Path), config.Binders.Select(entry => entry.Path));
+        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(binders).RootElement, store.RetiredBinders!.Value));
         Assert.Empty(_warnings);
-        config.Theme = ThemePreference.Dark;
         store.Save(config);
 
+        Assert.Null(store.RetiredBinders);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.True(JsonElement.DeepEquals(binders, saved.RootElement.GetProperty("binders")));
+        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     [Fact]
@@ -183,20 +123,17 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Single(_warnings);
     }
 
-    [Theory]
-    [InlineData("textStyles", "[{\"fontFamily\":\"A\"}]")]
-    [InlineData("binders", "[{\"path\":\"x\"}]")]
-    public void A_failed_replacement_of_an_invalid_set_does_not_discard_its_preserved_value(string key, string value)
+    [Fact]
+    public void A_failed_replacement_of_an_invalid_set_does_not_discard_its_preserved_value()
     {
+        const string key = "textStyles";
+        const string value = "[{\"fontFamily\":\"A\"}]";
         var original = $"{{\"formatVersion\":1,\"{key}\":{value}}}";
         File.WriteAllText(ConfigPath, original);
         var store = Store;
         var config = store.Load();
         var fontSize = config.TextStyles[0].FontSize;
-        if (key == "textStyles")
-            config.TextStyles[0].FontSize = 22;
-        else
-            config.Binders.Add(new KnownBinder { Path = Path.Combine(_directory, "other.daynote"), Title = "Other" });
+        config.TextStyles[0].FontSize = 22;
 
         // A directory at the destination rejects publication on either platform.
         File.Delete(ConfigPath);
@@ -213,7 +150,6 @@ public sealed class ConfigStoreTests : IDisposable
         }
 
         config.TextStyles[0].FontSize = fontSize;
-        config.Binders.Clear();
         config.Theme = ThemePreference.Dark;
         store.Save(config);
         using var expected = JsonDocument.Parse(value);
@@ -272,8 +208,7 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("textStyles", "[null]")]
     [InlineData("textStyles", "[{\"isDefault\":false,\"fontFamily\":\"A\",\"fontSize\":14,\"lineSpacing\":1.4,\"padding\":12,\"bold\":false,\"italic\":false}]")]
     [InlineData("textStyles", "[{\"isDefault\":true,\"fontFamily\":\"A\",\"fontSize\":70,\"lineSpacing\":1.4,\"padding\":12,\"bold\":false,\"italic\":false}]")]
-    [InlineData("binders", "[{\"path\":\"x\"}]")]
-    [InlineData("binders", "[null]")]
+    [InlineData("textStyles", "[{\"isDefault\":true,\"fontFamily\":\"A\",\"fontSize\":14.5,\"lineSpacing\":1.4,\"padding\":12,\"bold\":false,\"italic\":false}]")]
     public void A_set_that_fails_its_check_falls_back_only_for_that_set_and_warns(string key, string value)
     {
         File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"{key}\":{value}}}");

@@ -47,6 +47,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private readonly AppPaths _paths;
     private readonly BinderStore _binderStore;
     private readonly ConfigStore _configStore;
+    private readonly BinderListStore _binderListStore;
     private readonly JsonStore<AppState> _stateStore;
     private readonly IDialogService _dialogs;
     private readonly IAppLogger _log;
@@ -87,14 +88,17 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
     private AppConfig _config = new();
 
+    // The binders the user has opened, in the user's order, as binders.json holds them.
+    private List<KnownBinder> _knownBinders = [];
+
     // The zone times are shown in, resolved from the configuration whenever it is applied. Rows and the
     // editor are handed it on every refresh rather than keeping their own copy.
     private TimeZoneInfo _displayZone = TimeZoneInfo.Local;
     private AppState _state = new();
 
-    // Why the settings file could not be used at launch: it could not be read, it is not a settings
-    // file this build can read, or a newer DayNote wrote it. While set, nothing is saved.
-    private Exception? _configLoadError;
+    // Why the settings file or the binder list could not be used at launch: it could not be read, it is
+    // not a file this build can read, or a newer DayNote wrote it. While set, nothing is saved.
+    private Message? _startupFailure;
 
     private LoadedBinder? _current;
     // The content hash of the version DayNote last loaded or wrote: what the next save expects to find on
@@ -179,6 +183,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _fileExists = fileExists ?? File.Exists;
         _directoryExists = directoryExists ?? Directory.Exists;
         _configStore = startupSettings?.Store ?? new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
+        _binderListStore = new BinderListStore(paths.BindersFile, _ => _log.Warn("Invalid binder list; listing none", new { path = paths.BindersFile }));
         // Not recorded in the backup history: placement and selection are state, never the user's work.
         _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
 
@@ -236,7 +241,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             }
         };
 
-        if (_configLoadError is null)
+        if (_startupFailure is null)
         {
             ApplyConfig();
             RestorePaneWidths();
@@ -481,11 +486,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             // A settings file that stopped startup is reported once the window can own the dialog
             // (store-recovery-conventions).
-            if (_configLoadError is { } configError)
+            if (_startupFailure is { } failure)
             {
-                await _dialogs.ShowErrorAsync(
-                    Message.Of("failure.startupDataTitle"),
-                    FailurePresentation.StartupSettings(_paths.ConfigFile, configError));
+                await _dialogs.ShowErrorAsync(Message.Of("failure.startupDataTitle"), failure);
                 return;
             }
 
@@ -493,7 +496,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             var reopen = _state.CurrentBinderPath;
             var selectedNote = _state.CurrentNoteId;
             if (!string.IsNullOrEmpty(reopen)
-                && _config.Binders.Any(binder => SameBinderPath(binder.Path, reopen)))
+                && _knownBinders.Any(binder => SameBinderPath(binder.Path, reopen)))
             {
                 IsOpeningBinder = true;
                 try
@@ -511,7 +514,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         catch (Exception ex)
         {
             // The window calls this without waiting on it, so a failure is recorded here rather than lost.
-            _log.Error("Startup could not finish", new { settingsUnreadable = _configLoadError is not null }, ex);
+            _log.Error("Startup could not finish", new { startupStopped = _startupFailure is not null }, ex);
         }
     }
 
@@ -1707,17 +1710,15 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var draft = _config.CopySettings();
+        var draft = _config.Copy();
         if (!await _dialogs.ShowSettingsAsync(draft, candidate =>
             {
-                var next = _config.Copy();
-                next.TakeSettings(candidate);
-                if (!TrySaveConfig(next))
+                if (!TrySaveConfig(candidate))
                 {
                     return false;
                 }
 
-                _log.Info("Settings saved", ConfigSummary(next));
+                _log.Info("Settings saved", ConfigSummary(candidate));
                 return true;
             }))
         {
@@ -1725,7 +1726,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         var themeChanged = _config.Theme != draft.Theme;
-        _config.TakeSettings(draft);
+        _config = draft.Copy();
         ApplyConfig();
         if (themeChanged)
         {
@@ -1833,7 +1834,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         {
             // Resolve only relevant spellings. An unrelated offline known binder must not delay this open.
             var full = PathKey.Normalize(path);
-            var paths = _config.Binders.Select(binder => binder.Path)
+            var paths = _knownBinders.Select(binder => binder.Path)
                 .Where(known => string.Equals(PathKey.Normalize(known), full, StringComparison.OrdinalIgnoreCase))
                 .Append(path).Concat(_current is null ? [] : new[] { _current.Path })
                 .Distinct(StringComparer.Ordinal).ToArray();
@@ -2334,7 +2335,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    /// <summary>Rebuilds the master binders list from config, then applies the current filter.</summary>
+    /// <summary>Rebuilds the master binders list from the binder list, then applies the current filter.</summary>
     private void RebuildBinders()
     {
         // A binder still listed keeps its row: its selection and keyboard target stay on it
@@ -2345,7 +2346,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             rows.TryAdd(item.Path, item);
 
         _allBinders.Clear();
-        foreach (var entry in _config.Binders)
+        foreach (var entry in _knownBinders)
         {
             if (!rows.Remove(entry.Path, out var row))
             {
@@ -2361,20 +2362,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     }
 
     /// <summary>
-    /// The binder's display title: its stored title from app config, or the file name when no
-    /// title is stored. Titles live in config (not the .daynote file), so this needs no file I/O.
+    /// The binder's display title: its stored title from the binder list, or the file name when no
+    /// title is stored. Titles live in the list (not the .daynote file), so this needs no file I/O.
     /// </summary>
     private string TitleFor(string path)
     {
-        var entry = _config.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path))
-            ?? _config.Binders.FirstOrDefault(b => SameBinderPath(b.Path, path));
+        var entry = _knownBinders.FirstOrDefault(b => PathKey.Equal(b.Path, path))
+            ?? _knownBinders.FirstOrDefault(b => SameBinderPath(b.Path, path));
         var title = entry?.Title;
         return string.IsNullOrWhiteSpace(title) ? Path.GetFileNameWithoutExtension(path) : title;
     }
 
     /// <summary>
-    /// Applies an inline title edit to a binder. The title is a label stored in app config (never
-    /// in the .daynote file), so this just updates that config entry and persists. A blank or unchanged
+    /// Applies an inline title edit to a binder. The title is a label stored in the binder list (never
+    /// in the .daynote file), so this just updates that entry and persists. A blank or unchanged
     /// title is ignored. Called by the view on blur / Enter.
     /// </summary>
     public void ApplyBinderRename(BinderListItemViewModel item, string rawTitle)
@@ -2392,20 +2393,20 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
 
         var path = item.Path;
-        var next = _config.Copy();
-        var entry = next.Binders.FirstOrDefault(b => PathKey.Equal(b.Path, path));
+        var next = CopyKnownBinders();
+        var entry = next.FirstOrDefault(b => PathKey.Equal(b.Path, path));
         if (entry is null)
         {
             return; // not a known binder (shouldn't happen for a visible row)
         }
 
         entry.Title = newTitle;
-        if (!TrySaveConfig(next, "failure.binderRenameSave"))
+        if (!TrySaveBinders(next, "failure.binderRenameSave"))
         {
             return;
         }
 
-        _config = next;
+        _knownBinders = next;
         item.Title = newTitle;
         foreach (var row in _allBinders.Where(row => PathKey.Equal(row.Path, path)))
             row.Title = newTitle;
@@ -2549,30 +2550,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         return true;
     }
 
-    /// <summary>Persists the master binder order to app config once; a no-op when it is unchanged.</summary>
+    /// <summary>Persists the master binder order to the binder list once; a no-op when it is unchanged.</summary>
     public void CommitBinderOrder()
     {
         var order = _allBinders.Select(item => item.Path).ToList();
-        if (_config.Binders.Select(entry => entry.Path).SequenceEqual(order))
+        if (_knownBinders.Select(entry => entry.Path).SequenceEqual(order))
         {
             return;
         }
 
-        var next = _config.Copy();
-        var reordered = _allBinders
-            .Select(item => next.Binders.Find(entry => PathKey.Equal(entry.Path, item.Path)))
+        var known = CopyKnownBinders();
+        var next = _allBinders
+            .Select(item => known.Find(entry => PathKey.Equal(entry.Path, item.Path)))
             .OfType<KnownBinder>()
             .ToList();
-        reordered.AddRange(next.Binders.Except(reordered));
-        next.Binders = reordered;
-        if (!TrySaveConfig(next, "failure.binderOrderSave"))
+        next.AddRange(known.Except(next));
+        if (!TrySaveBinders(next, "failure.binderOrderSave"))
         {
-            // The rows go back to the order the settings file still holds.
+            // The rows go back to the order the binder list still holds.
             RebuildBinders();
             return;
         }
 
-        _config = next;
+        _knownBinders = next;
         _log.Info("Reordered binders", new { count = order.Count });
     }
 
@@ -2646,7 +2646,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     private void AddBinder(string path)
     {
         var full = Path.GetFullPath(path);
-        if (_config.Binders.Any(b => SameBinderPath(b.Path, full)))
+        if (_knownBinders.Any(b => SameBinderPath(b.Path, full)))
         {
             // Already known: don't churn the list (which is this ListBox's ItemsSource); just refresh
             // which row is marked current.
@@ -2654,32 +2654,32 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             return;
         }
 
-        var next = _config.Copy();
-        next.Binders.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
+        var next = CopyKnownBinders();
+        next.Insert(0, new KnownBinder { Path = full, Title = Path.GetFileNameWithoutExtension(full) });
         // The binder stays open either way; only its place in the list depends on the save.
-        if (!TrySaveConfig(next, "failure.binderAddSave", OperationResultKind.Warning))
+        if (!TrySaveBinders(next, "failure.binderAddSave", OperationResultKind.Warning))
         {
             ApplyBinderFilter();
             return;
         }
 
-        _config = next;
+        _knownBinders = next;
         RebuildBinders();
     }
 
     // Removes a binder from the known list and persists. Caller closes it first if it is the open one.
     private void ForgetBinder(string path)
     {
-        var next = _config.Copy();
-        if (next.Binders.RemoveAll(b => PathKey.Equal(b.Path, path)) > 0)
+        var next = CopyKnownBinders();
+        if (next.RemoveAll(b => PathKey.Equal(b.Path, path)) > 0)
         {
-            if (!TrySaveConfig(next, "failure.binderForgetSave"))
+            if (!TrySaveBinders(next, "failure.binderForgetSave"))
             {
                 RebuildBinders();
                 return;
             }
 
-            _config = next;
+            _knownBinders = next;
         }
 
         RebuildBinders();
@@ -2952,6 +2952,29 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         return false;
     }
 
+    /// <summary>
+    /// Persists a candidate binder list. On failure the command's own consequence,
+    /// <paramref name="failureKey"/>, is shown and false is returned, so the command keeps the list it had.
+    /// Written on the UI thread, as the configuration is.
+    /// </summary>
+    private bool TrySaveBinders(List<KnownBinder> binders, string failureKey, OperationResultKind kind = OperationResultKind.Error)
+    {
+        try
+        {
+            _binderListStore.Save(binders);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to save the binder list", error: ex);
+            ShowResult(kind, Message.Of(failureKey), ConfigSaveFailureResultKey);
+            return false;
+        }
+    }
+
+    private List<KnownBinder> CopyKnownBinders() =>
+        _knownBinders.Select(binder => new KnownBinder { Path = binder.Path, Title = binder.Title }).ToList();
+
     /// <summary>Persists the configuration; returns false (and logs) if the write fails.</summary>
     /// <remarks>
     /// Written on the UI thread, as the state is (<see cref="PersistState"/>): both are small files in
@@ -2973,10 +2996,10 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    // Each store recovers on its own path (store-recovery-conventions). Settings that cannot be used,
-    // whether unreadable, malformed or newer, halt and stay untouched: they may hold the binder list and
-    // authored text styles. The view state is disposable: any failure is logged, defaults apply, and the
-    // next state save replaces the file.
+    // Each store recovers on its own path (store-recovery-conventions). Settings or a binder list that
+    // cannot be used, whether unreadable, malformed or newer, halt and stay untouched: they hold authored
+    // text styles and the binders the user keeps. The view state is disposable: any failure is logged,
+    // defaults apply, and the next state save replaces the file.
     private void LoadConfigAndState((ConfigStore Store, AppConfig? Config, Exception? Error)? startupSettings)
     {
         var error = startupSettings?.Error;
@@ -2995,10 +3018,30 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         if (error is not null)
         {
-            _configLoadError = error;
+            _startupFailure = FailurePresentation.StartupSettings(_paths.ConfigFile, error);
             _config = new AppConfig();
             _log.Error("Failed to load configuration; saving disabled", new { path = _paths.ConfigFile }, error);
             return;
+        }
+
+        try
+        {
+            _knownBinders = _binderListStore.Load(_configStore.RetiredBinders);
+        }
+        catch (Exception ex)
+        {
+            _startupFailure = FailurePresentation.StartupBinders(_paths.BindersFile);
+            _log.Error("Failed to load the binder list; saving disabled", new { path = _paths.BindersFile }, ex);
+            return;
+        }
+
+        // The binder list config.json held before it had its own file is in binders.json now: once the
+        // settings are saved without it, the move is done. A failed save leaves both, and the next launch
+        // tries again, since binders.json is then the list.
+        if (_configStore.RetiredBinders is not null)
+        {
+            if (TrySaveConfig(_config))
+                _log.Info("Moved the binder list to its own file", new { path = _paths.BindersFile, count = _knownBinders.Count });
         }
 
         try

@@ -6,8 +6,9 @@ namespace DayNote.Core.Storage;
 /// <summary>
 /// Reads config.json once and writes it from memory, per the config-sets-conventions and the
 /// storage-path-conventions. A save never deletes what it did not understand: keys this build does not
-/// know, and an authored set (the binder list, the text styles) that failed its check, are written back
-/// as they were stored until the user changes that set.
+/// know, and an authored set (the text styles) that failed its check, are written back as they were
+/// stored until the user changes that set. The binder list it once held moves to binders.json
+/// (<see cref="RetiredBinders"/>), and a save leaves it out.
 /// </summary>
 public sealed class ConfigStore(string path, Action<string> warn)
 {
@@ -20,6 +21,10 @@ public sealed class ConfigStore(string path, Action<string> warn)
     // since changed a kept set.
     private Dictionary<string, JsonElement> _kept = new();
     private JsonElement _loaded;
+
+    /// <summary>The binder list the file still holds from before binders.json, as stored, or null.</summary>
+    public JsonElement? RetiredBinders =>
+        _onDisk is { } stored && stored.TryGetValue(ConfigSets.RetiredBindersKey, out var binders) ? binders : null;
 
     public AppConfig Load()
     {

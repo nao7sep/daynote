@@ -13,10 +13,11 @@ namespace DayNote.Core.Storage;
 /// onto the replacement.
 /// </summary>
 /// <remarks>
-/// The app's one atomic text write: config.json and state.json through <see cref="JsonStore{T}"/>, and
-/// every binder <c>.daynote</c> file through <see cref="BinderStore"/>. It is therefore where each write
-/// reaches the backup history (data-backup-conventions, see <see cref="BackupStore.Record"/>): binders and
-/// the settings are what the user creates and maintains, so they are recorded; state.json opts out, since
+/// The app's one atomic text write: config.json, binders.json and state.json through
+/// <see cref="JsonStore{T}"/>, and every binder <c>.daynote</c> file through <see cref="BinderStore"/>. It is
+/// therefore where each write reaches the backup history (data-backup-conventions, see
+/// <see cref="BackupStore.Record"/>): binders, the binder list and the settings are what the user creates
+/// and maintains, so they are recorded; state.json opts out, since
 /// placement and selection are state, never the user's work.
 /// </remarks>
 public static class AtomicFile

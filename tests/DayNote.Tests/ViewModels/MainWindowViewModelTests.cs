@@ -655,21 +655,16 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Saving_settings_keeps_the_binder_list_out_of_the_draft()
+    public async Task Saving_settings_leaves_the_binder_list_to_its_own_file()
     {
         var vm = await OpenNewBinderAsync();
-        var draftBinders = -1;
         _dialogs.SettingsApplied = true;
-        _dialogs.SettingsEdit = config =>
-        {
-            draftBinders = config.Binders.Count;
-            config.Theme = ThemePreference.Dark;
-        };
+        _dialogs.SettingsEdit = config => config.Theme = ThemePreference.Dark;
         await vm.OpenSettingsCommand.ExecuteAsync(null);
 
-        Assert.Equal(0, draftBinders);
         using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "config.json")));
-        Assert.Equal(new[] { "formatVersion", "theme", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(BinderPath, Assert.Single(SavedBinders()).Path);
         Assert.Single(vm.Binders);
         await vm.ShutdownAsync();
     }
@@ -704,14 +699,15 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Binder_titles_are_config_and_deleting_config_does_not_reopen_a_stale_selection()
+    public async Task Binder_titles_are_in_the_binder_list_and_deleting_it_does_not_reopen_a_stale_selection()
     {
         var vm = await OpenNewBinderAsync();
         var row = Assert.Single(vm.Binders);
         row.IsEditing = true;
         vm.ApplyBinderRename(row, "My binder");
-        var configFile = Path.Combine(_home, "config.json");
-        using (var saved = JsonDocument.Parse(File.ReadAllText(configFile)))
+        var bindersFile = BindersPath;
+        Assert.False(File.Exists(ConfigPath));
+        using (var saved = JsonDocument.Parse(File.ReadAllText(bindersFile)))
         {
             Assert.Equal(new[] { "formatVersion", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
             Assert.Equal("My binder", saved.RootElement.GetProperty("binders")[0].GetProperty("title").GetString());
@@ -723,25 +719,41 @@ public sealed class MainWindowViewModelTests : IDisposable
         }
         await vm.ShutdownAsync();
         BackupStore.Close();
-        Assert.True(RowCountFor(new AppPaths().BackupStoreFile, configFile) > 0);
+        Assert.True(RowCountFor(new AppPaths().BackupStoreFile, bindersFile) > 0);
         Assert.Equal(0, RowCountFor(new AppPaths().BackupStoreFile, Path.Combine(_home, "state.json")));
         var restored = NewViewModel();
         Assert.Equal("My binder", Assert.Single(restored.Binders).Title);
         await restored.InitializeAsync();
         Assert.True(restored.HasBinder);
         await restored.ShutdownAsync();
-        File.Delete(configFile);
+        File.Delete(bindersFile);
         var reset = NewViewModel();
         await reset.InitializeAsync();
         Assert.Empty(reset.Binders);
         Assert.False(reset.HasBinder);
-        Assert.False(File.Exists(configFile));
+        Assert.False(File.Exists(bindersFile));
         await reset.ShutdownAsync();
     }
 
     // ----- Loading config.json and state.json, each on its own path ---------------------------------
 
     private string ConfigPath => Path.Combine(_home, "config.json");
+
+    private string BindersPath => Path.Combine(_home, "binders.json");
+
+    private List<KnownBinder> SavedBinders()
+    {
+        using var saved = JsonDocument.Parse(File.ReadAllText(BindersPath));
+        return saved.RootElement.GetProperty("binders").Deserialize<List<KnownBinder>>(DayNoteJson.Options)!;
+    }
+
+    private void SeedBinders(params KnownBinder[] binders)
+    {
+        Directory.CreateDirectory(_home);
+        var store = new BinderListStore(BindersPath, _ => { });
+        store.Load();
+        store.Save(binders);
+    }
 
     private string StatePath => Path.Combine(_home, "state.json");
 
@@ -861,6 +873,82 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Empty(SetAsideCopies());
         Assert.NotNull(new JsonStore<AppState>(StatePath, FormatVersions.State).Load());
+    }
+
+    [AvaloniaFact]
+    public async Task Binders_kept_in_the_settings_file_move_to_their_own_file_once_at_launch()
+    {
+        Directory.CreateDirectory(_home);
+        new BinderStore().Save(BinderPath, new Binder { Id = IdGenerator.New() });
+        var other = Path.Combine(_home, "offline.daynote");
+        File.WriteAllText(ConfigPath, $$"""
+            {"formatVersion":1,"theme":"dark","binders":[
+              {"path":{{JsonSerializer.Serialize(BinderPath)}},"title":"Work"},
+              {"path":{{JsonSerializer.Serialize(other)}},"title":"Offline"}]}
+            """);
+
+        var vm = NewViewModel();
+        await vm.RefreshKnownBinders();
+
+        Assert.True(vm.IsReady);
+        Assert.Equal(new[] { "Work", "Offline" }, vm.Binders.Select(row => row.Title));
+        Assert.Equal(new[] { (BinderPath, "Work"), (other, "Offline") }, SavedBinders().Select(entry => (entry.Path, entry.Title)));
+        using (var settings = JsonDocument.Parse(File.ReadAllText(ConfigPath)))
+            Assert.Equal(new[] { "formatVersion", "theme" }, settings.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(ThemePreference.Dark, vm.Theme);
+        await vm.ShutdownAsync();
+
+        // The next launch reads the list from its own file and writes nothing.
+        var moved = File.ReadAllBytes(BindersPath);
+        var again = NewViewModel();
+        Assert.Equal(new[] { "Work", "Offline" }, again.Binders.Select(row => row.Title));
+        await again.ShutdownAsync();
+        Assert.Equal(moved, File.ReadAllBytes(BindersPath));
+        BackupStore.Close();
+        Assert.Equal(1, RowCountFor(new AppPaths().BackupStoreFile, BindersPath));
+    }
+
+    [AvaloniaFact]
+    public async Task A_binder_list_left_in_the_settings_file_beside_its_own_file_is_dropped_from_the_settings()
+    {
+        Directory.CreateDirectory(_home);
+        SeedBinders(new KnownBinder { Path = BinderPath, Title = "Current" });
+        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"binders":[{"path":{{JsonSerializer.Serialize(BinderPath)}},"title":"Old"}]}""");
+
+        var vm = NewViewModel();
+
+        Assert.Equal("Current", Assert.Single(vm.Binders).Title);
+        Assert.Equal("Current", Assert.Single(SavedBinders()).Title);
+        using (var settings = JsonDocument.Parse(File.ReadAllText(ConfigPath)))
+            Assert.Equal(new[] { "formatVersion" }, settings.RootElement.EnumerateObject().Select(property => property.Name));
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("{ not json")]
+    [InlineData("""{"binders":[]}""")] // no format version
+    [InlineData("""{"formatVersion":2,"binders":[]}""")] // a newer DayNote's
+    public async Task A_binder_list_that_cannot_be_used_halts_names_its_path_and_is_left_byte_identical(string content)
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(BindersPath, content);
+        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"binders":[{"path":{{JsonSerializer.Serialize(BinderPath)}},"title":"Old"}]}""");
+        var binders = File.ReadAllBytes(BindersPath);
+        var settings = File.ReadAllBytes(ConfigPath);
+
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+        _viewModels.Add(vm);
+        await vm.InitializeAsync();
+
+        Assert.False(vm.IsReady);
+        var (title, message) = Assert.Single(_dialogs.Errors);
+        Assert.Equal("failure.startupDataTitle", title.Key);
+        Assert.Equal("failure.startupBinders", message.Key);
+        Assert.Contains(BindersPath, English.Of(message), StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+
+        Assert.Equal(binders, File.ReadAllBytes(BindersPath));
+        Assert.Equal(settings, File.ReadAllBytes(ConfigPath));
     }
 
     // ----- Stores written by a newer DayNote are reported and never written ------------------------
@@ -1726,7 +1814,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         var store = new AppPaths().BackupStoreFile;
         Assert.Equal(1, RowCountFor(store, BinderPath));
-        Assert.Equal(1, RowCountFor(store, new AppPaths().ConfigFile));
+        Assert.Equal(1, RowCountFor(store, new AppPaths().BindersFile));
         Assert.Equal(1, RowCountFor(store, Path.Combine(BinderStore.NoteAssetsDirectory(BinderPath, note.Id), "photo.bin")));
         Assert.Equal(0, RowCountFor(store, new AppPaths().StateFile));
     }
@@ -2290,11 +2378,9 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(new[] { "alpha", "alpine" }, vm.Binders.Select(binder => binder.Name));
         Assert.Same(moved, list.SelectedItem);
         Assert.True(list.IsKeyboardFocusWithin);
-        var saved = JsonSerializer.Deserialize<AppConfig>(
-            File.ReadAllText(Path.Combine(_home, "config.json")), DayNoteJson.Options)!;
         Assert.Equal(
             new[] { "hidden.daynote", "alpha.daynote", "alpine.daynote" },
-            saved.Binders.Select(entry => Path.GetFileName(entry.Path)));
+            SavedBinders().Select(entry => Path.GetFileName(entry.Path)));
 
         await CloseTestWindowAsync(vm, window);
     }
@@ -2312,14 +2398,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var real = Path.Combine(directory, "binder.daynote");
         var alias = Path.Combine(aliasDirectory, "binder.daynote");
         new BinderStore().Save(real, new Binder { Id = IdGenerator.New() });
-        var config = new AppConfig
-        {
-            Binders = [new KnownBinder { Path = real, Title = "Real" }, new KnownBinder { Path = alias, Title = "Alias" }],
-        };
-        var configPath = Path.Combine(_home, "config.json");
-        var configStore = new ConfigStore(configPath, _ => { });
-        configStore.Load();
-        configStore.Save(config);
+        SeedBinders(new KnownBinder { Path = real, Title = "Real" }, new KnownBinder { Path = alias, Title = "Alias" });
         var vm = NewViewModel();
         await vm.RefreshKnownBinders();
         var realRow = vm.Binders.Single(row => row.Path == real);
@@ -2332,15 +2411,14 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal("Renamed alias", aliasRow.Title);
         vm.MoveBinder(aliasRow, realRow);
         vm.CommitBinderOrder();
-        var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
-        Assert.Equal(new[] { alias, real }, saved.Binders.Select(entry => entry.Path));
-        Assert.Equal("Real", saved.Binders.Single(entry => entry.Path == real).Title);
-        Assert.Equal("Renamed alias", saved.Binders.Single(entry => entry.Path == alias).Title);
+        var saved = SavedBinders();
+        Assert.Equal(new[] { alias, real }, saved.Select(entry => entry.Path));
+        Assert.Equal("Real", saved.Single(entry => entry.Path == real).Title);
+        Assert.Equal("Renamed alias", saved.Single(entry => entry.Path == alias).Title);
         await vm.RemoveBinderCommand.ExecuteAsync(aliasRow);
         Assert.Equal(real, Assert.Single(vm.Binders).Path);
         Assert.Equal("Real", Assert.Single(vm.Binders).Title);
-        saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
-        Assert.Equal(real, Assert.Single(saved.Binders).Path);
+        Assert.Equal(real, Assert.Single(SavedBinders()).Path);
         await vm.ShutdownAsync();
     }
 
@@ -2353,9 +2431,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var alias = Path.Combine(_home, "TEST.DAYNOTE");
         if (!File.Exists(alias))
             return; // This spelling is distinct on a case-sensitive volume.
-        var configStore = new ConfigStore(Path.Combine(_home, "config.json"), _ => { });
-        configStore.Load();
-        configStore.Save(new AppConfig { Binders = [new KnownBinder { Path = alias, Title = "Alias" }] });
+        SeedBinders(new KnownBinder { Path = alias, Title = "Alias" });
         var vm = NewViewModel();
         _dialogs.BinderToOpen = BinderPath;
         await vm.OpenBinderCommand.ExecuteAsync(null);
@@ -2437,11 +2513,14 @@ public sealed class MainWindowViewModelTests : IDisposable
             await vm.NewBinderCommand.ExecuteAsync(null);
         }
 
-        // A folder where the settings file belongs makes every settings save fail.
-        var configPath = Path.Combine(_home, "config.json");
-        var saved = File.ReadAllText(configPath);
-        File.Delete(configPath);
-        Directory.CreateDirectory(configPath);
+        // A folder where the settings file and the binder list belong makes every save of them fail.
+        var blocked = new[] { ConfigPath, BindersPath };
+        var saved = blocked.Select(path => File.Exists(path) ? File.ReadAllText(path) : null).ToArray();
+        foreach (var path in blocked)
+        {
+            File.Delete(path);
+            Directory.CreateDirectory(path);
+        }
         var order = vm.BinderOrder();
         var style = vm.EditorFontFamily;
 
@@ -2480,8 +2559,12 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Contains("failure.binderAddSave", English.KeysIn(added.Message));
 
         await vm.ShutdownAsync();
-        Directory.Delete(configPath);
-        File.WriteAllText(configPath, saved);
+        for (var index = 0; index < blocked.Length; index++)
+        {
+            Directory.Delete(blocked[index]);
+            if (saved[index] is { } content)
+                File.WriteAllText(blocked[index], content);
+        }
     }
 
     [AvaloniaFact]
@@ -2494,8 +2577,7 @@ public sealed class MainWindowViewModelTests : IDisposable
             await vm.NewBinderCommand.ExecuteAsync(null);
         }
 
-        var configPath = Path.Combine(_home, "config.json");
-        var before = File.ReadAllText(configPath);
+        var before = File.ReadAllText(BindersPath);
         var start = vm.BinderOrder();
 
         Assert.True(vm.MoveBinder(start[0], start[2]));
@@ -2505,7 +2587,7 @@ public sealed class MainWindowViewModelTests : IDisposable
 
         Assert.Equal(start, vm.BinderOrder());
         Assert.Equal(start, vm.Binders);
-        Assert.Equal(before, File.ReadAllText(configPath));
+        Assert.Equal(before, File.ReadAllText(BindersPath));
 
         await vm.ShutdownAsync();
     }
@@ -2537,9 +2619,9 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Equal(2, vm.Results.Count);
         Assert.Same(picker, vm.Results[0]);
 
-        // A later message replaces its subject's card in place, whatever its severity: the settings
-        // file is one subject whether a binder could not be remembered or a rename could not be saved.
-        var configFile = Path.Combine(_home, "config.json");
+        // A later message replaces its subject's card in place, whatever its severity: the binder list
+        // is one subject whether a binder could not be remembered or a rename could not be saved.
+        var configFile = BindersPath;
         File.Delete(configFile);
         Directory.CreateDirectory(configFile);
         var row = vm.Binders.Single(binder => PathKey.Equal(binder.Path, BinderPath));
@@ -3150,9 +3232,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         // Removing the entry needs no file, and it does not come back.
         await vm.RemoveBinderCommand.ExecuteAsync(missing);
         Assert.DoesNotContain(vm.Binders, binder => PathKey.Equal(binder.Path, travel));
-        var config = JsonSerializer.Deserialize<AppConfig>(
-            File.ReadAllText(Path.Combine(_home, "config.json")), DayNoteJson.Options)!;
-        Assert.DoesNotContain(config.Binders, entry => PathKey.Equal(entry.Path, travel));
+        Assert.DoesNotContain(SavedBinders(), entry => PathKey.Equal(entry.Path, travel));
 
         // A file that comes back clears the marker on the next look.
         File.WriteAllText(travel, "{}");
@@ -3656,16 +3736,16 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     /// <summary>
-    /// Opens a binder DayNote does not know yet while its settings file cannot be written, so the binder
+    /// Opens a binder DayNote does not know yet while its binder list cannot be written, so the binder
     /// opens but is not remembered: a warning. The test's own binder is open again afterwards, and the
-    /// settings file can be written again.
+    /// binder list can be written again.
     /// </summary>
     private async Task ShowBinderNotRememberedAsync(MainWindowViewModel vm)
     {
         var unremembered = Path.Combine(_home, "unremembered.daynote");
         var now = DateTimeOffset.UtcNow;
         new BinderStore().Save(unremembered, new Binder { Id = IdGenerator.New(), Created = now, Modified = now });
-        var configFile = Path.Combine(_home, "config.json");
+        var configFile = BindersPath;
         File.Delete(configFile);
         Directory.CreateDirectory(configFile);
         _dialogs.BinderToOpen = unremembered;
