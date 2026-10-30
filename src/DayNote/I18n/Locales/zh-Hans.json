@@ -98,6 +98,7 @@
   "failure.saveBinderPermission": "你的更改仍在 DayNote 中，但无法保存笔记本。请确认笔记本所在位置可写，然后重试。",
   "failure.settingsSave": "无法保存设置。你的更改仍然保留，请重试。",
   "failure.startupBinders": "DayNote 无法读取位于 {path} 的笔记本列表，因此在做出任何更改之前就停止了。该文件仍留在原处。请检查它的访问权限、修正它或将它移到别处，然后重新启动 DayNote；没有该文件时，DayNote 将以空的笔记本列表启动。你的笔记本和笔记不受影响。",
+  "failure.startupBinderMove": "DayNote 无法将笔记本列表从位于 {settings} 的设置文件移到位于 {path} 的独立文件中，因此在做出任何更改之前就停止了。该列表仍原样保留在设置文件中。请确认 DayNote 可以写入包含 {path} 的文件夹，然后重新启动 DayNote 再试一次。你的笔记本和笔记不受影响。",
   "failure.startupDataTitle": "载入失败",
   "failure.startupSettings": "DayNote 无法读取位于 {path} 的设置文件，因此在做出任何更改之前就停止了。该文件仍留在原处。请检查它的访问权限，或将它移到别处，然后重新启动 DayNote。",
   "failure.startupSettingsMalformed": "位于 {path} 的设置文件不是 DayNote 能读取的格式，因此 DayNote 在做出任何更改之前就停止了。该文件仍留在原处。请修正该文件后重新启动 DayNote；也可以将该文件移到别处后重新启动，DayNote 将以默认设置启动。你的笔记本和笔记不受影响。",

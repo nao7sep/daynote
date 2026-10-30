@@ -69,6 +69,20 @@ public sealed class BinderListStoreTests : IDisposable
         Assert.True(JsonElement.DeepEquals(moved, SavedList()));
     }
 
+    [Fact]
+    public void A_moved_list_that_cannot_be_written_throws_its_own_exception_and_leaves_no_file()
+    {
+        // A file where the list's folder belongs: there is no list to read, and none can be written.
+        var store = new BinderListStore(Path.Combine(_directory, "missing", "binders.json"), _warnings.Add);
+        File.WriteAllText(Path.Combine(_directory, "missing"), "a file where the folder belongs");
+        var moved = JsonDocument.Parse("""[{"path":"/a.daynote","title":"A"}]""").RootElement;
+
+        var error = Assert.Throws<BinderListMoveException>(() => store.Load(moved));
+
+        Assert.NotNull(error.InnerException);
+        Assert.False(File.Exists(ListPath));
+    }
+
     [Theory]
     [InlineData("{ broken")]
     [InlineData("""{ "binders": [] }""")] // no format version

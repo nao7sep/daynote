@@ -32,13 +32,22 @@ public sealed class BinderListStore(string path, Action<string> warn)
     /// Reads the list. <paramref name="moved"/> is the list config.json held before the list had its own
     /// file: while there is no binders.json yet, it is written here first, as stored, so no binder is lost.
     /// </summary>
+    /// <exception cref="BinderListMoveException">That first write failed; the list is still where it was.</exception>
     public List<KnownBinder> Load(JsonElement? moved = null)
     {
         _onDisk = _store.Load();
         if (_onDisk is null && moved is { } list)
         {
             var created = new Dictionary<string, JsonElement> { [ListKey] = list.Clone() };
-            _store.Save(created);
+            try
+            {
+                _store.Save(created);
+            }
+            catch (Exception ex)
+            {
+                throw new BinderListMoveException(path, ex);
+            }
+
             _onDisk = created;
         }
 
@@ -106,3 +115,10 @@ public sealed class BinderListStore(string path, Action<string> warn)
         return true;
     }
 }
+
+/// <summary>
+/// binders.json could not be created from the list config.json still holds. Nothing changed: the list
+/// stays in config.json, and the next launch moves it again.
+/// </summary>
+public sealed class BinderListMoveException(string path, Exception inner)
+    : IOException($"Could not create the binder list at '{path}'.", inner);

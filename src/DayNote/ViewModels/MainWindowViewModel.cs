@@ -3030,7 +3030,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
         catch (Exception ex)
         {
-            _startupFailure = FailurePresentation.StartupBinders(_paths.BindersFile);
+            _startupFailure = FailurePresentation.StartupBinders(_paths.BindersFile, _paths.ConfigFile, ex);
             _log.Error("Failed to load the binder list; saving disabled", new { path = _paths.BindersFile }, ex);
             return;
         }

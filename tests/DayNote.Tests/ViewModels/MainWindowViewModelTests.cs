@@ -924,6 +924,46 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
     }
 
+    [AvaloniaFact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public async Task A_binder_list_that_cannot_be_moved_halts_says_it_is_still_in_the_settings_file_and_moves_next_launch()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
+        new AppPaths().EnsureCreated();
+        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"binders":[{"path":{{JsonSerializer.Serialize(BinderPath)}},"title":"Old"}]}""");
+        var settings = File.ReadAllBytes(ConfigPath);
+
+        // A data folder DayNote can read but not write: binders.json cannot be created beside config.json.
+        var mode = File.GetUnixFileMode(_home);
+        File.SetUnixFileMode(_home, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        MainWindowViewModel vm;
+        try
+        {
+            vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
+            _viewModels.Add(vm);
+            await vm.InitializeAsync();
+        }
+        finally
+        {
+            File.SetUnixFileMode(_home, mode);
+        }
+
+        Assert.False(vm.IsReady);
+        var (title, message) = Assert.Single(_dialogs.Errors);
+        Assert.Equal("failure.startupDataTitle", title.Key);
+        Assert.Equal("failure.startupBinderMove", message.Key);
+        Assert.Contains(BindersPath, English.Of(message), StringComparison.Ordinal);
+        Assert.Contains(ConfigPath, English.Of(message), StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+        Assert.False(File.Exists(BindersPath));
+        Assert.Equal(settings, File.ReadAllBytes(ConfigPath));
+
+        var again = NewViewModel();
+        Assert.Equal("Old", Assert.Single(again.Binders).Title);
+        Assert.Equal("Old", Assert.Single(SavedBinders()).Title);
+        await again.ShutdownAsync();
+    }
+
     [AvaloniaTheory]
     [InlineData("{ not json")]
     [InlineData("""{"binders":[]}""")] // no format version
