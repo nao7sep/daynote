@@ -58,6 +58,9 @@ public sealed class SettingsDialog : DialogBase
     private readonly Func<Task<bool>>? _askBeforeDiscarding;
     private bool _loadingStyleEditor;
 
+    // The family the last load put in its box, until the box reports that change.
+    private string? _shownFontFamily;
+
     /// <param name="askBeforeRemoving">
     /// Asks whether the named style may go. The default asks in a dialog stacked over this one, which
     /// is what the trigger of a destructive path owes; a caller passes its own to answer without one.
@@ -354,8 +357,19 @@ public sealed class SettingsDialog : DialogBase
 
     private void WireStyleEditor()
     {
-        _styleFontFamily.TextChanged += (_, _) => UpdateSelectedStyle(style =>
-            style.FontFamily = TextCleanup.SingleLine(_styleFontFamily.Text ?? string.Empty));
+        _styleFontFamily.TextChanged += (_, _) =>
+        {
+            // The box reports a change after it happens, so the first report that finds the family a
+            // load showed is that load's own, not an edit, as in NumberField.Show.
+            var shown = _shownFontFamily;
+            _shownFontFamily = null;
+            if (shown is not null && _styleFontFamily.Text == shown)
+            {
+                return;
+            }
+
+            UpdateSelectedStyle(style => style.FontFamily = TextCleanup.SingleLine(_styleFontFamily.Text ?? string.Empty));
+        };
         WireNumber(_styleFontSize, (style, value) => style.FontSize = value);
         WireNumber(_styleLineSpacing, (style, value) => style.LineSpacing = value);
         WireNumber(_stylePadding, (style, value) => style.Padding = value);
@@ -389,6 +403,7 @@ public sealed class SettingsDialog : DialogBase
         if (SelectedStyleRow() is { } row)
         {
             var style = row.Style;
+            _shownFontFamily = style.FontFamily;
             _styleFontFamily.Text = style.FontFamily;
             _styleFontSize.Show(style.FontSize);
             _styleLineSpacing.Show(style.LineSpacing);

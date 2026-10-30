@@ -418,6 +418,32 @@ public sealed class SettingsDialogTests
     }
 
     [AvaloniaFact]
+    public void Selecting_a_style_is_not_an_edit_of_its_font_family()
+    {
+        var config = new AppConfig();
+        // A family the box's cleanup would change, so a load read as an edit would rewrite it.
+        config.TextStyles[1].FontFamily = "  Menlo  ";
+        var dialog = new SettingsDialog(config, _ => true);
+        dialog.Show();
+        Dispatcher.UIThread.RunJobs();
+        var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
+
+        Named<ListBox>(dialog, "TextStylesList").SelectedIndex = 1;
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("  Menlo  ", Named<TextBox>(dialog, "TextStyleFontFamily").Text);
+        Assert.Equal("  Menlo  ", config.TextStyles[1].FontFamily);
+        Assert.False(save.IsEnabled);
+
+        // The next change is the user's.
+        Named<TextBox>(dialog, "TextStyleFontFamily").Text = "  Menlo  x";
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Menlo  x", config.TextStyles[1].FontFamily);
+        Assert.True(save.IsEnabled);
+        dialog.Close();
+    }
+
+    [AvaloniaFact]
     public void Showing_a_value_is_not_typing_even_once_the_box_reports_the_change()
     {
         var field = new NumberField(SettingsValidator.FontSize, 1);
