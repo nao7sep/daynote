@@ -38,9 +38,9 @@ public sealed class SettingsDialog : DialogBase
     private readonly ObservableCollection<StyleRow> _styleRows = [];
     private readonly ListBox _styleList;
     private readonly ComposingTextBox _styleFontFamily;
-    private readonly NumericUpDown _styleFontSize;
-    private readonly NumericUpDown _styleLineSpacing;
-    private readonly NumericUpDown _stylePadding;
+    private readonly NumberField _styleFontSize;
+    private readonly NumberField _styleLineSpacing;
+    private readonly NumberField _stylePadding;
     private readonly CheckBox _styleBold;
     private readonly CheckBox _styleItalic;
     private readonly Button _setDefault;
@@ -48,7 +48,7 @@ public sealed class SettingsDialog : DialogBase
     private readonly ComboBox _language;
     private readonly IReadOnlyList<RadioButton> _themeButtons;
     private readonly TextBox _uiFont;
-    private readonly NumericUpDown _autosave;
+    private readonly NumberField _autosave;
     private readonly ComboBox _timeZone;
     private readonly Button _saveButton;
     private readonly TextBlock _saveError;
@@ -103,9 +103,9 @@ public sealed class SettingsDialog : DialogBase
 
         _styleFontFamily = new ComposingTextBox { Name = "TextStyleFontFamily" };
         Localized.SetPlaceholderText(_styleFontFamily, "settings.fontFamilyPlaceholder");
-        _styleFontSize = Numeric((decimal)SettingsValidator.MinFontSize, (decimal)SettingsValidator.MaxFontSize, 1);
-        _styleLineSpacing = Numeric((decimal)SettingsValidator.MinLineSpacing, (decimal)SettingsValidator.MaxLineSpacing, 0.1m);
-        _stylePadding = Numeric((decimal)SettingsValidator.MinPadding, (decimal)SettingsValidator.MaxPadding, 1);
+        _styleFontSize = new NumberField(SettingsValidator.FontSize, 1, "TextStyleFontSize");
+        _styleLineSpacing = new NumberField(SettingsValidator.LineSpacing, 0.1, "TextStyleLineSpacing");
+        _stylePadding = new NumberField(SettingsValidator.Padding, 1, "TextStylePadding");
         _styleBold = new CheckBox();
         Localized.SetContent(_styleBold, "settings.bold");
         _styleItalic = new CheckBox();
@@ -201,8 +201,8 @@ public sealed class SettingsDialog : DialogBase
         var themeHint = Hint("settings.themeHint");
 
         _uiFont = new ComposingTextBox { Text = config.UiFontFamily, PlaceholderText = AppConfig.DefaultUiFontFamily };
-        _autosave = Numeric((decimal)SettingsValidator.MinAutosaveSeconds, (decimal)SettingsValidator.MaxAutosaveSeconds, 0.25m);
-        _autosave.Value = (decimal)config.AutosaveDelaySeconds;
+        _autosave = new NumberField(SettingsValidator.AutosaveSeconds, 0.25, "AutosaveDelay");
+        _autosave.Show(config.AutosaveDelaySeconds);
         // System first, then every zone the platform knows by its IANA id: chosen, never typed.
         var zones = TimeZoneOption.All(config.TimeZone);
         _timeZone = new ComboBox
@@ -252,15 +252,8 @@ public sealed class SettingsDialog : DialogBase
         WireStyleEditor();
         _original = _config.Copy();
 
-        _autosave.ValueChanged += (_, _) =>
-        {
-            if (_autosave.Value is { } value)
-            {
-                _config.AutosaveDelaySeconds = (double)value;
-            }
-
-            Revalidate();
-        };
+        _autosave.Committed += value => _config.AutosaveDelaySeconds = value;
+        _autosave.Changed += Revalidate;
         _language.SelectionChanged += (_, _) =>
         {
             if (_language.SelectedItem is LanguageOption language)
@@ -362,33 +355,19 @@ public sealed class SettingsDialog : DialogBase
     {
         _styleFontFamily.TextChanged += (_, _) => UpdateSelectedStyle(style =>
             style.FontFamily = TextCleanup.SingleLine(_styleFontFamily.Text ?? string.Empty));
-        WireNumber(_styleFontSize, (style, value) => style.FontSize = value, style => style.FontSize);
-        WireNumber(_styleLineSpacing, (style, value) => style.LineSpacing = value, style => style.LineSpacing);
-        WireNumber(_stylePadding, (style, value) => style.Padding = value, style => style.Padding);
+        WireNumber(_styleFontSize, (style, value) => style.FontSize = value);
+        WireNumber(_styleLineSpacing, (style, value) => style.LineSpacing = value);
+        WireNumber(_stylePadding, (style, value) => style.Padding = value);
         _styleBold.IsCheckedChanged += (_, _) => UpdateSelectedStyle(style => style.Bold = _styleBold.IsChecked == true);
         _styleItalic.IsCheckedChanged += (_, _) => UpdateSelectedStyle(style => style.Italic = _styleItalic.IsChecked == true);
     }
 
-    // A cleared number box keeps the preset's last value and shows it again when focus leaves, so a
-    // number is never stored that the field does not show.
-    private void WireNumber(NumericUpDown box, Action<EditorTextStyle, double> set, Func<EditorTextStyle, double> get)
+    // A number the field cannot use keeps the preset's last valid value and holds Save while its message
+    // shows; selecting another preset shows that preset's own values.
+    private void WireNumber(NumberField field, Action<EditorTextStyle, double> set)
     {
-        box.ValueChanged += (_, _) =>
-        {
-            if (box.Value is { } value)
-            {
-                UpdateSelectedStyle(style => set(style, (double)value));
-            }
-        };
-        box.LostFocus += (_, _) =>
-        {
-            if (box.Value is null && SelectedStyleRow() is { } row)
-            {
-                _loadingStyleEditor = true;
-                box.Value = (decimal)get(row.Style);
-                _loadingStyleEditor = false;
-            }
-        };
+        field.Committed += value => UpdateSelectedStyle(style => set(style, value));
+        field.Changed += Revalidate;
     }
 
     private void UpdateSelectedStyle(Action<EditorTextStyle> update)
@@ -410,9 +389,9 @@ public sealed class SettingsDialog : DialogBase
         {
             var style = row.Style;
             _styleFontFamily.Text = style.FontFamily;
-            _styleFontSize.Value = (decimal)style.FontSize;
-            _styleLineSpacing.Value = (decimal)style.LineSpacing;
-            _stylePadding.Value = (decimal)style.Padding;
+            _styleFontSize.Show(style.FontSize);
+            _styleLineSpacing.Show(style.LineSpacing);
+            _stylePadding.Show(style.Padding);
             _styleBold.IsChecked = style.Bold;
             _styleItalic.IsChecked = style.Italic;
         }
@@ -560,6 +539,11 @@ public sealed class SettingsDialog : DialogBase
 
     private bool IsValid()
     {
+        if (_styleFontSize.HasError || _styleLineSpacing.HasError || _stylePadding.HasError || _autosave.HasError)
+        {
+            return false;
+        }
+
         var styles = _config.TextStyles.Select(style => new TextStyleDraft(
             style.FontFamily,
             style.FontSize,
@@ -567,7 +551,7 @@ public sealed class SettingsDialog : DialogBase
             style.Padding)).ToList();
         var draft = new SettingsDraft(
             _config.TimeZone,
-            (double)(_autosave.Value ?? 0),
+            _config.AutosaveDelaySeconds,
             styles,
             _config.TextStyles.Count(style => style.IsDefault) == 1);
         return SettingsValidator.IsValid(draft);
@@ -590,55 +574,6 @@ public sealed class SettingsDialog : DialogBase
         Grid.SetColumn(badge, 1);
         row.Children.Add(badge);
         return row;
-    }
-
-    // Minus and plus, each 1.5 units thick in a 10x10 box, so the two glyphs carry one weight.
-    private const string MinusGlyph = "M0,4.25 H10 V5.75 H0 Z";
-    private const string PlusGlyph = "M4.25,0 H5.75 V4.25 H10 V5.75 H5.75 V10 H4.25 V5.75 H0 V4.25 H4.25 Z";
-
-    private static NumericUpDown Numeric(decimal min, decimal max, decimal increment)
-    {
-        var numeric = new NumericUpDown
-        {
-            Minimum = min,
-            Maximum = max,
-            Increment = increment,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-
-        numeric.TemplateApplied += (_, applied) =>
-        {
-            if (applied.NameScope.Find<ButtonSpinner>("PART_Spinner") is { } spinner)
-            {
-                spinner.TemplateApplied += (_, spinnerApplied) => UseMinusAndPlus(spinnerApplied.NameScope);
-            }
-        };
-
-        return numeric;
-    }
-
-    /// <summary>
-    /// Makes the spinner a minus and a plus, minus first. The theme pairs an up and a down chevron
-    /// side by side, which no ordinary numeric control does: a chevron pair means one step each way
-    /// when it is stacked, and side by side that pair is minus and plus. The theme sets each glyph
-    /// inside its own template, where a style cannot reach it, so the buttons are dressed here.
-    /// </summary>
-    private static void UseMinusAndPlus(INameScope scope)
-    {
-        var decrease = scope.Find<RepeatButton>("PART_DecreaseButton");
-        var increase = scope.Find<RepeatButton>("PART_IncreaseButton");
-        if (decrease is null || increase is null)
-        {
-            return;
-        }
-
-        decrease.Content = new PathIcon { Width = 10, Height = 10, Data = Geometry.Parse(MinusGlyph) };
-        increase.Content = new PathIcon { Width = 10, Height = 10, Data = Geometry.Parse(PlusGlyph) };
-        if (scope.Find<StackPanel>("PART_SpinnerPanel") is { } panel
-            && panel.Children.IndexOf(decrease) > panel.Children.IndexOf(increase))
-        {
-            panel.Children.Move(panel.Children.IndexOf(decrease), panel.Children.IndexOf(increase));
-        }
     }
 
     private static Button Utility(string labelKey, Action onClick, string? name = null)

@@ -112,7 +112,8 @@ public sealed class AppStylesTests
         [
             Classed("accent", enabled: true), Classed("utility", enabled: true),
             Classed("danger", enabled: true), Classed("destructive", enabled: true),
-            new TextBox(), new DayNote.Controls.ComposingTextBox(), new ComboBox(), new NumericUpDown(),
+            new TextBox(), new DayNote.Controls.ComposingTextBox(), new ComboBox(),
+            new DayNote.Views.NumberField(DayNote.Core.Configuration.SettingsValidator.FontSize, 1),
         ];
         var compact = Classed("utility", enabled: true);
         compact.Classes.Add("compact");

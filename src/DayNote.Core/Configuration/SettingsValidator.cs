@@ -26,6 +26,11 @@ public static class SettingsValidator
     public const double MinAutosaveSeconds = 0.25;
     public const double MaxAutosaveSeconds = 60;
 
+    public static readonly NumberRange FontSize = new(MinFontSize, MaxFontSize, Whole: true);
+    public static readonly NumberRange LineSpacing = new(MinLineSpacing, MaxLineSpacing, Whole: false);
+    public static readonly NumberRange Padding = new(MinPadding, MaxPadding, Whole: true);
+    public static readonly NumberRange AutosaveSeconds = new(MinAutosaveSeconds, MaxAutosaveSeconds, Whole: false);
+
     public static bool IsValid(SettingsDraft draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
@@ -51,7 +56,7 @@ public static class SettingsValidator
     public static bool IsTimeZoneSetting(string setting) =>
         DayNoteTime.IsSystem(setting) || DayNoteTime.TryResolveTimeZone(setting.Trim(), out _);
 
-    public static bool IsAutosaveDelay(double seconds) => InRange(seconds, MinAutosaveSeconds, MaxAutosaveSeconds);
+    public static bool IsAutosaveDelay(double seconds) => AutosaveSeconds.Accepts(seconds);
 
     public static bool AreValidTextStyles(IReadOnlyList<EditorTextStyle> styles) => AreValidTextStyles(
         styles.Select(style => new TextStyleDraft(style.FontFamily, style.FontSize, style.LineSpacing, style.Padding)).ToList(),
@@ -61,9 +66,7 @@ public static class SettingsValidator
         styles.Count > 0
         && hasDefault
         && styles.All(style => !string.IsNullOrWhiteSpace(style.FontFamily)
-            && InRange(style.FontSize, MinFontSize, MaxFontSize)
-            && InRange(style.LineSpacing, MinLineSpacing, MaxLineSpacing)
-            && InRange(style.Padding, MinPadding, MaxPadding));
-
-    private static bool InRange(double value, double min, double max) => value >= min && value <= max;
+            && FontSize.Accepts(style.FontSize)
+            && LineSpacing.Accepts(style.LineSpacing)
+            && Padding.Accepts(style.Padding));
 }

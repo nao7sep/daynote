@@ -341,22 +341,101 @@ public sealed class SettingsDialogTests
     }
 
     [AvaloniaFact]
-    public void A_cleared_number_keeps_the_presets_value_and_shows_it_again()
+    public void A_number_the_field_cannot_use_stays_as_typed_with_its_reason_and_holds_save()
     {
         var config = new AppConfig();
         var dialog = new SettingsDialog(config, _ => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
-        var size = dialog.GetLogicalDescendants().OfType<NumericUpDown>().First();
+        var size = Named<NumberField>(dialog, "TextStyleFontSize");
+        var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
         var before = config.TextStyles[0].FontSize;
 
-        size.Focus();
-        size.Value = null;
-        Named<TextBox>(dialog, "TextStyleFontFamily").Focus();
+        foreach (var typed in new[] { "", "14.5", "49", "big" })
+        {
+            size.Input.Focus();
+            size.Input.Text = typed;
+            Named<TextBox>(dialog, "TextStyleFontFamily").Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            // What was typed stays, a message under the field says what it takes, the preset keeps its
+            // last valid size and Save waits.
+            Assert.Equal(typed, size.Input.Text);
+            Assert.True(size.Error.IsVisible);
+            Assert.Equal(English.Of("numberField.wholeRange", ("min", "8"), ("max", "48")), size.Error.Text);
+            Assert.Equal(before, config.TextStyles[0].FontSize);
+            Assert.False(save.IsEnabled);
+        }
+
+        size.Input.Text = "20";
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(size.Error.IsVisible);
+        Assert.Equal(20, config.TextStyles[0].FontSize);
+        Assert.True(save.IsEnabled);
+
+        var autosave = Named<NumberField>(dialog, "AutosaveDelay");
+        autosave.Input.Text = "0.1";
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(English.Of("numberField.range", ("min", "0.25"), ("max", "60")), autosave.Error.Text);
+        Assert.Equal(new AppConfig().AutosaveDelaySeconds, config.AutosaveDelaySeconds);
+        Assert.False(save.IsEnabled);
+        autosave.Input.Text = "0.3";
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0.3, config.AutosaveDelaySeconds);
+        Assert.True(save.IsEnabled);
+        dialog.Close();
+    }
+
+    [AvaloniaFact]
+    public void Minus_and_plus_step_from_the_last_valid_value_and_stop_at_the_bounds()
+    {
+        var config = new AppConfig { AutosaveDelaySeconds = 0.5 };
+        var dialog = new SettingsDialog(config, _ => true);
+        dialog.Show();
+        Dispatcher.UIThread.RunJobs();
+        var autosave = Named<NumberField>(dialog, "AutosaveDelay");
+
+        autosave.Input.Text = "x";
+        autosave.Increase.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("0.75", autosave.Input.Text);
+        Assert.False(autosave.Error.IsVisible);
+        Assert.Equal(0.75, config.AutosaveDelaySeconds);
+
+        autosave.Decrease.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        autosave.Decrease.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("0.25", autosave.Input.Text);
+        Assert.Equal(0.25, config.AutosaveDelaySeconds);
+        Assert.False(autosave.Decrease.IsEnabled);
+        Assert.True(autosave.Increase.IsEnabled);
+
+        var spacing = Named<NumberField>(dialog, "TextStyleLineSpacing");
+        spacing.Increase.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(new AppConfig().TextStyles[0].LineSpacing + 0.1, config.TextStyles[0].LineSpacing, 9);
+        dialog.Close();
+    }
+
+    [AvaloniaFact]
+    public void Selecting_another_style_shows_its_numbers_and_clears_a_message()
+    {
+        var config = new AppConfig();
+        config.TextStyles[1].FontSize = 22;
+        var dialog = new SettingsDialog(config, _ => true);
+        dialog.Show();
+        Dispatcher.UIThread.RunJobs();
+        var size = Named<NumberField>(dialog, "TextStyleFontSize");
+        size.Input.Text = "7";
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(size.HasError);
+
+        Named<ListBox>(dialog, "TextStylesList").SelectedIndex = 1;
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal(before, config.TextStyles[0].FontSize);
-        Assert.Equal((decimal)before, size.Value);
+        Assert.Equal("22", size.Input.Text);
+        Assert.False(size.HasError);
+        Assert.Equal(new AppConfig().TextStyles[0].FontSize, config.TextStyles[0].FontSize);
         dialog.Close();
     }
 
@@ -428,7 +507,7 @@ public sealed class SettingsDialogTests
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
         dialog.UpdateLayout();
-        var size = dialog.GetVisualDescendants().OfType<NumericUpDown>().First();
+        var size = Named<NumberField>(dialog, "TextStyleFontSize");
 
         var buttons = size.GetVisualDescendants().OfType<RepeatButton>()
             .OrderBy(button => button.TranslatePoint(default, size)!.Value.X)
@@ -437,11 +516,15 @@ public sealed class SettingsDialogTests
             .Select(button => button.GetVisualDescendants().OfType<PathIcon>().Single().Data!.Bounds)
             .ToList();
 
-        Assert.Equal(["PART_DecreaseButton", "PART_IncreaseButton"], buttons.Select(button => button.Name));
-        // A bar as wide as the square cross beside it: minus, then plus, and no chevron either side.
+        Assert.Equal([size.Decrease, size.Increase], buttons);
+        Assert.Equal(["Decrease", "Increase"], buttons.Select(button => Avalonia.Automation.AutomationProperties.GetName(button)));
+        // A bar as wide as the square cross beside it: minus, then plus.
         Assert.Equal(glyphs[0].Width, glyphs[1].Width);
         Assert.Equal(glyphs[1].Width, glyphs[1].Height);
         Assert.True(glyphs[0].Height < glyphs[1].Height / 4, $"The minus is {glyphs[0].Height:0.##} tall.");
+        // The buttons stand as tall as the field, and the field keeps room for a value such as 1.25.
+        Assert.All(buttons, button => Assert.Equal(size.Input.Bounds.Height, button.Bounds.Height, 0.5));
+        Assert.True(size.Input.Bounds.Width >= 48, $"The text box is {size.Input.Bounds.Width:0.#} wide.");
         dialog.Close();
     }
 

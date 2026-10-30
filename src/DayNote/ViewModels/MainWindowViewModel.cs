@@ -3021,7 +3021,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
         Editor.SetTimeZone(_displayZone);
         DisplayZoneChanged?.Invoke();
-        _autosaveTimer.Interval = TimeSpan.FromSeconds(Math.Max(0.25, _config.AutosaveDelaySeconds));
+        _autosaveTimer.Interval = TimeSpan.FromSeconds(_config.AutosaveDelaySeconds);
     }
 
     /// <summary>

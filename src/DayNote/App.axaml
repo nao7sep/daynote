@@ -220,7 +220,7 @@
              so an outlined button stands exactly as tall as a filled one and as the fields beside
              it. Focus is the ring above, not a fill: a fill on focus stays after a click and reads
              as a button still under the pointer. -->
-        <Style Selector="Button.accent, Button.utility, Button.danger, Button.destructive">
+        <Style Selector="Button.accent, Button.utility, RepeatButton.utility, Button.danger, Button.destructive">
             <Setter Property="Height" Value="{StaticResource ControlHeight}"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}"/>
@@ -289,31 +289,29 @@
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="MinHeight" Value="{StaticResource ControlHeight}"/>
         </Style>
-        <!-- Every one-line field is the control height, whatever kind it is, so a picker or a number
-             box never stands shorter or taller than the text box beside it. -->
-        <Style Selector="ComboBox, NumericUpDown">
+        <!-- Every one-line field is the control height, whatever kind it is, so a picker never stands
+             shorter or taller than the text box beside it. -->
+        <Style Selector="ComboBox">
             <Setter Property="Height" Value="{StaticResource ControlHeight}"/>
             <Setter Property="MinHeight" Value="{StaticResource ControlHeight}"/>
             <Setter Property="FocusAdorner" Value="{StaticResource ControlFocusRing}"/>
-        </Style>
-        <Style Selector="ComboBox">
             <Setter Property="Padding" Value="10,0,0,0"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
 
-        <Style Selector="Button.utility">
+        <Style Selector="Button.utility, RepeatButton.utility">
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
-        <Style Selector="Button.utility:pointerover /template/ ContentPresenter">
+        <Style Selector="Button.utility:pointerover /template/ ContentPresenter, RepeatButton.utility:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
-        <Style Selector="Button.utility:pressed /template/ ContentPresenter">
+        <Style Selector="Button.utility:pressed /template/ ContentPresenter, RepeatButton.utility:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityPressedBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
-        <Style Selector="Button.utility:disabled /template/ ContentPresenter">
+        <Style Selector="Button.utility:disabled /template/ ContentPresenter, RepeatButton.utility:disabled /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource UtilityBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         </Style>
@@ -567,7 +565,7 @@
         <Style Selector="TextBox /template/ Border#PART_BorderElement">
             <Setter Property="BorderBrush" Value="{DynamicResource FieldBorderBrush}"/>
         </Style>
-        <Style Selector="ComboBox, NumericUpDown">
+        <Style Selector="ComboBox">
             <Setter Property="BorderBrush" Value="{DynamicResource FieldBorderBrush}"/>
         </Style>
 
