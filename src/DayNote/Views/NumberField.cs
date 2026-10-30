@@ -23,7 +23,10 @@ public sealed class NumberField : Grid
 
     private readonly NumberRange _range;
     private readonly double _step;
-    private bool _showing;
+
+    // The text Show put in the box. The box reports a text change after the change, on the dispatcher,
+    // so the first report that finds this text is Show's own and is not read as typing.
+    private string? _shown;
 
     public NumberField(NumberRange range, double step, string? name = null)
     {
@@ -82,32 +85,35 @@ public sealed class NumberField : Grid
     /// <summary>Shows a value the owner holds, replacing the text and any message.</summary>
     public void Show(double value)
     {
-        _showing = true;
         Value = value;
-        Input.Text = NumberRange.Format(value, Localizer.Current.Culture);
-        _showing = false;
+        _shown = NumberRange.Format(value, Localizer.Current.Culture);
+        Input.Text = _shown;
         Error.IsVisible = false;
         UpdateButtons();
     }
 
     private void Read()
     {
+        var shown = _shown;
+        _shown = null;
+        if (shown is not null && Input.Text == shown)
+            return;
+
         var culture = Localizer.Current.Culture;
-        var value = _showing ? Value : _range.Read(Input.Text ?? string.Empty, culture);
+        var value = _range.Read(Input.Text ?? string.Empty, culture);
         Error.IsVisible = value is null;
         Error.Text = value is null
             ? Localizer.T(_range.Whole ? "numberField.wholeRange" : "numberField.range",
                 ("min", NumberRange.Format(_range.Min, culture)), ("max", NumberRange.Format(_range.Max, culture)))
             : string.Empty;
-        if (value is { } valid && !_showing)
+        if (value is { } valid)
         {
             Value = valid;
             UpdateButtons();
             Committed?.Invoke(valid);
         }
 
-        if (!_showing)
-            Changed?.Invoke();
+        Changed?.Invoke();
     }
 
     private RepeatButton StepButton(string glyph, string nameKey, int direction)

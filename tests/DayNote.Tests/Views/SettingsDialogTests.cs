@@ -418,24 +418,57 @@ public sealed class SettingsDialogTests
     }
 
     [AvaloniaFact]
-    public void Selecting_another_style_shows_its_numbers_and_clears_a_message()
+    public void Showing_a_value_is_not_typing_even_once_the_box_reports_the_change()
+    {
+        var field = new NumberField(SettingsValidator.FontSize, 1);
+        var window = new Window { Content = field };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var events = 0;
+        field.Committed += _ => events++;
+        field.Changed += () => events++;
+
+        field.Show(12);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, events);
+
+        // The next change is the user's, even when it types back what was shown.
+        field.Input.Text = "13";
+        Dispatcher.UIThread.RunJobs();
+        field.Input.Text = "12";
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(4, events);
+        Assert.Equal(12, field.Value);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Selecting_another_style_shows_its_numbers_clears_a_message_and_frees_save()
     {
         var config = new AppConfig();
         config.TextStyles[1].FontSize = 22;
+        // One family for both, so only the numbers change when the selection does.
+        config.TextStyles[1].FontFamily = config.TextStyles[0].FontFamily;
         var dialog = new SettingsDialog(config, _ => true);
         dialog.Show();
         Dispatcher.UIThread.RunJobs();
+        var save = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Tag, "ok"));
+        // A valid change first, so Save has something to save once the message goes.
+        Named<NumberField>(dialog, "TextStyleLineSpacing").Input.Text = "2";
         var size = Named<NumberField>(dialog, "TextStyleFontSize");
         size.Input.Text = "7";
         Dispatcher.UIThread.RunJobs();
         Assert.True(size.HasError);
+        Assert.False(save.IsEnabled);
 
         Named<ListBox>(dialog, "TextStylesList").SelectedIndex = 1;
         Dispatcher.UIThread.RunJobs();
 
         Assert.Equal("22", size.Input.Text);
         Assert.False(size.HasError);
+        Assert.True(save.IsEnabled);
         Assert.Equal(new AppConfig().TextStyles[0].FontSize, config.TextStyles[0].FontSize);
+        Assert.Equal(2, config.TextStyles[0].LineSpacing);
         dialog.Close();
     }
 

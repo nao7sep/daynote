@@ -248,9 +248,10 @@ public sealed class SettingsDialog : DialogBase
         var buttons = SetButtons([new DialogButton("common.cancel", "cancel"), new DialogButton("common.save", "ok", DialogButtonKind.Primary)]);
         _saveButton = buttons["ok"];
 
+        // Taken before the list loads, since loading a preset revalidates against it.
+        _original = _config.Copy();
         BuildStyleList();
         WireStyleEditor();
-        _original = _config.Copy();
 
         _autosave.Committed += value => _config.AutosaveDelaySeconds = value;
         _autosave.Changed += Revalidate;
@@ -398,6 +399,8 @@ public sealed class SettingsDialog : DialogBase
 
         _loadingStyleEditor = false;
         UpdateStyleActions();
+        // Showing the values clears any field's message without raising Changed, so Save follows here.
+        Revalidate();
     }
 
     private StyleRow? SelectedStyleRow() => _styleList.SelectedItem as StyleRow;
