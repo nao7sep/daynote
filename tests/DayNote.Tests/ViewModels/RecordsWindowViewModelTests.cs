@@ -383,6 +383,30 @@ public sealed class RecordsWindowViewModelTests
         Assert.Equal([4L, 3L, 2L, 1L], Ids(vm));
     }
 
+    // A read for new records that was under way when the reader scrolled down applies nothing, so the list
+    // does not move under the reader; the records join once it is back at the top.
+    [AvaloniaFact]
+    public void New_records_read_before_scrolling_down_wait_for_the_top()
+    {
+        _source.Add(3);
+        var vm = Started();
+        _source.Hold = true;
+        _source.Add(1);
+        vm.OnStored();
+        _timers.RunAll();
+        var newest = Assert.Single(_source.Pending);
+
+        vm.ViewportChanged(atTop: false, nearEnd: false, byReader: true);
+        newest.SetResult(_source.Answer(_source.PageQueries[^1]));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal([3L, 2L, 1L], Ids(vm));
+
+        _source.Hold = false;
+        vm.ViewportChanged(atTop: true, nearEnd: false, byReader: true);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal([4L, 3L, 2L, 1L], Ids(vm));
+    }
+
     [AvaloniaTheory]
     [InlineData(100)]
     [InlineData(150)]

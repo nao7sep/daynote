@@ -166,6 +166,9 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
 
     public void SaveListWidth(double width) => _host.SaveRecordsListWidth(width);
 
+    /// <summary>Runs <paramref name="action"/> once after <paramref name="delay"/>; disposing the result cancels it.</summary>
+    internal IDisposable Schedule(TimeSpan delay, Action action) => _schedule(delay, action);
+
     public void SavePlacement(WindowPlacement placement) => _host.SaveRecordsWindowPlacement(placement);
 
     /// <summary>Reads the first page and the launches, and follows new records from now on.</summary>
@@ -452,6 +455,13 @@ public sealed partial class RecordsWindowViewModel : ObservableObject, IDisposab
         }
 
         _liveSuspended = false;
+        // Scrolled down while the read ran: the list stays put, and the records wait for the top.
+        if (!_atTop)
+        {
+            _newestPending = true;
+            return;
+        }
+
         if (ListState != RecordsListState.Ready)
         {
             Records.Clear();

@@ -67,7 +67,7 @@ public sealed class RecordsWindowTests : WindowTest
     }
 
     [AvaloniaFact]
-    public void The_list_splitter_moves_by_keyboard_and_saves_once_when_the_key_is_released()
+    public void The_list_splitter_moves_by_keyboard_and_saves_once_after_the_last_step()
     {
         _host.RecordsListWidth = 450;
         var window = Show(Create());
@@ -77,26 +77,41 @@ public sealed class RecordsWindowTests : WindowTest
         splitter.Focus(NavigationMethod.Tab);
         Assert.True(splitter.IsFocused);
 
-        // Each arrow moves it 16 px; a held key saves nothing until it is released.
+        // Each arrow moves it 16 px, and neither a held key nor a run of presses saves on each step:
+        // the save comes a short delay after the last one, each step pushing it back.
         splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Right });
         splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Right });
-        Dispatcher.UIThread.RunJobs();
-        Assert.Equal(482, ListColumn(window).ActualWidth, precision: 0);
-        Assert.Empty(_host.SavedListWidths);
         splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.Right });
-        Assert.Equal([482.0], _host.SavedListWidths);
+        Assert.Equal([SplitterKeyboard.SaveDelay], _timers.Delays);
+        splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Right });
+        Assert.Empty(_timers.Delays);
+        splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.Right });
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(498, ListColumn(window).ActualWidth, precision: 0);
+        Assert.Empty(_host.SavedListWidths);
+        _timers.RunAll();
+        Assert.Equal([498.0], _host.SavedListWidths);
 
-        // Home and End go to the bounds; leaving the splitter saves what the keys left.
+        // Home and End go to the bounds; leaving the splitter saves what the keys left at once.
         splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Home });
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(RecordsLayout.ListMin, ListColumn(window).ActualWidth, precision: 0);
         window.GetVisualDescendants().OfType<TextBox>().First().Focus(NavigationMethod.Tab);
         Dispatcher.UIThread.RunJobs();
         Assert.False(splitter.IsFocused);
-        Assert.Equal([482.0, RecordsLayout.ListMin], _host.SavedListWidths);
+        Assert.Equal([498.0, RecordsLayout.ListMin], _host.SavedListWidths);
+        _timers.RunAll();
+        Assert.Equal([498.0, RecordsLayout.ListMin], _host.SavedListWidths);
+
+        // A step still waiting for its save when the window closes is saved as it closes.
+        splitter.Focus(NavigationMethod.Tab);
         splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.End });
+        splitter.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.End });
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(RecordsLayout.ListMax, ListColumn(window).ActualWidth, precision: 0);
+        window.Close();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal([498.0, RecordsLayout.ListMin, RecordsLayout.ListMax], _host.SavedListWidths);
     }
 
     [AvaloniaFact]

@@ -28,6 +28,7 @@ public partial class RecordsWindow : Window
     // displayed width from it and never overwrites it.
     private double _listWidthIntent;
     private ScrollViewer? _listScroll;
+    private readonly Action? _saveSteppedListWidth;
     private bool _closed;
 
     // The XAML loader and the designer need a parameterless constructor; the app uses the other.
@@ -66,7 +67,7 @@ public partial class RecordsWindow : Window
                 ClampListToWindow();
         };
         ListSplitter.AddHandler(Thumb.DragCompletedEvent, OnListSplitterDragCompleted);
-        SplitterKeyboard.Attach(ListSplitter, Avalonia.Layout.Orientation.Horizontal, paneBefore: true,
+        _saveSteppedListWidth = SplitterKeyboard.Attach(ListSplitter, Avalonia.Layout.Orientation.Horizontal, paneBefore: true,
             () => (RecordsLayout.ListWidth(_listWidthIntent, ClientSize.Width), RecordsLayout.ListMin,
                 RecordsLayout.ListWidth(RecordsLayout.ListMax, ClientSize.Width)),
             width =>
@@ -74,7 +75,8 @@ public partial class RecordsWindow : Window
                 _listWidthIntent = width;
                 ClampListToWindow();
             },
-            () => _vm.SaveListWidth(_listWidthIntent));
+            () => _vm.SaveListWidth(_listWidthIntent),
+            vm.Schedule);
         RecordsList.TemplateApplied += (_, _) => AttachListScroll();
         FiltersBand.SizeChanged += (_, _) => MinHeight = RecordsLayout.MinHeight(FiltersBand.Bounds.Height);
     }
@@ -145,6 +147,7 @@ public partial class RecordsWindow : Window
         if (e.Cancel || _closed)
             return;
 
+        _saveSteppedListWidth?.Invoke();
         RememberNormalGeometry();
         if (WindowState is WindowState.Normal or WindowState.Maximized && _normalGeometry is { } normal)
         {
