@@ -82,7 +82,7 @@ internal sealed class FakeRecordsSource : IRecordsSource
             .Where(record => query.Level switch
             {
                 null => true,
-                RecordLevelFilter.Attention => record.Level is "warn" or "error",
+                RecordLevelFilter.WarningsAndErrors => record.Level is "warn" or "error",
                 { } level => record.Level == level.ToString().ToLowerInvariant(),
             })
             .Where(record => record.Message.Contains(query.Search.Trim(), StringComparison.OrdinalIgnoreCase))

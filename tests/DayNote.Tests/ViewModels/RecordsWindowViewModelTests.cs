@@ -102,24 +102,24 @@ public sealed class RecordsWindowViewModelTests
         _source.Add(2, level: "error");
         var vm = Started();
 
-        vm.SelectedLevel = vm.LevelOptions.Single(option => option.Value == RecordLevelFilter.Attention);
+        vm.SelectedLevel = vm.LevelOptions.Single(option => option.Value == RecordLevelFilter.WarningsAndErrors);
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal(RecordLevelFilter.Attention, _source.PageQueries[^1].Level);
+        Assert.Equal(RecordLevelFilter.WarningsAndErrors, _source.PageQueries[^1].Level);
         Assert.Null(_source.PageQueries[^1].After);
         Assert.Equal([5L, 4L], Ids(vm));
     }
 
     [AvaloniaFact]
-    public void The_level_filter_offers_needs_attention_then_each_level()
+    public void The_level_filter_offers_warnings_and_errors_then_each_level()
     {
         var vm = Create();
 
         Assert.Equal(
-            [null, RecordLevelFilter.Attention, RecordLevelFilter.Error, RecordLevelFilter.Warn, RecordLevelFilter.Info, RecordLevelFilter.Debug],
+            [null, RecordLevelFilter.WarningsAndErrors, RecordLevelFilter.Error, RecordLevelFilter.Warn, RecordLevelFilter.Info, RecordLevelFilter.Debug],
             vm.LevelOptions.Select(option => option.Value));
         Assert.Equal(Localizer.T("records.allLevels"), vm.LevelOptions[0].Text);
-        Assert.Equal(Localizer.T("records.levelAttention"), vm.LevelOptions[1].Text);
+        Assert.Equal(Localizer.T("records.levelWarningsAndErrors"), vm.LevelOptions[1].Text);
     }
 
     [AvaloniaFact]

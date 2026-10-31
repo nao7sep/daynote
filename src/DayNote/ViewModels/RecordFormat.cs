@@ -18,11 +18,11 @@ public static class RecordFormat
 
     /// <summary>The level filter's choices in the order it offers them.</summary>
     public static readonly RecordLevelFilter[] LevelFilters =
-        [RecordLevelFilter.Attention, RecordLevelFilter.Error, RecordLevelFilter.Warn, RecordLevelFilter.Info, RecordLevelFilter.Debug];
+        [RecordLevelFilter.WarningsAndErrors, RecordLevelFilter.Error, RecordLevelFilter.Warn, RecordLevelFilter.Info, RecordLevelFilter.Debug];
 
     public static string LevelFilterKey(RecordLevelFilter level) => level switch
     {
-        RecordLevelFilter.Attention => "records.levelAttention",
+        RecordLevelFilter.WarningsAndErrors => "records.levelWarningsAndErrors",
         RecordLevelFilter.Error => "records.levelError",
         RecordLevelFilter.Warn => "records.levelWarn",
         RecordLevelFilter.Info => "records.levelInfo",

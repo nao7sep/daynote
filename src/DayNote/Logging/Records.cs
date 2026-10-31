@@ -1,12 +1,12 @@
 namespace DayNote.Logging;
 
 /// <summary>
-/// What the level filter offers: one stored level, or <see cref="Attention"/>, every record at
+/// What the level filter offers: one stored level, or <see cref="WarningsAndErrors"/>, every record at
 /// <c>warn</c> or <c>error</c>.
 /// </summary>
 public enum RecordLevelFilter
 {
-    Attention,
+    WarningsAndErrors,
     Error,
     Warn,
     Info,

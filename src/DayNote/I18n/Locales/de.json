@@ -182,7 +182,7 @@
   "records.error": "Fehler",
   "records.launch": "Start",
   "records.level": "Stufe",
-  "records.levelAttention": "Benötigt Aufmerksamkeit",
+  "records.levelWarningsAndErrors": "Warnungen und Fehler",
   "records.levelDebug": "Debug",
   "records.levelError": "Fehler",
   "records.levelInfo": "Info",

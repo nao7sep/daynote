@@ -27,7 +27,7 @@ internal static class RecordsReads
 
         switch (query.Level)
         {
-            case RecordLevelFilter.Attention:
+            case RecordLevelFilter.WarningsAndErrors:
                 where.Add("level IN ('warn', 'error')");
                 break;
             case { } level:

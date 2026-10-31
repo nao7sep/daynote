@@ -110,7 +110,7 @@ public sealed class RecordsReadsTests : IDisposable
     }
 
     [Fact]
-    public async Task Needs_attention_is_warnings_and_errors_and_a_level_is_that_level_alone()
+    public async Task Warnings_and_errors_is_both_levels_and_a_level_is_that_level_alone()
     {
         Insert(
             (At(1), Later, "debug", "d", null, "{}"),
@@ -118,11 +118,11 @@ public sealed class RecordsReadsTests : IDisposable
             (At(3), Later, "warn", "w", null, "{}"),
             (At(4), Later, "error", "e", null, "{}"));
 
-        var attention = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Attention, "", null), TestContext.Current.CancellationToken);
+        var warningsAndErrors = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.WarningsAndErrors, "", null), TestContext.Current.CancellationToken);
         var errors = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Error, "", null), TestContext.Current.CancellationToken);
         var debug = await _log.ReadPageAsync(new RecordsQuery(null, RecordLevelFilter.Debug, "", null), TestContext.Current.CancellationToken);
 
-        Assert.Equal(["e", "w"], attention.Records.Select(record => record.Message));
+        Assert.Equal(["e", "w"], warningsAndErrors.Records.Select(record => record.Message));
         Assert.Equal(["e"], errors.Records.Select(record => record.Message));
         Assert.Equal(["d"], debug.Records.Select(record => record.Message));
     }
