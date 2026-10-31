@@ -12,7 +12,7 @@ namespace DayNote.Core.Toml;
 ///
 /// <list type="bullet">
 /// <item>Keys are always emitted in canonical order, independent of in-memory construction order. The
-/// file's <c>format_version</c> comes first, so it is read before anything whose shape it governs.</item>
+/// file's identity header (<see cref="FileHeader"/>) comes first, so it is read before anything whose shape it governs.</item>
 /// <item>Timestamps are quoted ISO-8601 UTC strings with millisecond precision, not TOML datetimes.</item>
 /// <item>Bodies are stored as multiline literal strings (triple single quotes), preserving all
 /// whitespace verbatim, after <see cref="BodyCleanup"/> normalization.</item>
@@ -29,7 +29,7 @@ public static class BinderTomlWriter
     public static string Write(Binder binder)
     {
         var builder = new StringBuilder();
-        builder.Append("format_version = ").Append(FormatVersions.Binder).Append('\n');
+        builder.Append(FileHeader.TomlLines(FileFormats.Binder));
 
         // The binder has no title line — its display title is a local label kept in app configuration, not
         // carried in the file (a collection's title does not travel to other machines).

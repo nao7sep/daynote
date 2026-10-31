@@ -34,7 +34,7 @@ public sealed class JsonStoreTests : IDisposable
         _directory = Path.Combine(Path.GetTempPath(), "daynote-json-tests-" + IdGenerator.New());
         Directory.CreateDirectory(_directory);
         _path = Path.Combine(_directory, "config.json");
-        _store = new JsonStore<AppConfig>(_path, FormatVersions.Config);
+        _store = new JsonStore<AppConfig>(_path, FileFormats.Config);
 
         _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
         Environment.SetEnvironmentVariable(AppPaths.HomeEnvironmentVariable, _directory);
@@ -102,20 +102,38 @@ public sealed class JsonStoreTests : IDisposable
     }
 
     [Fact]
-    public void Save_writes_the_format_version_as_the_first_key()
+    public void Save_writes_the_identity_header_as_the_first_two_keys()
     {
         _store.Save(new AppConfig());
 
         using var document = JsonDocument.Parse(File.ReadAllText(_path));
-        var first = Assert.Single(document.RootElement.EnumerateObject().Take(1));
-        Assert.Equal("formatVersion", first.Name);
-        Assert.Equal(FormatVersions.Config, first.Value.GetInt32());
+        var members = document.RootElement.EnumerateObject().Take(2).ToArray();
+        Assert.Equal(["format", "writer"], members.Select(member => member.Name));
+        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse("""{"owner":"daynote","kind":"config","version":1}""").RootElement, members[0].Value));
+        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse("""{"name":"DayNote","version":"1.0.0"}""").RootElement, members[1].Value));
     }
 
     [Fact]
-    public void A_file_recording_the_current_format_version_round_trips()
+    public void A_file_with_its_header_round_trips()
     {
-        File.WriteAllText(_path, $$"""{"formatVersion":{{FormatVersions.Config}},"timeZone":"Europe/London"}""");
+        File.WriteAllText(_path, TestHeaders.ConfigOpen + "\"timeZone\":\"Europe/London\"}");
+
+        Assert.Equal("Europe/London", _store.Load()!.TimeZone);
+    }
+
+    [Theory]
+    [InlineData("""
+        "writer":"anything",
+        """)]
+    [InlineData("""
+        "writer":{"name":"another app","version":7},
+        """)]
+    [InlineData("")]
+    public void The_writer_is_never_read(string writer)
+    {
+        File.WriteAllText(_path, """{"format":{"owner":"daynote","kind":"config","version":1},""" + writer + """
+            "timeZone":"Europe/London"}
+            """);
 
         Assert.Equal("Europe/London", _store.Load()!.TimeZone);
     }
@@ -123,7 +141,9 @@ public sealed class JsonStoreTests : IDisposable
     [Fact]
     public void A_newer_file_is_refused_and_left_in_place()
     {
-        var newer = $$"""{"formatVersion":{{FormatVersions.Config + 1}},"timeZone":["Europe/London"]}""";
+        var newer = TestHeaders.JsonOpen(FileFormats.Config, FormatVersions.Config + 1) + """
+            "timeZone":["Europe/London"]}
+            """;
         File.WriteAllText(_path, newer);
         var before = File.ReadAllBytes(_path);
 
@@ -135,13 +155,20 @@ public sealed class JsonStoreTests : IDisposable
     }
 
     [Theory]
-    [InlineData("""{"timeZone":"Europe/London"}""")]
-    [InlineData("""{"formatVersion":0}""")]
-    [InlineData("""{"formatVersion":-1}""")]
-    [InlineData("""{"formatVersion":1.5}""")]
-    [InlineData("""{"formatVersion":"1"}""")]
+    [InlineData("""{"timeZone":"Europe/London"}""")] // no header
+    [InlineData("""{"formatVersion":1,"timeZone":"Europe/London"}""")] // the old marker
+    [InlineData("""{"format":1}""")] // not an object
+    [InlineData("""{"format":{"kind":"config","version":1}}""")] // no owner
+    [InlineData("""{"format":{"owner":"pathhide","kind":"config","version":1}}""")] // another owner
+    [InlineData("""{"format":{"owner":"daynote","kind":"state","version":1}}""")] // another kind
+    [InlineData("""{"format":{"owner":"DayNote","kind":"config","version":1}}""")] // not exactly the owner
+    [InlineData("""{"format":{"owner":"daynote","kind":"config"}}""")] // no version
+    [InlineData("""{"format":{"owner":"daynote","kind":"config","version":0}}""")]
+    [InlineData("""{"format":{"owner":"daynote","kind":"config","version":-1}}""")]
+    [InlineData("""{"format":{"owner":"daynote","kind":"config","version":1.5}}""")]
+    [InlineData("""{"format":{"owner":"daynote","kind":"config","version":"1"}}""")]
     [InlineData("null")]
-    public void A_file_without_a_positive_integer_format_version_is_refused_and_left_in_place(string json)
+    public void A_file_without_this_files_header_is_refused_and_left_in_place(string json)
     {
         File.WriteAllText(_path, json);
 

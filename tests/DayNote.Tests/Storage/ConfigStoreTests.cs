@@ -14,6 +14,8 @@ namespace DayNote.Tests.Storage;
 [Collection(AppPathsEnvironment.CollectionName)]
 public sealed class ConfigStoreTests : IDisposable
 {
+    private const string OnlyHeader = "{\"format\":{\"owner\":\"daynote\",\"kind\":\"config\",\"version\":1},\"writer\":{\"name\":\"DayNote\",\"version\":\"1.0.0\"}}";
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "daynote-config-" + IdGenerator.New());
     private readonly string? _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);
     private readonly List<string> _warnings = new();
@@ -36,7 +38,7 @@ public sealed class ConfigStoreTests : IDisposable
     [Theory]
     [InlineData("{ broken")]
     [InlineData("""{ "theme": "dark" }""")] // no format version
-    [InlineData("""{ "formatVersion": 1, "theme": "dark", "theme": "light" }""")] // a repeated key
+    [InlineData(TestHeaders.ConfigOpen + "\"theme\": \"dark\", \"theme\": \"light\" }")] // a repeated key
     public void A_malformed_config_throws_and_is_left_byte_identical(string json)
     {
         File.WriteAllText(ConfigPath, json);
@@ -51,7 +53,7 @@ public sealed class ConfigStoreTests : IDisposable
     [Fact]
     public void One_set_uses_built_ins_for_every_absent_set_and_keeps_unknown_keys_on_write()
     {
-        File.WriteAllText(ConfigPath, """{ "formatVersion": 1, "theme": "dark", "version": 2, "future": true }""");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + "\"theme\": \"dark\", \"version\": 2, \"future\": true }");
         var store = Store;
         var config = store.Load();
         var builtIns = new AppConfig();
@@ -64,7 +66,7 @@ public sealed class ConfigStoreTests : IDisposable
         config.UiFontFamily = "Inter";
         store.Save(config);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "formatVersion", "uiFontFamily", "theme", "version", "future" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "uiFontFamily", "theme", "version", "future" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.Equal(2, saved.RootElement.GetProperty("version").GetInt32());
         Assert.True(saved.RootElement.GetProperty("future").GetBoolean());
         Assert.Equal("Inter", Store.Load().UiFontFamily);
@@ -75,7 +77,7 @@ public sealed class ConfigStoreTests : IDisposable
     {
         const string key = "textStyles";
         const string value = "[{\"fontFamily\":\"A\"}]";
-        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"{key}\":{value},\"future\":{{\"a\":[1,2]}}}}");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + $"\"{key}\":{value},\"future\":{{\"a\":[1,2]}}}}");
         var store = Store;
         var config = store.Load();
 
@@ -93,7 +95,7 @@ public sealed class ConfigStoreTests : IDisposable
     [Fact]
     public void Changing_an_invalid_authored_set_replaces_its_stored_value()
     {
-        File.WriteAllText(ConfigPath, """{"formatVersion":1,"textStyles":[{"fontFamily":"A"}]}""");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + "\"textStyles\":[{\"fontFamily\":\"A\"}]}");
         var store = Store;
         var config = store.Load();
 
@@ -111,7 +113,7 @@ public sealed class ConfigStoreTests : IDisposable
     {
         const string key = "textStyles";
         const string value = "[{\"fontFamily\":\"A\"}]";
-        var original = $"{{\"formatVersion\":1,\"{key}\":{value}}}";
+        var original = TestHeaders.ConfigOpen + $"\"{key}\":{value}}}";
         File.WriteAllText(ConfigPath, original);
         var store = Store;
         var config = store.Load();
@@ -143,7 +145,7 @@ public sealed class ConfigStoreTests : IDisposable
     [Fact]
     public void An_invalid_preference_is_normalized_by_the_next_save()
     {
-        File.WriteAllText(ConfigPath, """{"formatVersion":1,"theme":"sepia","language":"xx","autosaveDelaySeconds":3}""");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + "\"theme\":\"sepia\",\"language\":\"xx\",\"autosaveDelaySeconds\":3}");
         var store = Store;
         var config = store.Load();
 
@@ -151,7 +153,7 @@ public sealed class ConfigStoreTests : IDisposable
         store.Save(config);
 
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "formatVersion", "autosaveDelaySeconds" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "autosaveDelaySeconds" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     [Theory]
@@ -161,7 +163,7 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("System", "system")]
     public void A_language_matching_an_offered_tag_ignoring_case_reads_and_saves_as_that_tag(string stored, string canonical)
     {
-        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"language":"{{stored}}","theme":"dark"}""");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + $"\"language\":\"{stored}\",\"theme\":\"dark\"}}");
         var store = Store;
 
         var config = store.Load();
@@ -194,7 +196,7 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("textStyles", "[{\"isDefault\":true,\"fontFamily\":\"A\",\"fontSize\":14.5,\"lineSpacing\":1.4,\"padding\":12,\"bold\":false,\"italic\":false}]")]
     public void A_set_that_fails_its_check_falls_back_only_for_that_set_and_warns(string key, string value)
     {
-        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"{key}\":{value}}}");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + $"\"{key}\":{value}}}");
         var config = Store.Load();
         Assert.Empty(ConfigSets.UserSets(JsonSerializer.SerializeToElement(config, DayNoteJson.Options)));
         Assert.Equal(key, Assert.Single(_warnings));
@@ -208,7 +210,7 @@ public sealed class ConfigStoreTests : IDisposable
     [InlineData("sepia", false)]
     public void The_reader_and_the_converter_accept_the_same_themes(string name, bool accepted)
     {
-        File.WriteAllText(ConfigPath, $"{{\"formatVersion\":1,\"theme\":\"{name}\"}}");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + $"\"theme\":\"{name}\"}}");
         Assert.Equal(accepted, ThemePreferenceJsonConverter.TryParse(name, out var parsed));
         Assert.Equal(accepted ? parsed : ThemePreference.System, Store.Load().Theme);
         Assert.Equal(accepted ? 0 : 1, _warnings.Count);
@@ -236,7 +238,7 @@ public sealed class ConfigStoreTests : IDisposable
         config.TextStyles = AppConfig.DefaultTextStyles();
         Store.Save(config);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     [Fact]
@@ -246,10 +248,10 @@ public sealed class ConfigStoreTests : IDisposable
         store.Save(store.Load());
         Assert.False(File.Exists(ConfigPath));
 
-        File.WriteAllText(ConfigPath, """{ "formatVersion": 1 }""");
+        File.WriteAllText(ConfigPath, OnlyHeader);
         store = Store;
         store.Save(store.Load());
-        Assert.Equal("""{ "formatVersion": 1 }""", File.ReadAllText(ConfigPath));
+        Assert.Equal(OnlyHeader, File.ReadAllText(ConfigPath));
     }
 
     [Fact]
@@ -261,17 +263,17 @@ public sealed class ConfigStoreTests : IDisposable
         config.Theme = ThemePreference.Dark;
         store.Save(config);
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     [Fact]
     public void Save_heals_every_set_from_memory()
     {
-        File.WriteAllText(ConfigPath, """{ "formatVersion": 1, "timeZone": "Mars/Phobos", "theme": "system", "uiFontFamily": "Menlo" }""");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + "\"timeZone\": \"Mars/Phobos\", \"theme\": \"system\", \"uiFontFamily\": \"Menlo\" }");
         var store = Store;
         store.Save(store.Load());
         using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "formatVersion", "uiFontFamily" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "uiFontFamily" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
     }
 
     public void Dispose()

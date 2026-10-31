@@ -27,7 +27,7 @@ public sealed class BinderListStoreTests : IDisposable
     }
 
     private void WriteList(JsonElement binders, string extra = "") =>
-        File.WriteAllText(ListPath, $"{{\"formatVersion\":1,\"binders\":{binders.GetRawText()}{extra}}}");
+        File.WriteAllText(ListPath, TestHeaders.BinderListOpen + $"\"binders\":{binders.GetRawText()}{extra}}}");
 
     private JsonElement SavedList()
     {
@@ -52,14 +52,14 @@ public sealed class BinderListStoreTests : IDisposable
         store.Save([new KnownBinder { Path = "/b.daynote", Title = "B" }, new KnownBinder { Path = "/a.daynote", Title = "A" }]);
 
         using var saved = JsonDocument.Parse(File.ReadAllText(ListPath));
-        Assert.Equal(new[] { "formatVersion", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.Equal(new[] { ("/b.daynote", "B"), ("/a.daynote", "A") }, Store.Load().Select(entry => (entry.Path, entry.Title)));
     }
 
     [Theory]
     [InlineData("{ broken")]
     [InlineData("""{ "binders": [] }""")] // no format version
-    [InlineData("""{ "formatVersion": 2, "binders": [] }""")] // newer
+    [InlineData("{\"format\":{\"owner\":\"daynote\",\"kind\":\"binderList\",\"version\":2},\"binders\":[]}")] // newer
     public void A_file_that_cannot_be_used_throws_and_is_left_byte_identical(string json)
     {
         File.WriteAllText(ListPath, json);

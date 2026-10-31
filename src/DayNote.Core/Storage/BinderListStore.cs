@@ -20,7 +20,7 @@ public sealed class BinderListStore(string path, Action<string> warn)
 {
     public const string ListKey = "binders";
 
-    private readonly JsonStore<Dictionary<string, JsonElement>> _store = new(path, FormatVersions.Binders);
+    private readonly JsonStore<Dictionary<string, JsonElement>> _store = new(path, FileFormats.BinderList);
 
     // The map the file holds as of the last load or save; null while there is no file.
     private Dictionary<string, JsonElement>? _onDisk;

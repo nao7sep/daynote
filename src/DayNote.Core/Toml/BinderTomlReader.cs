@@ -10,8 +10,8 @@ namespace DayNote.Core.Toml;
 /// <summary>
 /// Parses <c>.daynote</c> TOML text into a <see cref="Binder"/>. Field order is irrelevant on
 /// read; only the canonical writer enforces order. Reading is case-insensitive and tolerant of
-/// missing optional keys so hand-edited files still load, except <c>format_version</c>: a binder without
-/// it is malformed (store-recovery-conventions). A value that is present but malformed, such as a time
+/// missing optional keys so hand-edited files still load, except the identity header: a binder without
+/// one naming a DayNote binder is malformed (file-identity-conventions). A value that is present but malformed, such as a time
 /// that does not parse, an unknown status, status times the status contradicts, a missing, malformed or
 /// duplicate id, or an attachment reference that is not a bare file name, makes the binder malformed
 /// too: it is never coerced, because the coerced reading would be written back. Bodies are run through <see cref="BodyCleanup"/>
@@ -73,12 +73,13 @@ public static class BinderTomlReader
         return binder;
     }
 
-    /// <summary>The format version the binder text records in its <c>format_version</c>.</summary>
-    /// <exception cref="BinderFormatException">The text is not a TOML table, or records no positive integer version.</exception>
+    /// <summary>The format version the binder text's identity header records.</summary>
+    /// <exception cref="BinderFormatException">The text is not a TOML table, or has no DayNote binder header.</exception>
     public static long FormatVersion(string text) =>
-        Deserialize<VersionDocument>(text).FormatVersion is long version and >= 1
+        Deserialize<HeaderDocument>(text).Format is { } format
+        && FileHeader.VersionOf(FileFormats.Binder, format.Owner, format.Kind, format.Version) is { } version
             ? version
-            : throw new BinderFormatException("Binder format_version is missing or not a positive integer.");
+            : throw new BinderFormatException("The binder has no DayNote binder header.");
 
     private static T Deserialize<T>(string text)
         where T : class
@@ -228,10 +229,17 @@ public static class BinderTomlReader
 
     // Internal DTOs mirroring the on-disk shape. Timestamps are read as strings because the format
     // stores them as quoted ISO-8601 values rather than TOML-native datetimes.
-    private sealed class VersionDocument
+    // Only format is read; writer is never read (file-identity-conventions).
+    private sealed class HeaderDocument
     {
-        [TomlPropertyName("format_version")]
-        public long? FormatVersion { get; set; }
+        public FormatTable? Format { get; set; }
+    }
+
+    private sealed class FormatTable
+    {
+        public string? Owner { get; set; }
+        public string? Kind { get; set; }
+        public long? Version { get; set; }
     }
 
     private sealed class BinderDocument

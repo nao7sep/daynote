@@ -185,7 +185,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _configStore = startupSettings?.Store ?? new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         _binderListStore = new BinderListStore(paths.BindersFile, _ => _log.Warn("Invalid binder list; listing none", new { path = paths.BindersFile }));
         // Not recorded in the backup history: placement and selection are state, never the user's work.
-        _stateStore = new JsonStore<AppState>(paths.StateFile, FormatVersions.State, recordBackup: false);
+        _stateStore = new JsonStore<AppState>(paths.StateFile, FileFormats.State, recordBackup: false);
 
         // All startup I/O (directory creation, reading config/state) is gated here, rather than
         // crashing before any UI exists: a settings file that cannot be read halts with saving

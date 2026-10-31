@@ -319,7 +319,7 @@ public static class BackupStore
 
             // Check compatibility before WAL or the schema can change the file. Unsupported history stays
             // untouched, and recording is disabled for the session.
-            SqliteFormatVersion.Claim(connection, FormatVersions.Backups, "backups.sqlite3");
+            FileHeader.ClaimSqlite(connection, FileFormats.Backups, "backups.sqlite3");
 
             using (var pragma = connection.CreateCommand())
             {

@@ -7,22 +7,22 @@ namespace DayNote.Core.Storage;
 /// </summary>
 public static class FormatVersions
 {
-    /// <summary>A binder's <c>.daynote</c> TOML file (<c>format_version</c>).</summary>
+    /// <summary>A binder's <c>.daynote</c> TOML file (the header's <c>format.version</c>).</summary>
     public const int Binder = 1;
 
-    /// <summary><c>config.json</c> (<c>formatVersion</c>).</summary>
+    /// <summary><c>config.json</c> (the header's <c>format.version</c>).</summary>
     public const int Config = 1;
 
-    /// <summary><c>binders.json</c> (<c>formatVersion</c>).</summary>
+    /// <summary><c>binders.json</c> (the header's <c>format.version</c>).</summary>
     public const int Binders = 1;
 
-    /// <summary><c>state.json</c> (<c>formatVersion</c>).</summary>
+    /// <summary><c>state.json</c> (the header's <c>format.version</c>).</summary>
     public const int State = 1;
 
-    /// <summary><c>records.sqlite3</c> (<c>PRAGMA user_version</c>).</summary>
+    /// <summary><c>records.sqlite3</c> (<c>PRAGMA user_version</c>, with <c>file_header</c>).</summary>
     public const int Records = 1;
 
-    /// <summary><c>backups.sqlite3</c> (<c>PRAGMA user_version</c>). Each path keeps one row per session,
+    /// <summary><c>backups.sqlite3</c> (<c>PRAGMA user_version</c>, with <c>file_header</c>). Each path keeps one row per session,
     /// holding the file as one value.</summary>
     public const int Backups = 1;
 }

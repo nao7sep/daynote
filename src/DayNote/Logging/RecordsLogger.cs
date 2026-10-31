@@ -111,7 +111,7 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
             connection.Open();
             // First, before WAL or the schema can change the file: a database written by a newer DayNote
             // is left exactly as it is, and this session's records go to the fallback file.
-            SqliteFormatVersion.Claim(connection, FormatVersions.Records, "records.sqlite3");
+            FileHeader.ClaimSqlite(connection, FileFormats.Records, "records.sqlite3");
             using var command = connection.CreateCommand();
             // WAL with synchronous=NORMAL keeps every committed row through an app crash.
             command.CommandText = "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;" + Schema;

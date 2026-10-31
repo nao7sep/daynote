@@ -138,7 +138,7 @@ public sealed class BinderStoreTests : IDisposable
     }
 
     private static string NewerBinderText =>
-        $"format_version = {FormatVersions.Binder + 1}\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
+        TestHeaders.BinderTomlAt(FormatVersions.Binder + 1) + $"id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = ''\n";
 
     [Fact]
     public void ResolveAttachments_builds_paths_under_the_note_assets_directory()

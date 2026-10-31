@@ -359,12 +359,23 @@ public sealed class BackupStoreTests : IDisposable
 
         Assert.Equal(FormatVersions.Backups, UserVersion());
         Assert.Equal(1, RowCount(TargetPath));
+        BackupStore.Close();
+        using var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Mode=ReadOnly;Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT value FROM file_header WHERE key IN ('format.owner', 'format.kind') ORDER BY key;";
+        using var reader = command.ExecuteReader();
+        var values = new List<string>();
+        while (reader.Read())
+            values.Add(reader.GetString(0));
+        Assert.Equal(["backups", "daynote"], values);
     }
 
     [Theory]
     [InlineData(0)] // tables but no version: unreadable
     [InlineData(-1)] // a version no DayNote writes
     [InlineData(FormatVersions.Backups + 1)]
+    [InlineData(FormatVersions.Backups)] // the current version without its file_header table
     public void An_unsupported_store_is_left_byte_identical_with_one_warn_and_the_save_still_lands(long userVersion)
     {
         using (var connection = new SqliteConnection($"Data Source={_paths.BackupStoreFile};Pooling=False"))

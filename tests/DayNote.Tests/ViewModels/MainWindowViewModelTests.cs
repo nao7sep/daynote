@@ -647,7 +647,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         _dialogs.SettingsEdit = config => config.Theme = ThemePreference.Dark;
         await vm.OpenSettingsCommand.ExecuteAsync(null);
         using var saved = JsonDocument.Parse(File.ReadAllText(configFile));
-        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.Equal("dark", saved.RootElement.GetProperty("theme").GetString());
         BackupStore.Close();
         Assert.Equal(1, RowCountFor(new AppPaths().BackupStoreFile, configFile));
@@ -663,7 +663,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.OpenSettingsCommand.ExecuteAsync(null);
 
         using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "config.json")));
-        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
         Assert.Equal(BinderPath, Assert.Single(SavedBinders()).Path);
         Assert.Single(vm.Binders);
         await vm.ShutdownAsync();
@@ -709,7 +709,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.False(File.Exists(ConfigPath));
         using (var saved = JsonDocument.Parse(File.ReadAllText(bindersFile)))
         {
-            Assert.Equal(new[] { "formatVersion", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
+            Assert.Equal(new[] { "format", "writer", "binders" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
             Assert.Equal("My binder", saved.RootElement.GetProperty("binders")[0].GetProperty("title").GetString());
         }
         using (var state = JsonDocument.Parse(File.ReadAllText(Path.Combine(_home, "state.json"))))
@@ -778,7 +778,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
         Directory.CreateDirectory(_home);
-        File.WriteAllText(ConfigPath, """{"formatVersion":1,"theme":"dark"}""");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + "\"theme\":\"dark\"}");
         WriteUnreadable(StatePath, """{"bindersPaneWidth":333}""");
         var log = new RecordingLogger();
         try
@@ -806,7 +806,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     public async Task An_unreadable_settings_file_halts_names_its_path_and_is_left_in_place()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
-        const string content = """{"formatVersion":1,"theme":"dark"}""";
+        const string content = TestHeaders.ConfigOpen + "\"theme\":\"dark\"}";
         WriteUnreadable(ConfigPath, content);
         try
         {
@@ -832,7 +832,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaTheory]
     [InlineData("{ not json")]
     [InlineData("""{"theme":"dark"}""")] // no format version
-    [InlineData("""{"formatVersion":1,"theme":"dark","theme":"light"}""")] // a repeated key
+    [InlineData(TestHeaders.ConfigOpen + "\"theme\":\"dark\",\"theme\":\"light\"}")] // a repeated key
     public async Task A_malformed_settings_file_halts_names_its_path_and_is_left_byte_identical(string content)
     {
         Directory.CreateDirectory(_home);
@@ -872,18 +872,18 @@ public sealed class MainWindowViewModelTests : IDisposable
         await vm.ShutdownAsync();
 
         Assert.Empty(SetAsideCopies());
-        Assert.NotNull(new JsonStore<AppState>(StatePath, FormatVersions.State).Load());
+        Assert.NotNull(new JsonStore<AppState>(StatePath, FileFormats.State).Load());
     }
 
     [AvaloniaTheory]
     [InlineData("{ not json")]
     [InlineData("""{"binders":[]}""")] // no format version
-    [InlineData("""{"formatVersion":2,"binders":[]}""")] // a newer DayNote's
+    [InlineData("{\"format\":{\"owner\":\"daynote\",\"kind\":\"binderList\",\"version\":2},\"binders\":[]}")] // a newer DayNote's
     public async Task A_binder_list_that_cannot_be_used_halts_names_its_path_and_is_left_byte_identical(string content)
     {
         Directory.CreateDirectory(_home);
         File.WriteAllText(BindersPath, content);
-        File.WriteAllText(ConfigPath, """{"formatVersion":1,"theme":"dark"}""");
+        File.WriteAllText(ConfigPath, TestHeaders.ConfigOpen + "\"theme\":\"dark\"}");
         var binders = File.ReadAllBytes(BindersPath);
         var settings = File.ReadAllBytes(ConfigPath);
 
@@ -908,7 +908,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     public async Task A_newer_settings_file_halts_names_its_path_and_is_left_byte_identical()
     {
         Directory.CreateDirectory(_home);
-        File.WriteAllText(ConfigPath, $$"""{"formatVersion":{{FormatVersions.Config + 1}},"theme":"dark"}""");
+        File.WriteAllText(ConfigPath, TestHeaders.JsonOpen(FileFormats.Config, FormatVersions.Config + 1) + "\"theme\":\"dark\"}");
         var before = File.ReadAllBytes(ConfigPath);
 
         var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
@@ -930,7 +930,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     public async Task A_newer_state_file_opens_on_the_default_view_with_one_warning_and_is_replaced()
     {
         Directory.CreateDirectory(_home);
-        File.WriteAllText(StatePath, $$"""{"formatVersion":{{FormatVersions.State + 1}},"bindersPaneWidth":333}""");
+        File.WriteAllText(StatePath, TestHeaders.JsonOpen(FileFormats.State, FormatVersions.State + 1) + "\"bindersPaneWidth\":333}");
         var before = File.ReadAllBytes(StatePath);
         var log = new RecordingLogger();
 
@@ -949,11 +949,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.Single(log.Entries, entry => entry.Level == "warn");
         Assert.Empty(SetAsideCopies());
         Assert.NotEqual(before, File.ReadAllBytes(StatePath));
-        Assert.Equal(BinderPath, new JsonStore<AppState>(StatePath, FormatVersions.State).Load()!.CurrentBinderPath);
+        Assert.Equal(BinderPath, new JsonStore<AppState>(StatePath, FileFormats.State).Load()!.CurrentBinderPath);
     }
 
     private string NewerBinderText =>
-        $"format_version = {FormatVersions.Binder + 1}\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'from the future'\n";
+        TestHeaders.BinderTomlAt(FormatVersions.Binder + 1) + $"id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'from the future'\n";
 
     [AvaloniaFact]
     public async Task A_newer_binder_is_not_opened_is_named_and_is_left_byte_identical()
@@ -1011,7 +1011,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         // A hand edit that copied a note: assigning either one a fresh id would part it from its files.
         var vm = NewViewModel();
         File.WriteAllText(BinderPath,
-            "format_version = 1\nid = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'one'\n\n[[note]]\nid = \"n1\"\nbody = 'two'\n");
+            TestHeaders.BinderToml + "id = \"nb1\"\n\n[[note]]\nid = \"n1\"\nbody = 'one'\n\n[[note]]\nid = \"n1\"\nbody = 'two'\n");
         var before = File.ReadAllBytes(BinderPath);
 
         _dialogs.BinderToOpen = BinderPath;
@@ -2285,7 +2285,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         var saved = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(configPath), DayNoteJson.Options)!;
         Assert.Equal(new[] { false, true }, saved.TextStyles.Select(style => style.IsDefault));
         using var sets = JsonDocument.Parse(File.ReadAllText(configPath));
-        Assert.Equal(new[] { "formatVersion", "textStyles" }, sets.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "format", "writer", "textStyles" }, sets.RootElement.EnumerateObject().Select(property => property.Name));
 
         vm.CycleTextStyleCommand.Execute(null);
 

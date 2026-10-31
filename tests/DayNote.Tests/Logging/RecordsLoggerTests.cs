@@ -361,7 +361,7 @@ public sealed class RecordsLoggerTests : IDisposable
         return (long)command.ExecuteScalar()!;
     }
 
-    private void CreateDatabase(long userVersion)
+    private void CreateDatabase(long userVersion, string? owner = null, string? kind = null)
     {
         using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -372,6 +372,39 @@ public sealed class RecordsLoggerTests : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = $"CREATE TABLE logs (id INTEGER PRIMARY KEY); PRAGMA user_version = {userVersion};";
         command.ExecuteNonQuery();
+        if (owner is not null || kind is not null)
+        {
+            command.CommandText = "CREATE TABLE file_header (key TEXT PRIMARY KEY, value TEXT NOT NULL);";
+            command.ExecuteNonQuery();
+            foreach (var (key, value) in new[] { ("format.owner", owner), ("format.kind", kind) })
+            {
+                if (value is null)
+                    continue;
+                command.CommandText = "INSERT INTO file_header (key, value) VALUES ($key, $value);";
+                command.Parameters.Clear();
+                command.Parameters.AddWithValue("$key", key);
+                command.Parameters.AddWithValue("$value", value);
+                command.ExecuteNonQuery();
+            }
+        }
+    }
+
+    private Dictionary<string, string> HeaderRows()
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = RecordsFile,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT key, value FROM file_header;";
+        using var reader = command.ExecuteReader();
+        var rows = new Dictionary<string, string>();
+        while (reader.Read())
+            rows[reader.GetString(0)] = reader.GetString(1);
+        return rows;
     }
 
     [Fact]
@@ -383,6 +416,41 @@ public sealed class RecordsLoggerTests : IDisposable
         }
 
         Assert.Equal(FormatVersions.Records, UserVersion());
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["format.owner"] = "daynote",
+            ["format.kind"] = "records",
+            ["writer.name"] = "DayNote",
+            ["writer.version"] = "1.0.0",
+        }, HeaderRows());
+        Assert.Single(ReadRows());
+    }
+
+    [Fact]
+    public void Opening_rewrites_the_writer_rows_and_never_reads_them()
+    {
+        CreateDatabase(FormatVersions.Records, "daynote", "records");
+        using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = RecordsFile, Pooling = false }.ToString()))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                DROP TABLE logs;
+                INSERT INTO file_header (key, value) VALUES ('writer.name', 'another app'), ('writer.version', 'x'),
+                    ('writer.caller.name', 'someone');
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        using (var log = Open())
+        {
+            log.Info("first");
+        }
+
+        var rows = HeaderRows();
+        Assert.Equal("DayNote", rows["writer.name"]);
+        Assert.Equal("1.0.0", rows["writer.version"]);
+        Assert.False(rows.ContainsKey("writer.caller.name"));
         Assert.Single(ReadRows());
     }
 
@@ -390,9 +458,14 @@ public sealed class RecordsLoggerTests : IDisposable
     [InlineData(0)] // tables but no version: unreadable
     [InlineData(-1)] // a version no DayNote writes
     [InlineData(FormatVersions.Records + 1)]
-    public void An_unversioned_or_newer_database_is_left_byte_identical_and_the_session_falls_back_with_one_warning(long userVersion)
+    [InlineData(FormatVersions.Records)] // no file_header table
+    [InlineData(FormatVersions.Records, "pathhide", "records")] // another owner
+    [InlineData(FormatVersions.Records, "daynote", "backups")] // another kind
+    [InlineData(FormatVersions.Records, "daynote")] // no kind
+    public void A_database_without_its_header_or_newer_is_left_byte_identical_and_the_session_falls_back_with_one_warning(
+        long userVersion, string? owner = null, string? kind = null)
     {
-        CreateDatabase(userVersion);
+        CreateDatabase(userVersion, owner, kind);
         var before = File.ReadAllBytes(RecordsFile);
 
         using (var log = Open())

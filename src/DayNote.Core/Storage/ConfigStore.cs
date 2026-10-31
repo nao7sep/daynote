@@ -11,7 +11,7 @@ namespace DayNote.Core.Storage;
 /// </summary>
 public sealed class ConfigStore(string path, Action<string> warn)
 {
-    private readonly JsonStore<Dictionary<string, JsonElement>> _store = new(path, FormatVersions.Config);
+    private readonly JsonStore<Dictionary<string, JsonElement>> _store = new(path, FileFormats.Config);
 
     // The map the file holds as of the last load or save; null while there is no file.
     private Dictionary<string, JsonElement>? _onDisk;
