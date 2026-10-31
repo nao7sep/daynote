@@ -14,7 +14,7 @@ namespace DayNote.Tests.Storage;
 [Collection(AppPathsEnvironment.CollectionName)]
 public sealed class ConfigStoreTests : IDisposable
 {
-    private const string OnlyHeader = "{\"format\":{\"owner\":\"daynote\",\"kind\":\"config\",\"version\":1},\"writer\":{\"name\":\"DayNote\",\"version\":\"1.0.0\"}}";
+    private const string OnlyHeader = "{\"format\":{\"owner\":\"daynote\",\"kind\":\"config\",\"version\":1},\"writer\":{\"name\":\"daynote\",\"version\":\"1.0.0\"}}";
 
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "daynote-config-" + IdGenerator.New());
     private readonly string? _previousHome = Environment.GetEnvironmentVariable(AppPaths.HomeEnvironmentVariable);

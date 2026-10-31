@@ -59,7 +59,7 @@ public sealed class BinderTomlTests
         var text = BinderTomlWriter.Write(SampleBinder());
 
         Assert.StartsWith(
-            "format = { owner = \"daynote\", kind = \"binder\", version = 1 }\nwriter = { name = \"DayNote\", version = \"1.0.0\" }\nid = ",
+            "format = { owner = \"daynote\", kind = \"binder\", version = 1 }\nwriter = { name = \"daynote\", version = \"1.0.0\" }\nid = ",
             text);
         var noteStart = text.IndexOf("[[note]]", StringComparison.Ordinal);
         // The binder has no title line (its title is local app state, not stored in the file).

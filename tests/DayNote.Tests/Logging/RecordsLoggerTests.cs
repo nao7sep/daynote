@@ -420,7 +420,7 @@ public sealed class RecordsLoggerTests : IDisposable
         {
             ["format.owner"] = "daynote",
             ["format.kind"] = "records",
-            ["writer.name"] = "DayNote",
+            ["writer.name"] = "daynote",
             ["writer.version"] = "1.0.0",
         }, HeaderRows());
         Assert.Single(ReadRows());
@@ -448,7 +448,7 @@ public sealed class RecordsLoggerTests : IDisposable
         }
 
         var rows = HeaderRows();
-        Assert.Equal("DayNote", rows["writer.name"]);
+        Assert.Equal("daynote", rows["writer.name"]);
         Assert.Equal("1.0.0", rows["writer.version"]);
         Assert.False(rows.ContainsKey("writer.caller.name"));
         Assert.Single(ReadRows());

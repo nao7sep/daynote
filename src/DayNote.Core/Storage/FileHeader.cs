@@ -29,8 +29,8 @@ public static class FileHeader
 {
     public const string Owner = "daynote";
 
-    /// <summary>The package that serializes DayNote's files.</summary>
-    public const string WriterName = "DayNote";
+    /// <summary>The package that serializes DayNote's files, lowercase as identifiers are.</summary>
+    public const string WriterName = "daynote";
 
     private const string FormatKey = "format";
     private const string WriterKey = "writer";

@@ -110,7 +110,7 @@ public sealed class JsonStoreTests : IDisposable
         var members = document.RootElement.EnumerateObject().Take(2).ToArray();
         Assert.Equal(["format", "writer"], members.Select(member => member.Name));
         Assert.True(JsonElement.DeepEquals(JsonDocument.Parse("""{"owner":"daynote","kind":"config","version":1}""").RootElement, members[0].Value));
-        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse("""{"name":"DayNote","version":"1.0.0"}""").RootElement, members[1].Value));
+        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse("""{"name":"daynote","version":"1.0.0"}""").RootElement, members[1].Value));
     }
 
     [Fact]
