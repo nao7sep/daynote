@@ -878,7 +878,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     [AvaloniaTheory]
     [InlineData("{ not json")]
     [InlineData("""{"binders":[]}""")] // no format version
-    [InlineData("{\"format\":{\"owner\":\"daynote\",\"kind\":\"binderList\",\"version\":2},\"binders\":[]}")] // a newer DayNote's
+    [InlineData("{\"format\":{\"owner\":\"daynote\",\"kind\":\"binder-list\",\"version\":2},\"binders\":[]}")] // a newer DayNote's
     public async Task A_binder_list_that_cannot_be_used_halts_names_its_path_and_is_left_byte_identical(string content)
     {
         Directory.CreateDirectory(_home);

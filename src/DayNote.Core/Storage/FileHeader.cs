@@ -11,7 +11,7 @@ public static class FileFormats
 {
     public static readonly FileFormat Binder = new("binder", FormatVersions.Binder);
     public static readonly FileFormat Config = new("config", FormatVersions.Config);
-    public static readonly FileFormat BinderList = new("binderList", FormatVersions.Binders);
+    public static readonly FileFormat BinderList = new("binder-list", FormatVersions.Binders);
     public static readonly FileFormat State = new("state", FormatVersions.State);
     public static readonly FileFormat Records = new("records", FormatVersions.Records);
     public static readonly FileFormat Backups = new("backups", FormatVersions.Backups);

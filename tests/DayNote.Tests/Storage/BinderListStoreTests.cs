@@ -59,7 +59,7 @@ public sealed class BinderListStoreTests : IDisposable
     [Theory]
     [InlineData("{ broken")]
     [InlineData("""{ "binders": [] }""")] // no format version
-    [InlineData("{\"format\":{\"owner\":\"daynote\",\"kind\":\"binderList\",\"version\":2},\"binders\":[]}")] // newer
+    [InlineData("{\"format\":{\"owner\":\"daynote\",\"kind\":\"binder-list\",\"version\":2},\"binders\":[]}")] // newer
     public void A_file_that_cannot_be_used_throws_and_is_left_byte_identical(string json)
     {
         File.WriteAllText(ListPath, json);

@@ -9,7 +9,7 @@ internal static class TestHeaders
 
     /// <summary>The start of a JSON file through the header and the comma after it.</summary>
     public const string ConfigOpen = "{\"format\":{\"owner\":\"daynote\",\"kind\":\"config\",\"version\":1}," + Writer + ",";
-    public const string BinderListOpen = "{\"format\":{\"owner\":\"daynote\",\"kind\":\"binderList\",\"version\":1}," + Writer + ",";
+    public const string BinderListOpen = "{\"format\":{\"owner\":\"daynote\",\"kind\":\"binder-list\",\"version\":1}," + Writer + ",";
     public const string StateOpen = "{\"format\":{\"owner\":\"daynote\",\"kind\":\"state\",\"version\":1}," + Writer + ",";
 
     /// <summary>A binder's first two lines.</summary>
