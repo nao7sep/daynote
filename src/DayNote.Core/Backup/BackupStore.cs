@@ -319,11 +319,7 @@ public static class BackupStore
 
             // Check compatibility before WAL or the schema can change the file. Unsupported history stays
             // untouched, and recording is disabled for the session.
-            var found = SqliteFormatVersion.Claim(connection, FormatVersions.Backups, "backups.sqlite3");
-            if (found != 0 && found != FormatVersions.Backups)
-            {
-                throw new InvalidDataException($"backups.sqlite3 records unsupported format version {found}.");
-            }
+            SqliteFormatVersion.Claim(connection, FormatVersions.Backups, "backups.sqlite3");
 
             using (var pragma = connection.CreateCommand())
             {

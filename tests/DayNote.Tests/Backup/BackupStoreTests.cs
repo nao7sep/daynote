@@ -364,8 +364,6 @@ public sealed class BackupStoreTests : IDisposable
     [Theory]
     [InlineData(0)] // tables but no version: unreadable
     [InlineData(-1)] // a version no DayNote writes
-    [InlineData(1)] // experimental format before sessions
-    [InlineData(2)] // earlier experimental format
     [InlineData(FormatVersions.Backups + 1)]
     public void An_unsupported_store_is_left_byte_identical_with_one_warn_and_the_save_still_lands(long userVersion)
     {

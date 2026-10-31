@@ -23,6 +23,6 @@ public static class FormatVersions
     public const int Records = 1;
 
     /// <summary><c>backups.sqlite3</c> (<c>PRAGMA user_version</c>). Each path keeps one row per session,
-    /// holding the file as one value. Older experimental stores are left untouched and are not converted.</summary>
-    public const int Backups = 3;
+    /// holding the file as one value.</summary>
+    public const int Backups = 1;
 }
