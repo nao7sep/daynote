@@ -177,6 +177,35 @@ public sealed class JsonStoreTests : IDisposable
         Assert.Equal(json, File.ReadAllText(_path));
     }
 
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("""{"format":{"owner":"daynote","kind":"config","version":2}}""")]
+    public void A_refused_file_is_never_written_by_a_later_save(string json)
+    {
+        File.WriteAllText(_path, json);
+        Assert.ThrowsAny<Exception>(() => _store.Load());
+
+        Assert.Throws<InvalidOperationException>(() => _store.Save(new AppConfig()));
+
+        Assert.Equal(json, File.ReadAllText(_path));
+    }
+
+    [Fact]
+    public void Disposable_state_that_cannot_be_read_is_replaced_but_a_newer_one_is_not()
+    {
+        var state = new JsonStore<AppState>(_path, FileFormats.State, recordBackup: false, replacesUnreadable: true);
+        File.WriteAllText(_path, "{ not json");
+        Assert.ThrowsAny<Exception>(() => state.Load());
+        state.Save(new AppState());
+        Assert.NotNull(state.Load());
+
+        var newer = TestHeaders.JsonOpen(FileFormats.State, FormatVersions.State + 1) + "\"bindersPaneWidth\":333}";
+        File.WriteAllText(_path, newer);
+        Assert.Throws<NewerFormatException>(() => state.Load());
+        Assert.Throws<InvalidOperationException>(() => state.Save(new AppState()));
+        Assert.Equal(newer, File.ReadAllText(_path));
+    }
+
     public void Dispose()
     {
         BackupStore.Close();

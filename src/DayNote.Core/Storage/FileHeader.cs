@@ -150,6 +150,65 @@ public static class FileHeader
         rewrite.Commit();
     }
 
+    /// <summary>
+    /// Checks a database's header without writing anything, for a store that opens later: the refusal
+    /// <see cref="ClaimSqlite"/> would throw, or null when the file passes or does not exist yet.
+    /// </summary>
+    public static Exception? CheckSqliteFile(string path, FileFormat format, string store)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = path,
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = false,
+            }.ToString());
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA user_version;";
+            var found = (long)command.ExecuteScalar()!;
+            if (found > format.Version)
+            {
+                return new NewerFormatException(store, found, format.Version);
+            }
+
+            command.CommandText = $"SELECT EXISTS (SELECT 1 FROM sqlite_master);";
+            if (found == 0 && (long)command.ExecuteScalar()! == 0)
+            {
+                return null;
+            }
+
+            command.CommandText = $"SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '{TableName}');";
+            string? owner = null, kind = null;
+            if ((long)command.ExecuteScalar()! != 0)
+            {
+                command.CommandText = $"SELECT key, value FROM {TableName} WHERE key IN ('format.owner', 'format.kind');";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    if (reader.GetString(0) == "format.owner")
+                        owner = reader.GetString(1);
+                    else
+                        kind = reader.GetString(1);
+                }
+            }
+
+            return VersionOf(format, owner, kind, found) == format.Version
+                ? null
+                : new InvalidDataException($"{store} is not a {Owner} {format.Kind} database this build reads.");
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
     private static void WriteWriterRows(SqliteCommand command) =>
         WriteRows(command, ("writer.name", WriterName), ("writer.version", WriterVersion));
 

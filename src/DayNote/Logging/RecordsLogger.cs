@@ -58,6 +58,9 @@ public sealed class RecordsLogger : IAppLogger, IRecordsSource, IDisposable
     private readonly TimeProvider _clock;
     private int _disposed;
 
+    /// <summary>Why the records database could not be opened this session, or null while it is in use.</summary>
+    public Exception? OpenError => _openError;
+
     private RecordsLogger(
         SqliteConnection? connection, Exception? openError, DateTimeOffset sessionStart, string fallbackDirectory, bool debugEnabled,
         TimeProvider clock)

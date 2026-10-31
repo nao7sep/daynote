@@ -59,7 +59,7 @@ public partial class App : Application
             // Startup takes the settings already loaded for the language and gates required storage
             // failures, so a failure becomes an in-app error rather than a pre-UI crash.
             var dialogs = new DialogService(Program.Log);
-            var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log, startupSettings: Program.Settings)
+            var viewModel = new MainWindowViewModel(Program.Paths, dialogs, Program.Log, startupSettings: Program.Settings, recordsOpenError: Program.RecordsOpenError)
             {
                 ComputerLanguages = ComputerLanguages,
             };

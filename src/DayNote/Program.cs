@@ -23,6 +23,9 @@ internal static class Program
     /// <summary>The single path resolver, resolved once here and threaded to the rest of the app.</summary>
     internal static AppPaths Paths { get; private set; } = null!;
 
+    /// <summary>Why the records database was refused this session, or null while it is in use.</summary>
+    internal static Exception? RecordsOpenError { get; private set; }
+
     /// <summary>
     /// The settings store and the outcome of its one startup load, read here for the language and handed
     /// to the main window, which owns presenting a load failure. Avalonia constructs the app itself, so
@@ -158,6 +161,7 @@ internal static class Program
         }
         bootstrapWarnings.Clear();
         Records = logger;
+        RecordsOpenError = logger.OpenError;
         Paths = paths;
         RegisterCrashHooks(logger);
 

@@ -100,6 +100,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
     // not a file this build can read, or a newer DayNote wrote it. While set, nothing is saved.
     private Message? _startupFailure;
 
+    // Side stores refused for this session that the window says so about once it is ready.
+    private readonly List<(string Key, Message Message)> _sideStoreNotices = [];
+
     private LoadedBinder? _current;
     // The content hash of the version DayNote last loaded or wrote: what the next save expects to find on
     // disk before replacing it.
@@ -170,7 +173,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         Action<string, string>? copyFile = null,
         Func<string, bool>? fileExists = null,
         Func<string, bool>? directoryExists = null,
-        (ConfigStore Store, AppConfig? Config, Exception? Error)? startupSettings = null)
+        (ConfigStore Store, AppConfig? Config, Exception? Error)? startupSettings = null,
+        Exception? recordsOpenError = null,
+        Func<Exception?>? checkBackups = null)
     {
         _paths = paths;
         _dialogs = dialogs;
@@ -185,13 +190,16 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         _configStore = startupSettings?.Store ?? new ConfigStore(paths.ConfigFile, key => _log.Warn("Invalid configuration set; using built-in", new { key }));
         _binderListStore = new BinderListStore(paths.BindersFile, _ => _log.Warn("Invalid binder list; listing none", new { path = paths.BindersFile }));
         // Not recorded in the backup history: placement and selection are state, never the user's work.
-        _stateStore = new JsonStore<AppState>(paths.StateFile, FileFormats.State, recordBackup: false);
+        _stateStore = new JsonStore<AppState>(paths.StateFile, FileFormats.State, recordBackup: false, replacesUnreadable: true);
 
         // All startup I/O (directory creation, reading config/state) is gated here, rather than
         // crashing before any UI exists: a settings file that cannot be read halts with saving
         // disabled and an error dialog once the window is shown; a state file that cannot be read
         // only costs the remembered view.
-        LoadConfigAndState(startupSettings);
+        LoadConfigAndState(
+            startupSettings,
+            recordsOpenError,
+            checkBackups ?? (() => FileHeader.CheckSqliteFile(paths.BackupStoreFile, FileFormats.Backups, "backups.sqlite3")));
         _displayZone = DayNoteTime.DisplayZone(_config.TimeZone);
 
         Editor = new EditorViewModel(_displayZone, _clock);
@@ -490,6 +498,11 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
             {
                 await _dialogs.ShowErrorAsync(Message.Of("failure.startupDataTitle"), failure);
                 return;
+            }
+
+            foreach (var (key, notice) in _sideStoreNotices)
+            {
+                ShowResult(OperationResultKind.Warning, notice, "sideStore." + key);
             }
 
             var open = SupersedeOpen();
@@ -2996,12 +3009,21 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
     }
 
-    // Each store recovers on its own path (store-recovery-conventions). Settings or a binder list that
-    // cannot be used, whether unreadable, malformed or newer, halt and stay untouched: they hold authored
-    // text styles and the binders the user keeps. The view state is disposable: any failure is logged,
-    // defaults apply, and the next state save replaces the file.
-    private void LoadConfigAndState((ConfigStore Store, AppConfig? Config, Exception? Error)? startupSettings)
+    // Every file DayNote reads at launch is checked before anything is written, and each refusal is
+    // handled as store-recovery-conventions (What a refused file does) say. Any of them written by a newer
+    // DayNote stops the launch. Settings and the binder list, which the user built, stop it when they
+    // cannot be read too. The view state is disposable: one that cannot be read takes defaults without a
+    // notice, and the next state save replaces it. A records or backup database that cannot be read stays
+    // untouched and off for the session, and the window says so. A launch stop names every refused file
+    // in one message, and nothing is written: IsReady stays false, and every store refuses a save to the
+    // file it refused.
+    private void LoadConfigAndState(
+        (ConfigStore Store, AppConfig? Config, Exception? Error)? startupSettings,
+        Exception? recordsOpenError,
+        Func<Exception?> checkBackups)
     {
+        var stops = new List<Message>();
+
         var error = startupSettings?.Error;
         if (error is null)
         {
@@ -3018,10 +3040,9 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         if (error is not null)
         {
-            _startupFailure = FailurePresentation.StartupSettings(_paths.ConfigFile, error);
+            stops.Add(FailurePresentation.StartupSettings(_paths.ConfigFile, error));
             _config = new AppConfig();
             _log.Error("Failed to load configuration; saving disabled", new { path = _paths.ConfigFile }, error);
-            return;
         }
 
         try
@@ -3030,19 +3051,51 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
         }
         catch (Exception ex)
         {
-            _startupFailure = FailurePresentation.StartupBinders(_paths.BindersFile);
+            stops.Add(FailurePresentation.StartupBinders(_paths.BindersFile, ex));
             _log.Error("Failed to load the binder list; saving disabled", new { path = _paths.BindersFile }, ex);
-            return;
         }
 
         try
         {
             _state = _stateStore.Load() ?? new AppState();
         }
+        catch (NewerFormatException ex)
+        {
+            _state = new AppState();
+            stops.Add(FailurePresentation.StartupStateNewer(_paths.StateFile));
+            _log.Error("The state file is newer; saving disabled", new { path = _paths.StateFile }, ex);
+        }
         catch (Exception ex)
         {
             _state = new AppState();
             _log.Warn("Failed to load state; using defaults", new { path = _paths.StateFile }, ex);
+        }
+
+        if (recordsOpenError is NewerFormatException)
+        {
+            stops.Add(FailurePresentation.StartupRecordsNewer(_paths.RecordsFile));
+        }
+        else if (recordsOpenError is not null)
+        {
+            _sideStoreNotices.Add(("records", FailurePresentation.RecordsOff(_paths.RecordsFile, _paths.LogsDirectory)));
+        }
+
+        var backupsError = checkBackups();
+        if (backupsError is NewerFormatException)
+        {
+            stops.Add(FailurePresentation.StartupBackupsNewer(_paths.BackupStoreFile));
+            _log.Error("The backup history is newer", new { path = _paths.BackupStoreFile }, backupsError);
+        }
+        else if (backupsError is not null)
+        {
+            _sideStoreNotices.Add(("backups", FailurePresentation.BackupsOff(_paths.BackupStoreFile)));
+            _log.Warn("The backup history cannot be read; recording is off for this session", new { path = _paths.BackupStoreFile }, backupsError);
+        }
+
+        if (stops.Count > 0)
+        {
+            _startupFailure = FailurePresentation.StartupStop(stops);
+            return;
         }
 
         _log.Info("Configuration and state loaded", ConfigSummary(_config));

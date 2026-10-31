@@ -25,11 +25,35 @@ public static class FailurePresentation
     }, ("path", QuotedValue.Path(configFile)));
 
     /// <summary>
-    /// Why the binder list stopped startup: it could not be read, is not a list this build can read, or a
-    /// newer DayNote wrote it. The file is left untouched, since it is the list the user keeps.
+    /// Why the binder list stopped startup: a newer DayNote wrote it, or it could not be read. The file is
+    /// left untouched, since it is the list the user keeps.
     /// </summary>
-    public static Message StartupBinders(string bindersFile) =>
-        Message.Of("failure.startupBinders", ("path", QuotedValue.Path(bindersFile)));
+    public static Message StartupBinders(string bindersFile, Exception error) => Message.Of(
+        error is NewerFormatException ? "failure.startupBindersNewer" : "failure.startupBinders",
+        ("path", QuotedValue.Path(bindersFile)));
+
+    /// <summary>The view state was written by a newer DayNote, which stops startup, untouched.</summary>
+    public static Message StartupStateNewer(string stateFile) =>
+        Message.Of("failure.startupStateNewer", ("path", QuotedValue.Path(stateFile)));
+
+    /// <summary>The records database was written by a newer DayNote, which stops startup, untouched.</summary>
+    public static Message StartupRecordsNewer(string recordsFile) =>
+        Message.Of("failure.startupRecordsNewer", ("path", QuotedValue.Path(recordsFile)));
+
+    /// <summary>The backup history was written by a newer DayNote, which stops startup, untouched.</summary>
+    public static Message StartupBackupsNewer(string backupsFile) =>
+        Message.Of("failure.startupBackupsNewer", ("path", QuotedValue.Path(backupsFile)));
+
+    /// <summary>Every file that stopped startup, in one message, each in its own paragraph.</summary>
+    public static Message StartupStop(IReadOnlyList<Message> stops) => Message.Join("failure.startupJoin", stops);
+
+    /// <summary>The records database could not be read: untouched, and this session records to a text file.</summary>
+    public static Message RecordsOff(string recordsFile, string logsDirectory) => Message.Of(
+        "failure.recordsOff", ("path", QuotedValue.Path(recordsFile)), ("folder", QuotedValue.Path(logsDirectory)));
+
+    /// <summary>The backup history could not be read: untouched, and nothing is recorded this session.</summary>
+    public static Message BackupsOff(string backupsFile) =>
+        Message.Of("failure.backupsOff", ("path", QuotedValue.Path(backupsFile)));
 
     public static Message OpenBinder(Exception error, string binderTitle) => error switch
     {

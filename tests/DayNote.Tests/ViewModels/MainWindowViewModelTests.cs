@@ -876,10 +876,10 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaTheory]
-    [InlineData("{ not json")]
-    [InlineData("""{"binders":[]}""")] // no format version
-    [InlineData("{\"format\":{\"owner\":\"daynote\",\"kind\":\"binder-list\",\"version\":2},\"binders\":[]}")] // a newer DayNote's
-    public async Task A_binder_list_that_cannot_be_used_halts_names_its_path_and_is_left_byte_identical(string content)
+    [InlineData("{ not json", "failure.startupBinders")]
+    [InlineData("""{"binders":[]}""", "failure.startupBinders")] // no header
+    [InlineData("{\"format\":{\"owner\":\"daynote\",\"kind\":\"binder-list\",\"version\":2},\"binders\":[]}", "failure.startupBindersNewer")] // a newer DayNote's
+    public async Task A_binder_list_that_cannot_be_used_halts_names_its_path_and_is_left_byte_identical(string content, string reason)
     {
         Directory.CreateDirectory(_home);
         File.WriteAllText(BindersPath, content);
@@ -894,7 +894,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.False(vm.IsReady);
         var (title, message) = Assert.Single(_dialogs.Errors);
         Assert.Equal("failure.startupDataTitle", title.Key);
-        Assert.Equal("failure.startupBinders", message.Key);
+        Assert.Equal(reason, message.Key);
         Assert.Contains(BindersPath, English.Of(message), StringComparison.Ordinal);
         await vm.ShutdownAsync();
 
@@ -927,29 +927,96 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task A_newer_state_file_opens_on_the_default_view_with_one_warning_and_is_replaced()
+    public async Task A_newer_state_file_stops_the_launch_names_its_path_and_is_left_byte_identical()
     {
         Directory.CreateDirectory(_home);
         File.WriteAllText(StatePath, TestHeaders.JsonOpen(FileFormats.State, FormatVersions.State + 1) + "\"bindersPaneWidth\":333}");
         var before = File.ReadAllBytes(StatePath);
-        var log = new RecordingLogger();
 
-        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, log);
+        var vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
         _viewModels.Add(vm);
         await vm.InitializeAsync();
-        Assert.True(vm.IsReady);
-        Assert.Equal(new AppState().BindersPaneWidth, vm.BindersPaneWidth);
+        vm.BindersPaneWidth = 250;
+        await vm.ShutdownAsync();
 
-        // The view state is disposable: the next state save replaces the newer file.
+        Assert.False(vm.IsReady);
+        var (title, message) = Assert.Single(_dialogs.Errors);
+        Assert.Equal("failure.startupDataTitle", title.Key);
+        Assert.Equal("failure.startupStateNewer", message.Key);
+        Assert.Contains(StatePath, English.Of(message), StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllBytes(StatePath));
+        Assert.False(File.Exists(ConfigPath));
+        Assert.False(File.Exists(BindersPath));
+    }
+
+    [AvaloniaFact]
+    public async Task Every_refused_launch_file_is_named_in_one_message_and_none_is_written()
+    {
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(ConfigPath, TestHeaders.JsonOpen(FileFormats.Config, FormatVersions.Config + 1) + "\"theme\":\"dark\"}");
+        File.WriteAllText(BindersPath, "{ not json");
+        File.WriteAllText(StatePath, TestHeaders.JsonOpen(FileFormats.State, FormatVersions.State + 1) + "\"bindersPaneWidth\":333}");
+        var files = new[] { ConfigPath, BindersPath, StatePath };
+        var before = files.Select(File.ReadAllBytes).ToArray();
+        var paths = new AppPaths();
+
+        var vm = new MainWindowViewModel(paths, _dialogs, new NullLogger(),
+            recordsOpenError: new NewerFormatException("records.sqlite3", 2, 1),
+            checkBackups: () => new NewerFormatException("backups.sqlite3", 2, 1));
+        _viewModels.Add(vm);
+        await vm.InitializeAsync();
+        await vm.ShutdownAsync();
+
+        Assert.False(vm.IsReady);
+        var (_, message) = Assert.Single(_dialogs.Errors);
+        Assert.Equal(
+            ["failure.startupSettingsNewer", "failure.startupBinders", "failure.startupStateNewer", "failure.startupRecordsNewer", "failure.startupBackupsNewer"],
+            English.KeysIn(message).Where(key => key != "failure.startupJoin"));
+        var text = English.Of(message);
+        foreach (var path in new[] { ConfigPath, BindersPath, StatePath, paths.RecordsFile, paths.BackupStoreFile })
+            Assert.Contains(QuotedValue.Path(path), text, StringComparison.Ordinal);
+        Assert.Equal(before, files.Select(File.ReadAllBytes));
+    }
+
+    [AvaloniaTheory]
+    [InlineData("records")]
+    [InlineData("backups")]
+    public async Task An_unreadable_side_store_is_shown_and_the_app_keeps_running(string store)
+    {
+        var paths = new AppPaths();
+        var vm = new MainWindowViewModel(paths, _dialogs, new NullLogger(),
+            recordsOpenError: store == "records" ? new InvalidDataException("not a records database") : null,
+            checkBackups: () => store == "backups" ? new InvalidDataException("not a backup history") : null);
+        _viewModels.Add(vm);
+        await vm.InitializeAsync();
+
+        Assert.True(vm.IsReady);
+        Assert.Empty(_dialogs.Errors);
+        var notice = Assert.Single(vm.Results);
+        Assert.Equal(OperationResultKind.Warning, notice.Kind);
+        Assert.Equal(store == "records" ? "failure.recordsOff" : "failure.backupsOff", notice.Message.Key);
+        Assert.Contains(QuotedValue.Path(store == "records" ? paths.RecordsFile : paths.BackupStoreFile), English.Of(notice.Message), StringComparison.Ordinal);
+        await vm.ShutdownAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task An_unreadable_backup_history_stays_byte_identical_through_a_session_of_saves()
+    {
+        var paths = new AppPaths();
+        Directory.CreateDirectory(_home);
+        File.WriteAllText(paths.BackupStoreFile, "not a database");
+        var before = File.ReadAllBytes(paths.BackupStoreFile);
+
+        var vm = NewViewModel();
+        await vm.InitializeAsync();
+        Assert.Equal("failure.backupsOff", Assert.Single(vm.Results).Message.Key);
         _dialogs.BinderToCreate = BinderPath;
         await vm.NewBinderCommand.ExecuteAsync(null);
         await vm.ShutdownAsync();
+        BackupStore.Close();
 
-        Assert.Empty(_dialogs.Errors);
-        Assert.Single(log.Entries, entry => entry.Level == "warn");
-        Assert.Empty(SetAsideCopies());
-        Assert.NotEqual(before, File.ReadAllBytes(StatePath));
-        Assert.Equal(BinderPath, new JsonStore<AppState>(StatePath, FileFormats.State).Load()!.CurrentBinderPath);
+        Assert.True(File.Exists(BinderPath));
+        Assert.Equal(before, File.ReadAllBytes(paths.BackupStoreFile));
     }
 
     private string NewerBinderText =>

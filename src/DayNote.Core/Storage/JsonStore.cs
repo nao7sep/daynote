@@ -19,9 +19,18 @@ public sealed class JsonStore<T>
     private readonly string _path;
     private readonly FileFormat _format;
     private readonly bool _recordBackup;
+    private readonly bool _replacesUnreadable;
 
-    public JsonStore(string path, FileFormat format, bool recordBackup = true)
+    // Set when the last load refused the file: it then stays byte-identical, whatever saves later.
+    private bool _refused;
+
+    /// <param name="replacesUnreadable">
+    /// The file is disposable state: one that cannot be read may be replaced by the next save. A newer
+    /// file is never replaced, and no other store's refused file is either (store-recovery-conventions).
+    /// </param>
+    public JsonStore(string path, FileFormat format, bool recordBackup = true, bool replacesUnreadable = false)
     {
+        _replacesUnreadable = replacesUnreadable;
         _path = path;
         _format = format;
         _recordBackup = recordBackup;
@@ -30,6 +39,26 @@ public sealed class JsonStore<T>
     /// <exception cref="InvalidDataException">The file is not a store this build can read.</exception>
     /// <exception cref="NewerFormatException">The file records a newer format than this store reads.</exception>
     public T? Load()
+    {
+        try
+        {
+            var loaded = Read();
+            _refused = false;
+            return loaded;
+        }
+        catch (NewerFormatException)
+        {
+            _refused = true;
+            throw;
+        }
+        catch
+        {
+            _refused = !_replacesUnreadable;
+            throw;
+        }
+    }
+
+    private T? Read()
     {
         if (!File.Exists(_path))
         {
@@ -66,8 +95,14 @@ public sealed class JsonStore<T>
         }
     }
 
+    /// <exception cref="InvalidOperationException">The last load refused the file, which is never changed.</exception>
     public void Save(T value)
     {
+        if (_refused)
+        {
+            throw new InvalidOperationException($"{Path.GetFileName(_path)} was refused at load and is left as it is.");
+        }
+
         var body = JsonSerializer.SerializeToNode(value, DayNoteJson.Options) as JsonObject
             ?? throw new InvalidOperationException($"{typeof(T).Name} does not serialize to a JSON object.");
         var members = body.ToList();
