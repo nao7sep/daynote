@@ -91,23 +91,6 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public void A_binder_list_from_before_binders_json_is_surfaced_once_and_left_out_of_the_next_save()
-    {
-        const string binders = """[{"path":"/tmp/a.daynote","title":"A"}]""";
-        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"theme":"dark","binders":{{binders}}}""");
-        var store = Store;
-
-        var config = store.Load();
-        Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(binders).RootElement, store.RetiredBinders!.Value));
-        Assert.Empty(_warnings);
-        store.Save(config);
-
-        Assert.Null(store.RetiredBinders);
-        using var saved = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-        Assert.Equal(new[] { "formatVersion", "theme" }, saved.RootElement.EnumerateObject().Select(property => property.Name));
-    }
-
-    [Fact]
     public void Changing_an_invalid_authored_set_replaces_its_stored_value()
     {
         File.WriteAllText(ConfigPath, """{"formatVersion":1,"textStyles":[{"fontFamily":"A"}]}""");

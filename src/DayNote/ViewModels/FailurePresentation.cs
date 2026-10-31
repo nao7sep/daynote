@@ -26,12 +26,10 @@ public static class FailurePresentation
 
     /// <summary>
     /// Why the binder list stopped startup: it could not be read, is not a list this build can read, or a
-    /// newer DayNote wrote it, and the file is left untouched, since it is the list the user keeps; or it
-    /// could not be created from the list the settings file still holds, where that list stays.
+    /// newer DayNote wrote it. The file is left untouched, since it is the list the user keeps.
     /// </summary>
-    public static Message StartupBinders(string bindersFile, string configFile, Exception error) => error is BinderListMoveException
-        ? Message.Of("failure.startupBinderMove", ("path", QuotedValue.Path(bindersFile)), ("settings", QuotedValue.Path(configFile)))
-        : Message.Of("failure.startupBinders", ("path", QuotedValue.Path(bindersFile)));
+    public static Message StartupBinders(string bindersFile) =>
+        Message.Of("failure.startupBinders", ("path", QuotedValue.Path(bindersFile)));
 
     public static Message OpenBinder(Exception error, string binderTitle) => error switch
     {

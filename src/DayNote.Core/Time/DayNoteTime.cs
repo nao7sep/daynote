@@ -6,7 +6,7 @@ namespace DayNote.Core.Time;
 /// Timestamp conventions for DayNote. Internal timestamps are UTC, ISO-8601 with millisecond
 /// precision (the serialized form used for data values such as the backup store's written_at_utc).
 /// Filename timestamps use <c>yyyymmdd-hhmmss-utc</c> at second precision; the one such name is the
-/// per-launch fallback log.
+/// fallback log, named for the session (`logs/<stamp>.log`).
 /// User-facing timestamps are rendered in the reader's culture and in the display zone: the
 /// computer's own by default (<see cref="SystemZone"/>), or a zone the user chose from
 /// <see cref="ZoneIds"/>.

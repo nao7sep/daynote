@@ -103,7 +103,6 @@
   "failure.saveBinderPermission": "Your changes are still in DayNote, but the binder could not be saved. Check that the binder location is writable, then try again.",
   "failure.settingsSave": "Settings could not be saved. Your changes are still here; try again.",
   "failure.startupBinders": "DayNote couldn’t read its binder list at {path}, so it stopped before changing anything. The file was left in place. Check its permissions, fix it or move it aside, then restart DayNote; without the file, DayNote starts with an empty binder list. Your binders and notes are not affected.",
-  "failure.startupBinderMove": "DayNote couldn’t move its binder list from the settings file at {settings} into its own file at {path}, so it stopped before changing anything. The list is still in the settings file, unchanged. Check that DayNote can write to the folder that holds {path}, then restart DayNote to try again. Your binders and notes are not affected.",
   "failure.startupDataTitle": "Load failed",
   "failure.startupSettings": "DayNote couldn’t read its settings file at {path}, so it stopped before changing anything. The file was left in place. Check its permissions or move it aside, then restart DayNote.",
   "failure.startupSettingsMalformed": "DayNote’s settings file at {path} isn’t in a format DayNote can read, so DayNote stopped before changing anything. The file was left in place. Fix the file and restart DayNote, or move the file aside and restart DayNote, which then starts with default settings. Your binders and notes are not affected.",

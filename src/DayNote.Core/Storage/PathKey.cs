@@ -20,7 +20,7 @@ public static partial class PathKey
 
     /// <summary>
     /// The existing file's resolved name, including its stored case. Called off the UI thread when a
-    /// binder is loaded or its registry is checked. Missing or inaccessible paths retain their spelling.
+    /// binder is loaded or the binder list is checked. Missing or inaccessible paths retain their spelling.
     /// </summary>
     public static string Resolve(string path) => ResolveExisting(path) ?? Normalize(path);
 

@@ -2109,7 +2109,7 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
                     });
                     var saved = publication.Saved;
                     // Atomic replacement can change the stored spelling. Update aliases together and
-                    // invalidate older registry checks before they can restore stale keys.
+                    // invalidate older binder list checks before they can restore stale keys.
                     _binderPathKeys.Published(path, publication.Key);
                     _baselineHash = saved.ContentHash;
                     foreach (var (id, savedNote) in written)
@@ -3026,22 +3026,13 @@ public sealed partial class MainWindowViewModel : ViewModelBase, IRecordsWindowH
 
         try
         {
-            _knownBinders = _binderListStore.Load(_configStore.RetiredBinders);
+            _knownBinders = _binderListStore.Load();
         }
         catch (Exception ex)
         {
-            _startupFailure = FailurePresentation.StartupBinders(_paths.BindersFile, _paths.ConfigFile, ex);
+            _startupFailure = FailurePresentation.StartupBinders(_paths.BindersFile);
             _log.Error("Failed to load the binder list; saving disabled", new { path = _paths.BindersFile }, ex);
             return;
-        }
-
-        // The binder list config.json held before it had its own file is in binders.json now: once the
-        // settings are saved without it, the move is done. A failed save leaves both, and the next launch
-        // tries again, since binders.json is then the list.
-        if (_configStore.RetiredBinders is not null)
-        {
-            if (TrySaveConfig(_config))
-                _log.Info("Moved the binder list to its own file", new { path = _paths.BindersFile, count = _knownBinders.Count });
         }
 
         try

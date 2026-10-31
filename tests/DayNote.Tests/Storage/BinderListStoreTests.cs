@@ -56,33 +56,6 @@ public sealed class BinderListStoreTests : IDisposable
         Assert.Equal(new[] { ("/b.daynote", "B"), ("/a.daynote", "A") }, Store.Load().Select(entry => (entry.Path, entry.Title)));
     }
 
-    [Fact]
-    public void A_moved_list_is_written_once_as_stored_and_only_while_there_is_no_file()
-    {
-        var moved = JsonDocument.Parse("""[{"path":"/a.daynote","title":"A"}]""").RootElement;
-
-        Assert.Equal("A", Assert.Single(Store.Load(moved)).Title);
-        Assert.True(JsonElement.DeepEquals(moved, SavedList()));
-
-        var other = JsonDocument.Parse("""[{"path":"/b.daynote","title":"B"}]""").RootElement;
-        Assert.Equal("A", Assert.Single(Store.Load(other)).Title);
-        Assert.True(JsonElement.DeepEquals(moved, SavedList()));
-    }
-
-    [Fact]
-    public void A_moved_list_that_cannot_be_written_throws_its_own_exception_and_leaves_no_file()
-    {
-        // A file where the list's folder belongs: there is no list to read, and none can be written.
-        var store = new BinderListStore(Path.Combine(_directory, "missing", "binders.json"), _warnings.Add);
-        File.WriteAllText(Path.Combine(_directory, "missing"), "a file where the folder belongs");
-        var moved = JsonDocument.Parse("""[{"path":"/a.daynote","title":"A"}]""").RootElement;
-
-        var error = Assert.Throws<BinderListMoveException>(() => store.Load(moved));
-
-        Assert.NotNull(error.InnerException);
-        Assert.False(File.Exists(ListPath));
-    }
-
     [Theory]
     [InlineData("{ broken")]
     [InlineData("""{ "binders": [] }""")] // no format version
@@ -92,7 +65,7 @@ public sealed class BinderListStoreTests : IDisposable
         File.WriteAllText(ListPath, json);
         var before = File.ReadAllBytes(ListPath);
 
-        Assert.ThrowsAny<Exception>(() => Store.Load(JsonDocument.Parse("[]").RootElement));
+        Assert.ThrowsAny<Exception>(() => Store.Load());
 
         Assert.Equal(before, File.ReadAllBytes(ListPath));
     }

@@ -98,7 +98,6 @@
   "failure.saveBinderPermission": "변경 내용은 DayNote에 남아 있지만 바인더를 저장하지 못했습니다. 바인더 위치에 쓸 수 있는지 확인한 후 다시 시도하십시오.",
   "failure.settingsSave": "설정을 저장하지 못했습니다. 변경한 내용은 그대로 남아 있습니다. 다시 시도하십시오.",
   "failure.startupBinders": "DayNote가 {path}에 있는 바인더 목록을 읽지 못해 아무것도 변경하지 않고 실행을 중단했습니다. 파일은 원래 자리에 그대로 두었습니다. 파일 권한을 확인하거나, 파일을 고치거나 다른 곳으로 옮긴 후 DayNote를 다시 시작하십시오. 파일이 없으면 DayNote는 빈 바인더 목록으로 실행됩니다. 바인더와 노트는 영향을 받지 않습니다.",
-  "failure.startupBinderMove": "DayNote가 바인더 목록을 {settings}에 있는 설정 파일에서 {path}에 있는 별도 파일로 옮기지 못해 아무것도 변경하지 않고 실행을 중단했습니다. 목록은 설정 파일에 그대로 남아 있습니다. {path} 파일이 들어 있는 폴더에 DayNote가 쓸 수 있는지 확인한 후 DayNote를 다시 시작하여 다시 시도하십시오. 바인더와 노트는 영향을 받지 않습니다.",
   "failure.startupDataTitle": "불러오기 실패",
   "failure.startupSettings": "DayNote가 {path}에 있는 설정 파일을 읽지 못해 아무것도 변경하지 않고 실행을 중단했습니다. 파일은 원래 자리에 그대로 두었습니다. 파일 권한을 확인하거나 파일을 다른 곳으로 옮긴 후 DayNote를 다시 시작하십시오.",
   "failure.startupSettingsMalformed": "{path}에 있는 설정 파일이 DayNote가 읽을 수 있는 형식이 아니어서 DayNote는 아무것도 변경하지 않고 실행을 중단했습니다. 파일은 원래 자리에 그대로 두었습니다. 파일을 고친 후 DayNote를 다시 시작하십시오. 파일을 다른 곳으로 옮기고 다시 시작하면 기본 설정으로 실행됩니다. 바인더와 노트는 영향을 받지 않습니다.",

@@ -9,7 +9,7 @@ namespace DayNote.ViewModels;
 /// <summary>
 /// UI-owned binder-name snapshots. Resolution remains at the background storage edge; a save or reload
 /// that adopts a binder's stored name cancels <see cref="Lookups"/>, so a lookup started before it cannot
-/// put back the names it replaced. Registry rows retain their literal paths and do not use this document
+/// put back the names it replaced. Binder list rows retain their literal paths and do not use this document
 /// equality for mutations.
 /// </summary>
 internal sealed class BinderPathKeys

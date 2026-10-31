@@ -15,12 +15,6 @@ public static class ConfigSets
     // presentation preferences whose built-in is a harmless fallback, normalized by the next save.
     private static readonly HashSet<string> Authored = ["textStyles"];
 
-    /// <summary>
-    /// The binder list config.json held before it had its own file, binders.json. It is retired: read
-    /// once to move it, never kept, so the next save leaves it out.
-    /// </summary>
-    public const string RetiredBindersKey = "binders";
-
     /// <summary>Validates each stored set once, returning its effective values and entries to preserve.</summary>
     public static (AppConfig Config, Dictionary<string, JsonElement> Kept) Load(
         IReadOnlyDictionary<string, JsonElement> stored, Action<string> warn)
@@ -29,9 +23,6 @@ public static class ConfigSets
         var kept = new Dictionary<string, JsonElement>();
         foreach (var (key, value) in stored)
         {
-            if (key == RetiredBindersKey)
-                continue;
-
             if (!BuiltIns.TryGetProperty(key, out _))
             {
                 kept[key] = value.Clone();

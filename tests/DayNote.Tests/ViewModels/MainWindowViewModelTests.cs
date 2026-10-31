@@ -875,95 +875,6 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.NotNull(new JsonStore<AppState>(StatePath, FormatVersions.State).Load());
     }
 
-    [AvaloniaFact]
-    public async Task Binders_kept_in_the_settings_file_move_to_their_own_file_once_at_launch()
-    {
-        Directory.CreateDirectory(_home);
-        new BinderStore().Save(BinderPath, new Binder { Id = IdGenerator.New() });
-        var other = Path.Combine(_home, "offline.daynote");
-        File.WriteAllText(ConfigPath, $$"""
-            {"formatVersion":1,"theme":"dark","binders":[
-              {"path":{{JsonSerializer.Serialize(BinderPath)}},"title":"Work"},
-              {"path":{{JsonSerializer.Serialize(other)}},"title":"Offline"}]}
-            """);
-
-        var vm = NewViewModel();
-        await vm.RefreshKnownBinders();
-
-        Assert.True(vm.IsReady);
-        Assert.Equal(new[] { "Work", "Offline" }, vm.Binders.Select(row => row.Title));
-        Assert.Equal(new[] { (BinderPath, "Work"), (other, "Offline") }, SavedBinders().Select(entry => (entry.Path, entry.Title)));
-        using (var settings = JsonDocument.Parse(File.ReadAllText(ConfigPath)))
-            Assert.Equal(new[] { "formatVersion", "theme" }, settings.RootElement.EnumerateObject().Select(property => property.Name));
-        Assert.Equal(ThemePreference.Dark, vm.Theme);
-        await vm.ShutdownAsync();
-
-        // The next launch reads the list from its own file and writes nothing.
-        var moved = File.ReadAllBytes(BindersPath);
-        var again = NewViewModel();
-        Assert.Equal(new[] { "Work", "Offline" }, again.Binders.Select(row => row.Title));
-        await again.ShutdownAsync();
-        Assert.Equal(moved, File.ReadAllBytes(BindersPath));
-        BackupStore.Close();
-        Assert.Equal(1, RowCountFor(new AppPaths().BackupStoreFile, BindersPath));
-    }
-
-    [AvaloniaFact]
-    public async Task A_binder_list_left_in_the_settings_file_beside_its_own_file_is_dropped_from_the_settings()
-    {
-        Directory.CreateDirectory(_home);
-        SeedBinders(new KnownBinder { Path = BinderPath, Title = "Current" });
-        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"binders":[{"path":{{JsonSerializer.Serialize(BinderPath)}},"title":"Old"}]}""");
-
-        var vm = NewViewModel();
-
-        Assert.Equal("Current", Assert.Single(vm.Binders).Title);
-        Assert.Equal("Current", Assert.Single(SavedBinders()).Title);
-        using (var settings = JsonDocument.Parse(File.ReadAllText(ConfigPath)))
-            Assert.Equal(new[] { "formatVersion" }, settings.RootElement.EnumerateObject().Select(property => property.Name));
-        await vm.ShutdownAsync();
-    }
-
-    [AvaloniaFact]
-    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
-    public async Task A_binder_list_that_cannot_be_moved_halts_says_it_is_still_in_the_settings_file_and_moves_next_launch()
-    {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "File modes are POSIX-only.");
-        new AppPaths().EnsureCreated();
-        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"binders":[{"path":{{JsonSerializer.Serialize(BinderPath)}},"title":"Old"}]}""");
-        var settings = File.ReadAllBytes(ConfigPath);
-
-        // A data folder DayNote can read but not write: binders.json cannot be created beside config.json.
-        var mode = File.GetUnixFileMode(_home);
-        File.SetUnixFileMode(_home, UnixFileMode.UserRead | UnixFileMode.UserExecute);
-        MainWindowViewModel vm;
-        try
-        {
-            vm = new MainWindowViewModel(new AppPaths(), _dialogs, new NullLogger());
-            _viewModels.Add(vm);
-            await vm.InitializeAsync();
-        }
-        finally
-        {
-            File.SetUnixFileMode(_home, mode);
-        }
-
-        Assert.False(vm.IsReady);
-        var (title, message) = Assert.Single(_dialogs.Errors);
-        Assert.Equal("failure.startupDataTitle", title.Key);
-        Assert.Equal("failure.startupBinderMove", message.Key);
-        Assert.Contains(BindersPath, English.Of(message), StringComparison.Ordinal);
-        Assert.Contains(ConfigPath, English.Of(message), StringComparison.Ordinal);
-        await vm.ShutdownAsync();
-        Assert.False(File.Exists(BindersPath));
-        Assert.Equal(settings, File.ReadAllBytes(ConfigPath));
-
-        var again = NewViewModel();
-        Assert.Equal("Old", Assert.Single(again.Binders).Title);
-        Assert.Equal("Old", Assert.Single(SavedBinders()).Title);
-        await again.ShutdownAsync();
-    }
-
     [AvaloniaTheory]
     [InlineData("{ not json")]
     [InlineData("""{"binders":[]}""")] // no format version
@@ -972,7 +883,7 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         Directory.CreateDirectory(_home);
         File.WriteAllText(BindersPath, content);
-        File.WriteAllText(ConfigPath, $$"""{"formatVersion":1,"binders":[{"path":{{JsonSerializer.Serialize(BinderPath)}},"title":"Old"}]}""");
+        File.WriteAllText(ConfigPath, """{"formatVersion":1,"theme":"dark"}""");
         var binders = File.ReadAllBytes(BindersPath);
         var settings = File.ReadAllBytes(ConfigPath);
 
